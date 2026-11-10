@@ -243,7 +243,7 @@ function buildCard(ex, n) {
   box.appendChild(name);
   if (ex.note) { const nt = document.createElement("p"); nt.className = "ex-note"; nt.textContent = ex.note; box.appendChild(nt); }
   const how = document.createElement("a"); how.className = "howto";
-  how.href = "https://www.youtube.com/results?search_query=" + encodeURIComponent(HOWTO[ex.id] || (ex.name + " execução"));
+  how.href = "https://www.youtube.com/results?search_query=" + encodeURIComponent(HOWTO[ex.id] || (ex.name + " execução")) + "&sp=EgIQAQ%253D%253D";
   how.target = "_blank"; how.rel = "noopener"; how.textContent = "Ver como fazer ↗";
   box.appendChild(how);
   top.append(num, box);

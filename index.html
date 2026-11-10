@@ -75,6 +75,8 @@ main { max-width: 720px; margin: 0 auto; padding: 16px 16px calc(48px + env(safe
 .num { font-family: var(--font-display); font-size: 22px; color: var(--accent); line-height: 1.1; font-variant-numeric: tabular-nums; }
 .ex-name { font-weight: 600; margin: 0; }
 .ex-note { font-size: 13px; color: var(--muted); margin: 2px 0 0; }
+.howto { display: inline-block; margin-top: 6px; font-size: 14px; font-weight: 600; color: var(--accent); text-decoration: none; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); }
+.howto:active { opacity: .7; }
 .meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; }
 .presc { font-weight: 600; font-variant-numeric: tabular-nums; }
 .chip { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--good-soft); color: var(--good); }
@@ -151,6 +153,7 @@ const PLAN = [
     { id: "e4", name: "Tríceps", sets: "3", lo: 8, hi: 12 }
   ]}
 ];
+const HOWTO = {"a1": "supino com halteres em ponte de glúteo quadril elevado", "a2": "barra fixa pegada aberta execução", "a3": "paralelas para peito execução", "a4": "remada serrote com halter execução", "a5": "crossover polia alta para baixo peito inferior", "a6": "elevação lateral no cabo execução", "a7": "face pull execução", "b1": "agachamento livre execução", "b2": "leg press 45 execução", "b3": "agachamento búlgaro execução", "b4": "cadeira extensora execução", "b5": "mesa flexora execução", "b6": "panturrilha em pé execução", "c1": "desenvolvimento com halteres execução", "c2": "puxada frente aberta execução", "c3": "supino reto com halteres execução", "c4": "pullover no cabo execução", "c5": "elevação lateral com halteres execução", "c6": "crucifixo invertido peck deck execução", "c7": "rosca bíceps no cabo execução", "c8": "tríceps na polia execução", "d1": "stiff levantamento terra romeno execução", "d2": "hip thrust execução", "d3": "flexora sentada execução", "d4": "hack squat execução", "d5": "cadeira adutora execução", "d6": "panturrilha sentada execução", "e1": "elevação lateral com halteres execução", "e2": "crucifixo invertido execução", "e3": "rosca direta execução", "e4": "tríceps na polia execução"};
 const TABS = PLAN.map(w => ({ id: w.id, label: w.short })).concat([{ id: "guia", label: "Guia" }]);
 
 function todayISO() { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); }
@@ -239,6 +242,10 @@ function buildCard(ex, n) {
   const name = document.createElement("p"); name.className = "ex-name"; name.textContent = ex.name;
   box.appendChild(name);
   if (ex.note) { const nt = document.createElement("p"); nt.className = "ex-note"; nt.textContent = ex.note; box.appendChild(nt); }
+  const how = document.createElement("a"); how.className = "howto";
+  how.href = "https://www.youtube.com/results?search_query=" + encodeURIComponent(HOWTO[ex.id] || (ex.name + " execução"));
+  how.target = "_blank"; how.rel = "noopener"; how.textContent = "Ver como fazer ↗";
+  box.appendChild(how);
   top.append(num, box);
 
   const meta = document.createElement("div"); meta.className = "meta";

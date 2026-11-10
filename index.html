@@ -28,6 +28,7 @@
   --good: #11764a;
   --good-soft: #dff3e9;
   --warn: #9a5b00;
+  --bad: #b42318;
   --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
   --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: light;
@@ -35,13 +36,13 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0f1319; --surface: #181e27; --ink: #e9edf3; --muted: #98a3b4; --line: #2a3340;
-    --accent: #7ea2ff; --accent-soft: #1d2a48; --good: #5fd39c; --good-soft: #143426; --warn: #f0b45a;
+    --accent: #7ea2ff; --accent-soft: #1d2a48; --good: #5fd39c; --good-soft: #143426; --warn: #f0b45a; --bad: #ff8a80;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0f1319; --surface: #181e27; --ink: #e9edf3; --muted: #98a3b4; --line: #2a3340;
-  --accent: #7ea2ff; --accent-soft: #1d2a48; --good: #5fd39c; --good-soft: #143426; --warn: #f0b45a;
+  --accent: #7ea2ff; --accent-soft: #1d2a48; --good: #5fd39c; --good-soft: #143426; --warn: #f0b45a; --bad: #ff8a80;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -82,7 +83,51 @@ main { max-width: 720px; margin: 0 auto; padding: 16px 16px calc(48px + env(safe
 .chip { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--good-soft); color: var(--good); }
 .last { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .last b { color: var(--ink); font-weight: 600; }
-.inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.inputs { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 8px; }
+.tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+@media (min-width: 560px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
+.tile { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 2px; align-content: start; }
+.tile-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.tile-num { font-family: var(--font-display); font-size: 34px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.tile-sub { font-size: 13px; color: var(--muted); }
+.tile.good { border-color: var(--good); background: var(--good-soft); }
+.tile.good .tile-num { color: var(--good); }
+.tile.warn { border-color: var(--warn); }
+.tile.warn .tile-num { color: var(--warn); }
+.tile.bad { border-color: var(--bad); }
+.tile.bad .tile-num, .tile.bad .tile-sub { color: var(--bad); }
+.stepper { display: flex; align-items: center; gap: 8px; }
+.step { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); font: 700 18px var(--font-body); cursor: pointer; }
+.note { margin: 0; font-size: 15px; }
+.note.muted { font-size: 13px; color: var(--muted); }
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; max-width: 360px; }
+.cal-h { text-align: center; font-size: 12px; font-weight: 600; color: var(--muted); }
+.cal-d { text-align: center; font-size: 13px; padding: 6px 0; border-radius: 8px; font-variant-numeric: tabular-nums; border: 1px solid transparent; }
+.cal-d.done { background: var(--accent); color: #fff; font-weight: 600; }
+.cal-d.plan { border: 1px dashed var(--accent); }
+.cal-d.miss { color: var(--muted); text-decoration: line-through; }
+.cal-d.today { box-shadow: 0 0 0 2px var(--ink) inset; }
+.legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--muted); }
+.lg { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 14px; border-radius: 4px; display: inline-block; border: 1px solid transparent; }
+.sw.done { background: var(--accent); }
+.sw.plan { border: 1px dashed var(--accent); }
+.sw.miss { background: var(--line); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.gchip { font: 600 14px var(--font-body); padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+.gchip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.chart-t { margin: 6px 0 0; font-size: 13px; font-weight: 600; }
+.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .grid.zero { stroke: var(--muted); stroke-dasharray: 3 3; }
+.chart .ax { fill: var(--muted); font: 10px var(--font-body); }
+.chart .val { fill: var(--ink); font: 600 11px var(--font-body); }
+.chart .bar { fill: var(--accent); opacity: .45; }
+.chart .bar.last { opacity: 1; }
+.chart .line { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.chart .area { fill: var(--accent); opacity: .12; }
+.chart .dot { fill: var(--surface); stroke: var(--accent); stroke-width: 2; }
+.chart .dot.last { fill: var(--accent); }
 .field { display: grid; gap: 4px; }
 .field label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .field input { width: 100%; font: 600 20px var(--font-body); font-variant-numeric: tabular-nums; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
@@ -154,7 +199,7 @@ const PLAN = [
   ]}
 ];
 const HOWTO = {"a1": "supino com halteres em ponte de glúteo quadril elevado", "a2": "barra fixa pegada aberta execução", "a3": "paralelas para peito execução", "a4": "remada serrote com halter execução", "a5": "crossover polia alta para baixo peito inferior", "a6": "elevação lateral no cabo execução", "a7": "face pull execução", "b1": "agachamento livre execução", "b2": "leg press 45 execução", "b3": "agachamento búlgaro execução", "b4": "cadeira extensora execução", "b5": "mesa flexora execução", "b6": "panturrilha em pé execução", "c1": "desenvolvimento com halteres execução", "c2": "puxada frente aberta execução", "c3": "supino reto com halteres execução", "c4": "pullover no cabo execução", "c5": "elevação lateral com halteres execução", "c6": "crucifixo invertido peck deck execução", "c7": "rosca bíceps no cabo execução", "c8": "tríceps na polia execução", "d1": "stiff levantamento terra romeno execução", "d2": "hip thrust execução", "d3": "flexora sentada execução", "d4": "hack squat execução", "d5": "cadeira adutora execução", "d6": "panturrilha sentada execução", "e1": "elevação lateral com halteres execução", "e2": "crucifixo invertido execução", "e3": "rosca direta execução", "e4": "tríceps na polia execução"};
-const TABS = PLAN.map(w => ({ id: w.id, label: w.short })).concat([{ id: "guia", label: "Guia" }]);
+const TABS = PLAN.map(w => ({ id: w.id, label: w.short })).concat([{ id: "progresso", label: "Progresso" }, { id: "guia", label: "Guia" }]);
 
 function todayISO() { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); }
 function fmtDate(iso) { const [y, m, d] = iso.split("-"); return d + "/" + m + "/" + y.slice(2); }
@@ -163,8 +208,10 @@ function fmtNum(n) { return n == null ? "" : String(n).replace(".", ","); }
 function entryText(e) {
   const parts = [];
   if (e.kg != null) parts.push(fmtNum(e.kg) + " kg");
-  if (e.reps != null) parts.push(fmtNum(e.reps) + " reps");
-  return parts.length ? parts.join(" × ") : "—";
+  if (e.sets != null && e.reps != null) parts.push(fmtNum(e.sets) + " × " + fmtNum(e.reps) + " reps");
+  else if (e.sets != null) parts.push(fmtNum(e.sets) + " séries");
+  else if (e.reps != null) parts.push(fmtNum(e.reps) + " reps");
+  return parts.length ? parts.join(" · ") : "—";
 }
 
 const STORE_KEY = "treino-logs-v1";
@@ -205,7 +252,7 @@ function renderTabs() {
 function entriesFor(exId) {
   return Object.keys(state.logs).sort().reverse()
     .map(date => ({ date, e: state.logs[date] && state.logs[date].e && state.logs[date].e[exId] }))
-    .filter(x => x.e && (x.e.kg != null || x.e.reps != null));
+    .filter(x => x.e && (x.e.kg != null || x.e.reps != null || x.e.sets != null));
 }
 
 function renderMain() {
@@ -217,6 +264,7 @@ function renderMain() {
     main.appendChild(b);
   }
   if (state.tab === "guia") { renderGuide(main); return; }
+  if (state.tab === "progresso") { renderProgress(main); return; }
   const w = PLAN.find(p => p.id === state.tab);
   const head = document.createElement("div"); head.className = "wk-head";
   const h2 = document.createElement("h2"); h2.textContent = w.name + " · " + w.day;
@@ -257,9 +305,9 @@ function buildCard(ex, n) {
   const last = document.createElement("div"); last.className = "last"; last.dataset.role = "last";
 
   const inputs = document.createElement("div"); inputs.className = "inputs";
-  ["kg", "reps"].forEach(k => {
+  ["kg", "sets", "reps"].forEach(k => {
     const f = document.createElement("div"); f.className = "field";
-    const l = document.createElement("label"); l.htmlFor = ex.id + "-" + k; l.textContent = k === "kg" ? "Carga (kg)" : "Repetições";
+    const l = document.createElement("label"); l.htmlFor = ex.id + "-" + k; l.textContent = { kg: "Carga (kg)", sets: "Séries", reps: "Reps" }[k];
     const inp = document.createElement("input"); inp.id = ex.id + "-" + k; inp.inputMode = k === "kg" ? "decimal" : "numeric";
     inp.autocomplete = "off"; inp.placeholder = "—"; inp.disabled = !state.canWrite; inp.dataset.field = k;
     inp.addEventListener("input", () => onEdit(ex, k, inp.value));
@@ -318,9 +366,9 @@ function onEdit(ex, field, raw) {
   const date = state.date;
   const doc = state.logs[date] || { date, e: {} };
   if (!doc.e) doc.e = {};
-  const e = Object.assign({ kg: null, reps: null }, doc.e[ex.id]);
+  const e = Object.assign({ kg: null, sets: null, reps: null }, doc.e[ex.id]);
   e[field] = parseNum(raw);
-  if (e.kg == null && e.reps == null) delete doc.e[ex.id]; else doc.e[ex.id] = e;
+  if (e.kg == null && e.reps == null && e.sets == null) delete doc.e[ex.id]; else doc.e[ex.id] = e;
   if (Object.keys(doc.e).length) state.logs[date] = doc; else delete state.logs[date];
   setStatus("Salvando…");
   clearTimeout(saveTimer);
@@ -357,6 +405,190 @@ function importBackup(file, msg) {
   r.readAsText(file);
 }
 
+
+/* ---------- Aba Progresso ---------- */
+const GROUP = {
+  a1: "Peito", a2: "Costas", a3: "Peito", a4: "Costas", a5: "Peito", a6: "Ombros", a7: "Ombros",
+  b1: "Quadríceps", b2: "Quadríceps", b3: "Quadríceps", b4: "Quadríceps", b5: "Posteriores", b6: "Panturrilhas",
+  c1: "Ombros", c2: "Costas", c3: "Peito", c4: "Costas", c5: "Ombros", c6: "Ombros", c7: "Bíceps", c8: "Tríceps",
+  d1: "Posteriores", d2: "Glúteos", d3: "Posteriores", d4: "Quadríceps", d5: "Glúteos", d6: "Panturrilhas",
+  e1: "Ombros", e2: "Ombros", e3: "Bíceps", e4: "Tríceps"
+};
+const GROUPS = ["Peito", "Costas", "Ombros", "Bíceps", "Tríceps", "Quadríceps", "Posteriores", "Glúteos", "Panturrilhas"];
+const MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const PLANNED_DOW = [1, 2, 4, 5];
+const SET_KEY = "treino-settings-v1";
+let settings = { goals: {} };
+function loadSettings() { try { const s = JSON.parse(localStorage.getItem(SET_KEY)); if (s && typeof s === "object") settings = s; if (!settings.goals) settings.goals = {}; } catch (e) {} }
+function saveSettings() { try { localStorage.setItem(SET_KEY, JSON.stringify(settings)); } catch (e) {} }
+function ymd(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+function hasEntries(date) { const l = state.logs[date]; return !!(l && l.e && Object.keys(l.e).length); }
+
+function monthStats() {
+  const now = new Date(); const y = now.getFullYear(), m = now.getMonth();
+  const key = y + "-" + String(m + 1).padStart(2, "0");
+  const last = new Date(y, m + 1, 0).getDate();
+  let planned = 0;
+  for (let d = 1; d <= last; d++) if (PLANNED_DOW.includes(new Date(y, m, d).getDay())) planned++;
+  const goal = settings.goals[key] != null ? settings.goals[key] : planned;
+  const today = ymd(now);
+  const done = Object.keys(state.logs).filter(d => d.startsWith(key) && hasEntries(d)).length;
+  const remaining = last - now.getDate() + (hasEntries(today) ? 0 : 1);
+  const need = Math.max(0, goal - done);
+  return { y, m, key, last, planned, goal, done, need, remaining, slack: remaining - need, today };
+}
+
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+function renderProgress(main) {
+  const s = monthStats();
+  const head = el("div", "wk-head");
+  head.append(el("h2", null, "Progresso"), el("p", null, "Frequência de " + MONTHS[s.m] + " e evolução por grupo muscular."));
+  main.appendChild(head);
+
+  const sec = el("section", "guide");
+  sec.appendChild(el("h3", null, "Meta de " + MONTHS[s.m]));
+  const tiles = el("div", "tiles");
+
+  const tGoal = el("div", "tile");
+  tGoal.appendChild(el("span", "tile-label", "Meta do mês"));
+  const stepper = el("div", "stepper");
+  const minus = el("button", "step", "−"); minus.type = "button"; minus.id = "goal-minus"; minus.setAttribute("aria-label", "Diminuir meta");
+  const val = el("span", "tile-num", String(s.goal));
+  const plus = el("button", "step", "+"); plus.type = "button"; plus.id = "goal-plus"; plus.setAttribute("aria-label", "Aumentar meta");
+  const setGoal = n => { settings.goals[s.key] = Math.max(1, Math.min(s.last, n)); saveSettings(); renderMain(); };
+  minus.addEventListener("click", () => setGoal(s.goal - 1));
+  plus.addEventListener("click", () => setGoal(s.goal + 1));
+  stepper.append(minus, val, plus); tGoal.appendChild(stepper);
+  tGoal.appendChild(el("span", "tile-sub", "treinos"));
+
+  const tile = (label, num, sub, mod) => { const t = el("div", "tile" + (mod ? " " + mod : "")); t.append(el("span", "tile-label", label), el("span", "tile-num", String(num)), el("span", "tile-sub", sub)); return t; };
+  const slackMod = s.need === 0 ? "good" : s.slack < 0 ? "bad" : s.slack <= 2 ? "warn" : "";
+  tiles.append(tGoal,
+    tile("Já fui", s.done, s.done === 1 ? "treino" : "treinos", s.need === 0 ? "good" : ""),
+    tile("Faltam", s.need, s.need === 1 ? "treino" : "treinos"),
+    tile("Posso faltar", s.need === 0 ? "—" : Math.max(0, s.slack), s.slack < 0 ? "meta impossível" : "dias", slackMod));
+  sec.appendChild(tiles);
+
+  let msg;
+  if (s.need === 0) msg = "Meta do mês batida. Os próximos treinos são bônus.";
+  else if (s.slack < 0) msg = "Restam " + s.remaining + " dias no mês e faltam " + s.need + " treinos: mesmo indo todos os dias, a meta não fecha. Ajuste a meta ou foque no próximo mês.";
+  else msg = "Restam " + s.remaining + " dias no mês. Você precisa treinar em " + s.need + " deles, então pode faltar em até " + s.slack + ".";
+  sec.appendChild(el("p", "note", msg));
+  sec.appendChild(el("p", "note muted", "A meta padrão (" + s.planned + ") conta as segundas, terças, quintas e sextas do mês. Um dia conta como treino quando você anota pelo menos um exercício nele."));
+
+  // calendário
+  const cal = el("div", "cal");
+  ["S", "T", "Q", "Q", "S", "S", "D"].forEach(d => cal.appendChild(el("span", "cal-h", d)));
+  const firstDow = (new Date(s.y, s.m, 1).getDay() + 6) % 7;
+  for (let i = 0; i < firstDow; i++) cal.appendChild(el("span", "cal-d empty"));
+  for (let d = 1; d <= s.last; d++) {
+    const iso = s.key + "-" + String(d).padStart(2, "0");
+    const dow = new Date(s.y, s.m, d).getDay();
+    let cls = "cal-d";
+    if (hasEntries(iso)) cls += " done";
+    else if (PLANNED_DOW.includes(dow) && iso >= s.today) cls += " plan";
+    else if (PLANNED_DOW.includes(dow)) cls += " miss";
+    if (iso === s.today) cls += " today";
+    cal.appendChild(el("span", cls, String(d)));
+  }
+  sec.appendChild(cal);
+  const legend = el("div", "legend");
+  [["done", "Treinei"], ["plan", "Dia planejado"], ["miss", "Planejado, não fui"]].forEach(([c, t]) => { const i = el("span", "lg"); i.append(el("span", "sw " + c), document.createTextNode(t)); legend.appendChild(i); });
+  sec.appendChild(legend);
+  main.appendChild(sec);
+
+  // evolução
+  const ev = el("section", "guide");
+  ev.appendChild(el("h3", null, "Evolução por grupo muscular"));
+  if (!state.group) state.group = GROUPS.find(g => groupSeries(g).length) || "Peito";
+  const chips = el("div", "chips");
+  GROUPS.forEach(g => {
+    const b = el("button", "gchip", g); b.type = "button"; b.id = "grp-" + g;
+    b.setAttribute("aria-pressed", String(g === state.group));
+    b.addEventListener("click", () => { state.group = g; renderMain(); });
+    chips.appendChild(b);
+  });
+  ev.appendChild(chips);
+  const data = groupSeries(state.group);
+  if (!data.length) {
+    ev.appendChild(el("p", "note muted", "Ainda não há registros de " + state.group.toLowerCase() + ". Anote carga e séries nos treinos para ver a evolução aqui."));
+  } else {
+    const lastW = data[data.length - 1];
+    const parts = [];
+    if (lastW.sets != null) parts.push(lastW.sets + " séries na semana de " + fmtDate(lastW.wk).slice(0, 5));
+    if (lastW.load != null) parts.push("carga " + (lastW.load >= 0 ? "+" : "") + lastW.load.toFixed(0) + "% em relação ao primeiro registro");
+    ev.appendChild(el("p", "note", parts.join(" · ") || "Semana sem séries ou cargas anotadas."));
+    ev.appendChild(el("p", "chart-t", "Séries por semana"));
+    ev.appendChild(chartBox(barSVG(data)));
+    ev.appendChild(el("p", "chart-t", "Carga em relação ao primeiro registro (%)"));
+    ev.appendChild(chartBox(lineSVG(data)));
+    ev.appendChild(el("p", "note muted", "A carga compara, exercício por exercício, o maior peso da semana com o primeiro peso anotado, e tira a média do grupo. Assim exercícios com pesos diferentes entram na mesma conta. Exercícios sem carga (como as paralelas) contam só nas séries."));
+  }
+  main.appendChild(ev);
+}
+
+function chartBox(svg) { const d = el("div", "chart"); d.innerHTML = svg; return d; }
+
+function weekStart(iso) { const [y, m, d] = iso.split("-").map(Number); const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() - (dt.getDay() + 6) % 7); return ymd(dt); }
+
+function groupSeries(group) {
+  const ids = Object.keys(GROUP).filter(k => GROUP[k] === group);
+  const first = {}; const weeks = {};
+  Object.keys(state.logs).sort().forEach(date => {
+    const l = state.logs[date]; if (!l || !l.e) return;
+    ids.forEach(id => {
+      const e = l.e[id]; if (!e) return;
+      const wk = weekStart(date);
+      const w = weeks[wk] || (weeks[wk] = { sets: 0, hasSets: false, max: {} });
+      if (e.sets != null) { w.sets += e.sets; w.hasSets = true; }
+      if (e.kg > 0) { if (first[id] == null) first[id] = e.kg; w.max[id] = Math.max(w.max[id] || 0, e.kg); }
+    });
+  });
+  return Object.keys(weeks).sort().slice(-12).map(wk => {
+    const w = weeks[wk]; const r = Object.keys(w.max).map(id => w.max[id] / first[id]);
+    return { wk, sets: w.hasSets ? w.sets : null, load: r.length ? (r.reduce((a, b) => a + b, 0) / r.length - 1) * 100 : null };
+  });
+}
+
+const CW = 340, CH = 150, PL = 34, PR = 10, PT = 14, PB = 24;
+function xLabels(data, xs) {
+  const step = Math.ceil(data.length / 6);
+  return data.map((p, i) => (i % step === 0 || i === data.length - 1) ? '<text class="ax" x="' + xs(i) + '" y="' + (CH - 6) + '" text-anchor="middle">' + fmtDate(p.wk).slice(0, 5) + '</text>' : "").join("");
+}
+function barSVG(data) {
+  const vals = data.map(p => p.sets || 0); const max = Math.max(4, ...vals);
+  const top = Math.ceil(max / 4) * 4;
+  const iw = CW - PL - PR, ih = CH - PT - PB, bw = Math.min(26, iw / data.length * 0.6);
+  const xs = i => PL + iw * (i + 0.5) / data.length; const ys = v => PT + ih * (1 - v / top);
+  let g = "";
+  [0, top / 2, top].forEach(v => { g += '<line class="grid" x1="' + PL + '" x2="' + (CW - PR) + '" y1="' + ys(v) + '" y2="' + ys(v) + '"/><text class="ax" x="' + (PL - 6) + '" y="' + (ys(v) + 4) + '" text-anchor="end">' + v + '</text>'; });
+  data.forEach((p, i) => {
+    if (p.sets == null) return;
+    const last = i === data.length - 1;
+    g += '<rect class="' + (last ? "bar last" : "bar") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(p.sets) + '" width="' + bw + '" height="' + (ys(0) - ys(p.sets)) + '" rx="3"/>';
+    if (last) g += '<text class="val" x="' + xs(i) + '" y="' + (ys(p.sets) - 4) + '" text-anchor="middle">' + p.sets + '</text>';
+  });
+  return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Séries por semana">' + g + xLabels(data, xs) + '</svg>';
+}
+function lineSVG(data) {
+  const pts = data.map((p, i) => ({ i, v: p.load })).filter(p => p.v != null);
+  if (!pts.length) return '<p class="note muted">Sem cargas anotadas para este grupo.</p>';
+  let lo = Math.min(0, ...pts.map(p => p.v)), hi = Math.max(10, ...pts.map(p => p.v));
+  lo = Math.floor(lo / 10) * 10; hi = Math.ceil(hi / 10) * 10;
+  const iw = CW - PL - PR, ih = CH - PT - PB;
+  const xs = i => PL + iw * (i + 0.5) / data.length; const ys = v => PT + ih * (1 - (v - lo) / (hi - lo));
+  let g = "";
+  [lo, 0, hi].filter((v, k, a) => a.indexOf(v) === k).forEach(v => { g += '<line class="' + (v === 0 ? "grid zero" : "grid") + '" x1="' + PL + '" x2="' + (CW - PR) + '" y1="' + ys(v) + '" y2="' + ys(v) + '"/><text class="ax" x="' + (PL - 6) + '" y="' + (ys(v) + 4) + '" text-anchor="end">' + (v > 0 ? "+" : "") + v + '%</text>'; });
+  const path = pts.map((p, k) => (k ? "L" : "M") + xs(p.i).toFixed(1) + " " + ys(p.v).toFixed(1)).join(" ");
+  const area = path + " L" + xs(pts[pts.length - 1].i).toFixed(1) + " " + ys(lo) + " L" + xs(pts[0].i).toFixed(1) + " " + ys(lo) + " Z";
+  g += '<path class="area" d="' + area + '"/><path class="line" d="' + path + '"/>';
+  pts.forEach((p, k) => { const last = k === pts.length - 1; g += '<circle class="' + (last ? "dot last" : "dot") + '" cx="' + xs(p.i) + '" cy="' + ys(p.v) + '" r="' + (last ? 4.5 : 3) + '"/>'; });
+  const lp = pts[pts.length - 1];
+  g += '<text class="val" x="' + Math.min(xs(lp.i), CW - PR - 14) + '" y="' + (ys(lp.v) - 8) + '" text-anchor="middle">' + (lp.v >= 0 ? "+" : "") + lp.v.toFixed(0) + '%</text>';
+  return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Carga em relação ao primeiro registro">' + g + xLabels(data, xs) + '</svg>';
+}
+
 function renderGuide(main) {
   const sections = [
     ["Semana", null, [["Segunda", "Superior A: largura de costas + peito inferior"], ["Terça", "Inferior A: quadríceps"], ["Quarta", "Descanso ou aeróbico"], ["Quinta", "Superior B: ombros + costas + peito"], ["Sexta", "Inferior B: posteriores e glúteos"], ["Sábado", "Opcional: deltoides e braços"], ["Domingo", "Descanso"]]],
@@ -367,7 +599,7 @@ function renderGuide(main) {
       ["Peito inferior", "Supino com quadril elevado, paralelas e crucifixo de cima para baixo seguem a direção das fibras da porção inferior do peitoral."],
       ["Pernas", "São 2 treinos completos por semana, com volume igual ao dos superiores."]
     ]],
-    ["Progressão", "Leve cada série até 0–2 repetições da falha. Quando bater o topo da faixa de repetições em todas as séries, aumente a carga. O app mostra \"Suba a carga\" quando as repetições do último treino chegaram ao topo da faixa."],
+    ["Progressão", "Leve cada série até 0–2 repetições da falha. Quando bater o topo da faixa de repetições em todas as séries, aumente a carga. O app mostra \"Suba a carga\" quando as repetições do último treino chegaram ao topo da faixa. Anote também quantas séries fez: elas alimentam o gráfico da aba Progresso."],
     ["Seus registros", "As cargas e repetições ficam salvas só neste celular. Cada pessoa que instala o app tem os próprios registros. Se você limpar os dados do navegador ou trocar de celular, os registros somem: faça um backup de vez em quando."]
   ];
   sections.forEach(([title, body, rows]) => {
@@ -407,6 +639,8 @@ renderTabs();
 renderMain();
 window.addEventListener("hashchange", () => { const h = location.hash.replace("#", ""); if (TABS.some(t => t.id === h) && h !== state.tab) { state.tab = h; renderTabs(); renderMain(); } });
 loadLogs();
+loadSettings();
+if (state.tab === "progresso") renderMain();
 setStatus(state.canWrite ? "Salvo no celular" : "Somente leitura", state.canWrite ? "ok" : "err");
 refreshCards();
 if ("serviceWorker" in navigator) { window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); }); }

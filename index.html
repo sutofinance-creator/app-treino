@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Plano de Treino</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#1f4fd1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Treino">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: barra de abas fixa no topo, data do treino, lista de cartões de exercício em uma coluna (celular primeiro). */
+:root {
+  --bg: #eef1f5;
+  --surface: #ffffff;
+  --ink: #141a23;
+  --muted: #5b6575;
+  --line: #d8dee7;
+  --accent: #1f4fd1;
+  --accent-soft: #e3eafc;
+  --good: #11764a;
+  --good-soft: #dff3e9;
+  --warn: #9a5b00;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1319; --surface: #181e27; --ink: #e9edf3; --muted: #98a3b4; --line: #2a3340;
+    --accent: #7ea2ff; --accent-soft: #1d2a48; --good: #5fd39c; --good-soft: #143426; --warn: #f0b45a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1319; --surface: #181e27; --ink: #e9edf3; --muted: #98a3b4; --line: #2a3340;
+  --accent: #7ea2ff; --accent-soft: #1d2a48; --good: #5fd39c; --good-soft: #143426; --warn: #f0b45a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.45; }
+header.top { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); padding-top: env(safe-area-inset-top); }
+.btns { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn { font: 600 15px var(--font-body); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); cursor: pointer; }
+.brand { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 16px 4px; max-width: 720px; margin: 0 auto; }
+.brand h1 { font-family: var(--font-display); font-size: 26px; letter-spacing: .02em; text-transform: uppercase; margin: 0; text-wrap: balance; }
+#status { font-size: 13px; color: var(--muted); white-space: nowrap; }
+#status.ok { color: var(--good); }
+#status.err { color: var(--warn); }
+nav.tabs { display: flex; gap: 6px; overflow-x: auto; padding: 8px 16px 10px; max-width: 720px; margin: 0 auto; scrollbar-width: none; }
+nav.tabs::-webkit-scrollbar { display: none; }
+nav.tabs button { flex: 0 0 auto; font: 600 15px var(--font-body); padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+nav.tabs button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+:root[data-theme="dark"] nav.tabs button[aria-selected="true"] { color: #0f1319; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) nav.tabs button[aria-selected="true"] { color: #0f1319; } }
+main { max-width: 720px; margin: 0 auto; padding: 16px 16px calc(48px + env(safe-area-inset-bottom)); display: grid; gap: 14px; }
+.banner { background: var(--accent-soft); border-radius: 10px; padding: 12px 14px; font-size: 14px; }
+.wk-head { display: grid; gap: 4px; }
+.wk-head h2 { font-family: var(--font-display); font-size: 30px; text-transform: uppercase; margin: 0; letter-spacing: .02em; text-wrap: balance; }
+.wk-head p { margin: 0; color: var(--muted); }
+.datebar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.datebar label { font-weight: 600; font-size: 14px; }
+.datebar input { font: 500 16px var(--font-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.datebar .hint { font-size: 13px; color: var(--muted); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 10px; }
+.card-top { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start; }
+.num { font-family: var(--font-display); font-size: 22px; color: var(--accent); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ex-name { font-weight: 600; margin: 0; }
+.ex-note { font-size: 13px; color: var(--muted); margin: 2px 0 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; }
+.presc { font-weight: 600; font-variant-numeric: tabular-nums; }
+.chip { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--good-soft); color: var(--good); }
+.last { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.last b { color: var(--ink); font-weight: 600; }
+.inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field { display: grid; gap: 4px; }
+.field label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.field input { width: 100%; font: 600 20px var(--font-body); font-variant-numeric: tabular-nums; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.field input:disabled { opacity: .55; }
+input:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+details summary { cursor: pointer; font-size: 14px; color: var(--accent); font-weight: 600; }
+.hist { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; font-size: 14px; font-variant-numeric: tabular-nums; }
+.hist li { display: flex; justify-content: space-between; border-bottom: 1px dashed var(--line); padding: 4px 0; }
+.hist li span:first-child { color: var(--muted); }
+.guide { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 10px; }
+.guide h3 { font-family: var(--font-display); font-size: 22px; text-transform: uppercase; margin: 0; letter-spacing: .02em; }
+.guide p, .guide li { max-width: 65ch; }
+.guide ul { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
+.week { width: 100%; border-collapse: collapse; font-size: 15px; }
+.week td { padding: 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.week td:first-child { font-weight: 600; width: 92px; }
+@media (prefers-reduced-motion: no-preference) { nav.tabs button { transition: background .15s, color .15s; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><h1>Plano de Treino</h1><span id="status" aria-live="polite"></span></div>
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Treinos"></nav>
+</header>
+<main id="main"></main>
+
+<script>
+const PLAN = [
+  { id: "sup-a", short: "Sup A", name: "Superior A", day: "Segunda", focus: "Largura de costas e peito inferior.", ex: [
+    { id: "a1", name: "Supino com halteres com quadril elevado", note: "Ponte no banco reto: cria o ângulo declinado. Carga por halter.", sets: "3", lo: 6, hi: 10 },
+    { id: "a2", name: "Barra fixa pegada aberta (ou puxada)", sets: "4", lo: 6, hi: 10 },
+    { id: "a3", name: "Paralelas com tronco inclinado à frente", note: "Sem carga: deixe o peso vazio e anote as repetições.", sets: "3", lo: 8, hi: 12 },
+    { id: "a4", name: "Remada unilateral com halter (serrote)", note: "Pegada neutra. Alternativa: remada sentada na polia baixa do cross-over.", sets: "3", lo: 8, hi: 12 },
+    { id: "a5", name: "Crucifixo no cabo, de cima para baixo", sets: "3", lo: 12, hi: 15 },
+    { id: "a6", name: "Elevação lateral no cabo", sets: "4", lo: 12, hi: 20 },
+    { id: "a7", name: "Face pull", sets: "3", lo: 12, hi: 15 }
+  ]},
+  { id: "inf-a", short: "Inf A", name: "Inferior A", day: "Terça", focus: "Quadríceps, com posterior e panturrilha.", ex: [
+    { id: "b1", name: "Agachamento livre ou hack", sets: "4", lo: 6, hi: 10 },
+    { id: "b2", name: "Leg press", sets: "3", lo: 10, hi: 15 },
+    { id: "b3", name: "Agachamento búlgaro", note: "Repetições por perna.", sets: "3", lo: 8, hi: 12 },
+    { id: "b4", name: "Cadeira extensora", sets: "3", lo: 12, hi: 15 },
+    { id: "b5", name: "Mesa flexora", sets: "3", lo: 10, hi: 12 },
+    { id: "b6", name: "Panturrilha em pé", sets: "4", lo: 10, hi: 15 }
+  ]},
+  { id: "sup-b", short: "Sup B", name: "Superior B", day: "Quinta", focus: "Ombros (lateral e posterior), com costas e peito.", ex: [
+    { id: "c1", name: "Desenvolvimento com halteres", sets: "3", lo: 6, hi: 10 },
+    { id: "c2", name: "Puxada frente aberta", sets: "3", lo: 8, hi: 12 },
+    { id: "c3", name: "Supino reto (halteres ou máquina)", sets: "3", lo: 8, hi: 12 },
+    { id: "c4", name: "Pullover no cabo", sets: "3", lo: 12, hi: 15 },
+    { id: "c5", name: "Elevação lateral com halteres", sets: "4", lo: 12, hi: 20 },
+    { id: "c6", name: "Crucifixo invertido (peck deck inverso)", sets: "4", lo: 12, hi: 20 },
+    { id: "c7", name: "Rosca no cabo", sets: "2–3", lo: 10, hi: 15 },
+    { id: "c8", name: "Tríceps no cabo", sets: "2–3", lo: 10, hi: 15 }
+  ]},
+  { id: "inf-b", short: "Inf B", name: "Inferior B", day: "Sexta", focus: "Posteriores de coxa e glúteos.", ex: [
+    { id: "d1", name: "Stiff / levantamento terra romeno", sets: "4", lo: 6, hi: 10 },
+    { id: "d2", name: "Hip thrust", sets: "3", lo: 8, hi: 12 },
+    { id: "d3", name: "Flexora sentada", sets: "3", lo: 10, hi: 15 },
+    { id: "d4", name: "Hack ou belt squat", sets: "3", lo: 10, hi: 12 },
+    { id: "d5", name: "Cadeira adutora", sets: "3", lo: 12, hi: 15 },
+    { id: "d6", name: "Panturrilha sentada", sets: "4", lo: 12, hi: 20 }
+  ]},
+  { id: "sabado", short: "Sábado", name: "Sábado opcional", day: "Sábado", focus: "Volume extra de deltoides e braços. Se as pernas ficarem para trás, troque por um terceiro treino de inferiores.", ex: [
+    { id: "e1", name: "Elevação lateral", sets: "4", lo: 12, hi: 20 },
+    { id: "e2", name: "Crucifixo invertido", sets: "3", lo: 12, hi: 20 },
+    { id: "e3", name: "Rosca", sets: "3", lo: 8, hi: 12 },
+    { id: "e4", name: "Tríceps", sets: "3", lo: 8, hi: 12 }
+  ]}
+];
+const TABS = PLAN.map(w => ({ id: w.id, label: w.short })).concat([{ id: "guia", label: "Guia" }]);
+
+function todayISO() { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); }
+function fmtDate(iso) { const [y, m, d] = iso.split("-"); return d + "/" + m + "/" + y.slice(2); }
+function parseNum(v) { if (v == null) return null; const s = String(v).trim().replace(",", "."); if (s === "") return null; const n = Number(s); return isFinite(n) && n >= 0 ? n : null; }
+function fmtNum(n) { return n == null ? "" : String(n).replace(".", ","); }
+function entryText(e) {
+  const parts = [];
+  if (e.kg != null) parts.push(fmtNum(e.kg) + " kg");
+  if (e.reps != null) parts.push(fmtNum(e.reps) + " reps");
+  return parts.length ? parts.join(" × ") : "—";
+}
+
+const STORE_KEY = "treino-logs-v1";
+const state = { tab: null, date: todayISO(), logs: {}, canWrite: true, loaded: true };
+let saveTimer = null;
+function loadLogs() {
+  try { const raw = localStorage.getItem(STORE_KEY); state.logs = raw ? JSON.parse(raw) || {} : {}; }
+  catch (e) { state.logs = {}; state.canWrite = false; }
+}
+function saveLogs() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state.logs)); setStatus("Salvo no celular", "ok"); }
+  catch (e) { setStatus("Não foi possível salvar neste navegador", "err"); }
+}
+
+function defaultTab() {
+  const h = location.hash.replace("#", "");
+  if (TABS.some(t => t.id === h)) return h;
+  return ({ 1: "sup-a", 2: "inf-a", 4: "sup-b", 5: "inf-b", 6: "sabado" })[new Date().getDay()] || "guia";
+}
+
+function setStatus(text, cls) { const el = document.getElementById("status"); el.textContent = text; el.className = cls || ""; }
+
+function renderTabs() {
+  const nav = document.getElementById("tabs");
+  nav.innerHTML = "";
+  TABS.forEach(t => {
+    const b = document.createElement("button");
+    b.type = "button"; b.id = "tab-" + t.id; b.setAttribute("role", "tab");
+    b.setAttribute("aria-selected", String(t.id === state.tab));
+    b.textContent = t.label;
+    b.addEventListener("click", () => { state.tab = t.id; history.replaceState(null, "", "#" + t.id); renderTabs(); renderMain(); window.scrollTo(0, 0); });
+    nav.appendChild(b);
+  });
+  const sel = document.getElementById("tab-" + state.tab);
+  if (sel) sel.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+function entriesFor(exId) {
+  return Object.keys(state.logs).sort().reverse()
+    .map(date => ({ date, e: state.logs[date] && state.logs[date].e && state.logs[date].e[exId] }))
+    .filter(x => x.e && (x.e.kg != null || x.e.reps != null));
+}
+
+function renderMain() {
+  const main = document.getElementById("main");
+  main.innerHTML = "";
+  if (!state.canWrite && state.loaded === "none") {
+    const b = document.createElement("div"); b.className = "banner";
+    b.textContent = "Entre na sua conta do Claude para salvar cargas e repetições. Sem login, o plano fica só para leitura.";
+    main.appendChild(b);
+  }
+  if (state.tab === "guia") { renderGuide(main); return; }
+  const w = PLAN.find(p => p.id === state.tab);
+  const head = document.createElement("div"); head.className = "wk-head";
+  const h2 = document.createElement("h2"); h2.textContent = w.name + " · " + w.day;
+  const p = document.createElement("p"); p.textContent = w.focus;
+  head.append(h2, p); main.appendChild(head);
+
+  const bar = document.createElement("div"); bar.className = "datebar";
+  const lab = document.createElement("label"); lab.htmlFor = "train-date"; lab.textContent = "Treino do dia";
+  const di = document.createElement("input"); di.type = "date"; di.id = "train-date"; di.value = state.date;
+  di.addEventListener("change", () => { if (di.value) { state.date = di.value; renderMain(); } });
+  const hint = document.createElement("span"); hint.className = "hint";
+  hint.textContent = state.date === todayISO() ? "Hoje" : "Editando um treino de outro dia";
+  bar.append(lab, di, hint); main.appendChild(bar);
+
+  w.ex.forEach((ex, i) => main.appendChild(buildCard(ex, i + 1)));
+}
+
+function buildCard(ex, n) {
+  const card = document.createElement("section"); card.className = "card"; card.id = "card-" + ex.id;
+  const top = document.createElement("div"); top.className = "card-top";
+  const num = document.createElement("div"); num.className = "num"; num.textContent = String(n).padStart(2, "0");
+  const box = document.createElement("div");
+  const name = document.createElement("p"); name.className = "ex-name"; name.textContent = ex.name;
+  box.appendChild(name);
+  if (ex.note) { const nt = document.createElement("p"); nt.className = "ex-note"; nt.textContent = ex.note; box.appendChild(nt); }
+  top.append(num, box);
+
+  const meta = document.createElement("div"); meta.className = "meta";
+  const pr = document.createElement("span"); pr.className = "presc"; pr.textContent = ex.sets + " séries × " + ex.lo + "–" + ex.hi + " reps";
+  meta.appendChild(pr);
+  const chip = document.createElement("span"); chip.className = "chip"; chip.textContent = "Suba a carga"; chip.hidden = true; chip.dataset.role = "chip";
+  meta.appendChild(chip);
+
+  const last = document.createElement("div"); last.className = "last"; last.dataset.role = "last";
+
+  const inputs = document.createElement("div"); inputs.className = "inputs";
+  ["kg", "reps"].forEach(k => {
+    const f = document.createElement("div"); f.className = "field";
+    const l = document.createElement("label"); l.htmlFor = ex.id + "-" + k; l.textContent = k === "kg" ? "Carga (kg)" : "Repetições";
+    const inp = document.createElement("input"); inp.id = ex.id + "-" + k; inp.inputMode = k === "kg" ? "decimal" : "numeric";
+    inp.autocomplete = "off"; inp.placeholder = "—"; inp.disabled = !state.canWrite; inp.dataset.field = k;
+    inp.addEventListener("input", () => onEdit(ex, k, inp.value));
+    f.append(l, inp); inputs.appendChild(f);
+  });
+
+  const det = document.createElement("details");
+  const sum = document.createElement("summary"); sum.dataset.role = "sum";
+  const ul = document.createElement("ul"); ul.className = "hist"; ul.dataset.role = "hist";
+  det.append(sum, ul);
+
+  card.append(top, meta, last, inputs, det);
+  fillCard(card, ex);
+  return card;
+}
+
+function fillCard(card, ex) {
+  const cur = state.logs[state.date] && state.logs[state.date].e && state.logs[state.date].e[ex.id];
+  card.querySelectorAll("input[data-field]").forEach(inp => {
+    inp.disabled = !state.canWrite;
+    if (document.activeElement === inp) return;
+    inp.value = cur ? fmtNum(cur[inp.dataset.field]) : "";
+  });
+  const all = entriesFor(ex.id);
+  const prev = all.find(x => x.date < state.date);
+  const last = card.querySelector('[data-role="last"]');
+  last.textContent = "";
+  if (prev) {
+    last.append("Última vez (" + fmtDate(prev.date) + "): ");
+    const b = document.createElement("b"); b.textContent = entryText(prev.e); last.appendChild(b);
+  } else {
+    last.textContent = state.loaded === true ? "Sem registro anterior." : "";
+  }
+  card.querySelector('[data-role="chip"]').hidden = !(prev && prev.e.reps != null && prev.e.reps >= ex.hi);
+  const sum = card.querySelector('[data-role="sum"]');
+  sum.textContent = "Histórico (" + all.length + ")";
+  const ul = card.querySelector('[data-role="hist"]');
+  ul.innerHTML = "";
+  if (!all.length) { const li = document.createElement("li"); li.textContent = "Nenhum registro ainda."; ul.appendChild(li); }
+  all.forEach(x => {
+    const li = document.createElement("li");
+    const a = document.createElement("span"); a.textContent = fmtDate(x.date);
+    const b = document.createElement("span"); b.textContent = entryText(x.e);
+    li.append(a, b); ul.appendChild(li);
+  });
+}
+
+function refreshCards() {
+  const w = PLAN.find(p => p.id === state.tab);
+  if (!w) return;
+  w.ex.forEach(ex => { const c = document.getElementById("card-" + ex.id); if (c) fillCard(c, ex); });
+}
+
+function onEdit(ex, field, raw) {
+  if (!state.canWrite) return;
+  const date = state.date;
+  const doc = state.logs[date] || { date, e: {} };
+  if (!doc.e) doc.e = {};
+  const e = Object.assign({ kg: null, reps: null }, doc.e[ex.id]);
+  e[field] = parseNum(raw);
+  if (e.kg == null && e.reps == null) delete doc.e[ex.id]; else doc.e[ex.id] = e;
+  if (Object.keys(doc.e).length) state.logs[date] = doc; else delete state.logs[date];
+  setStatus("Salvando…");
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { saveLogs(); refreshCards(); }, 400);
+}
+
+function exportBackup() {
+  const blob = new Blob([JSON.stringify({ app: "plano-treino", version: 1, logs: state.logs }, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "backup-treino-" + todayISO() + ".json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+function importBackup(file, msg) {
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const data = JSON.parse(r.result);
+      const logs = data && data.logs;
+      if (!logs || typeof logs !== "object") throw new Error();
+      let n = 0;
+      Object.keys(logs).forEach(date => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !logs[date] || !logs[date].e) return;
+        const cur = state.logs[date] || { date, e: {} };
+        Object.assign(cur.e, logs[date].e);
+        state.logs[date] = cur; n++;
+      });
+      saveLogs();
+      msg.textContent = n ? "Backup importado: " + n + " dia(s) de treino." : "O arquivo não tinha registros.";
+    } catch (e) { msg.textContent = "Arquivo inválido. Escolha um backup gerado por este app."; }
+  };
+  r.readAsText(file);
+}
+
+function renderGuide(main) {
+  const sections = [
+    ["Semana", null, [["Segunda", "Superior A: largura de costas + peito inferior"], ["Terça", "Inferior A: quadríceps"], ["Quarta", "Descanso ou aeróbico"], ["Quinta", "Superior B: ombros + costas + peito"], ["Sexta", "Inferior B: posteriores e glúteos"], ["Sábado", "Opcional: deltoides e braços"], ["Domingo", "Descanso"]]],
+    ["Como cada objetivo foi atendido", [
+      ["Shape em V", "O V vem de dorsais largos e deltoides laterais grandes contra uma cintura estreita. Por isso há elevação lateral 2 a 3 vezes por semana e puxadas em pegada aberta."],
+      ["Oblíquos", "Não há treino direto de abdome, porque os compostos já trabalham o core. Evite flexão lateral com carga. A largura da cintura depende mais do percentual de gordura e da estrutura óssea do que dos oblíquos."],
+      ["Ombros projetados para frente", "Face pull, crucifixo invertido e remadas fortalecem o deltoide posterior e a parte média das costas. Inclua alongamento de peitoral e mobilidade torácica no aquecimento. Se houver dor, procure um fisioterapeuta."],
+      ["Peito inferior", "Supino com quadril elevado, paralelas e crucifixo de cima para baixo seguem a direção das fibras da porção inferior do peitoral."],
+      ["Pernas", "São 2 treinos completos por semana, com volume igual ao dos superiores."]
+    ]],
+    ["Progressão", "Leve cada série até 0–2 repetições da falha. Quando bater o topo da faixa de repetições em todas as séries, aumente a carga. O app mostra \"Suba a carga\" quando as repetições do último treino chegaram ao topo da faixa."],
+    ["Seus registros", "As cargas e repetições ficam salvas só neste celular. Cada pessoa que instala o app tem os próprios registros. Se você limpar os dados do navegador ou trocar de celular, os registros somem: faça um backup de vez em quando."]
+  ];
+  sections.forEach(([title, body, rows]) => {
+    const s = document.createElement("section"); s.className = "guide";
+    const h = document.createElement("h3"); h.textContent = title; s.appendChild(h);
+    if (rows) {
+      const t = document.createElement("table"); t.className = "week";
+      rows.forEach(([a, b]) => { const tr = document.createElement("tr"); const td1 = document.createElement("td"); td1.textContent = a; const td2 = document.createElement("td"); td2.textContent = b; tr.append(td1, td2); t.appendChild(tr); });
+      s.appendChild(t);
+    } else if (Array.isArray(body)) {
+      const ul = document.createElement("ul");
+      body.forEach(([k, v]) => { const li = document.createElement("li"); const b = document.createElement("b"); b.textContent = k + ": "; li.append(b, v); ul.appendChild(li); });
+      s.appendChild(ul);
+    } else {
+      const p = document.createElement("p"); p.style.margin = "0"; p.textContent = body; s.appendChild(p);
+    }
+    main.appendChild(s);
+  });
+  const s = document.createElement("section"); s.className = "guide";
+  const h = document.createElement("h3"); h.textContent = "Backup";
+  const p = document.createElement("p"); p.style.margin = "0";
+  p.textContent = "Exporte um arquivo com todos os seus registros e guarde no Drive ou mande para você mesmo. Para restaurar, importe esse arquivo.";
+  const btns = document.createElement("div"); btns.className = "btns";
+  const ex = document.createElement("button"); ex.type = "button"; ex.className = "btn"; ex.id = "btn-export"; ex.textContent = "Exportar backup";
+  ex.addEventListener("click", exportBackup);
+  const lab = document.createElement("label"); lab.className = "btn"; lab.htmlFor = "file-import"; lab.textContent = "Importar backup";
+  const fi = document.createElement("input"); fi.type = "file"; fi.id = "file-import"; fi.accept = ".json,application/json"; fi.hidden = true;
+  const msg = document.createElement("p"); msg.style.margin = "0"; msg.setAttribute("aria-live", "polite");
+  fi.addEventListener("change", () => { if (fi.files[0]) importBackup(fi.files[0], msg); fi.value = ""; });
+  btns.append(ex, lab, fi);
+  s.append(h, p, btns, msg);
+  main.appendChild(s);
+}
+
+state.tab = defaultTab();
+renderTabs();
+renderMain();
+window.addEventListener("hashchange", () => { const h = location.hash.replace("#", ""); if (TABS.some(t => t.id === h) && h !== state.tab) { state.tab = h; renderTabs(); renderMain(); } });
+loadLogs();
+setStatus(state.canWrite ? "Salvo no celular" : "Somente leitura", state.canWrite ? "ok" : "err");
+refreshCards();
+if ("serviceWorker" in navigator) { window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); }); }
+</script>
+</body>
+</html>

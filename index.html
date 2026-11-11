@@ -334,6 +334,25 @@ details.imp[open] { gap: 10px; }
 body[data-view="conta"] nav.tabs { display: none; }
 body[data-view="conta"] header.top { padding-bottom: 8px; }
 .login-cta { border-color: var(--accent); }
+
+/* ---------- Estamina ---------- */
+.st-card .chips { margin-top: -2px; }
+.gchip:disabled { opacity: .4; cursor: not-allowed; }
+.guide-run { display: grid; gap: 6px; justify-items: center; text-align: center; padding: 14px 12px; border: 1px solid var(--line); background: var(--surface-2); }
+.guide-run.lvl-forte { border-color: var(--bad); box-shadow: 0 0 16px rgba(255, 92, 122, .35); }
+.guide-run.lvl-leve, .guide-run.lvl-med, .guide-run.lvl-in, .guide-run.lvl-out { border-color: var(--accent); box-shadow: 0 0 14px rgba(166, 107, 255, .3); }
+.guide-run .goalbar { width: 100%; }
+.gr-phase { font: 700 22px var(--font-display); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+.lvl-forte .gr-phase { color: var(--bad); text-shadow: 0 0 10px rgba(255, 92, 122, .6); }
+.gr-left { font: 700 56px var(--font-display); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+.lvl-forte .gr-left { color: var(--bad); }
+.gr-next { font-size: 14px; color: var(--muted); }
+.breath { position: relative; width: 170px; height: 170px; display: grid; place-items: center; }
+.breath-dot { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--accent); background: radial-gradient(circle, rgba(166, 107, 255, .35), rgba(166, 107, 255, .05) 70%); box-shadow: 0 0 24px rgba(166, 107, 255, .45); transform: scale(.5); transition: transform 5s ease-in-out; }
+.breath.in .breath-dot { transform: scale(1); }
+.breath.out .breath-dot { transform: scale(.5); }
+.breath-t { position: relative; font: 700 20px var(--font-display); letter-spacing: .14em; text-transform: uppercase; }
+@media (prefers-reduced-motion: reduce) { .breath-dot { transition: none; } }
 </style>
 </head>
 <body data-view="home">
@@ -503,6 +522,7 @@ function renderTabs() {
   const cfg = {
     forca: { tabs: TABS, cur: state.tab, label: "Treinos do módulo Força", set: id => { state.tab = id; }, draw: () => renderMain() },
     intel: { tabs: INTEL_TABS, cur: state.itab, label: "Seções do módulo Inteligência", set: id => { state.itab = id; if (id === "estudo") state.idate = todayISO(); }, draw: () => renderIntel() },
+    est: { tabs: STAM_TABS, cur: state.stab, label: "Seções do módulo Estamina", set: id => { state.stab = id; if (id === "est-hoje") state.sdate = todayISO(); }, draw: () => renderStamina() },
     fin: { tabs: FIN_TABS, cur: state.ftab, label: "Seções do módulo Finanças", set: id => { state.ftab = id; finUI.open = null; finUI.confirm = null; finUI.msg = ""; }, draw: () => renderFin() }
   }[v];
   if (!cfg) return;
@@ -646,7 +666,7 @@ function onEdit(ex, field, raw) {
 }
 
 function exportBackup() {
-  const blob = new Blob([JSON.stringify({ app: "plano-treino", version: 3, plan: profileId, logs: state.logs, intel: intel, fin: fin }, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify({ app: "plano-treino", version: 4, plan: profileId, logs: state.logs, intel: intel, fin: fin, stamina: stamina }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "backup-stek-" + todayISO() + ".json";
@@ -660,7 +680,7 @@ function importBackup(file, msg) {
     try {
       const data = JSON.parse(r.result);
       const logs = (data && data.logs) || {};
-      if (typeof logs !== "object" || (!data.logs && !data.intel && !data.fin)) throw new Error();
+      if (typeof logs !== "object" || (!data.logs && !data.intel && !data.fin && !data.stamina)) throw new Error();
       let n = 0;
       Object.keys(logs).forEach(date => {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !logs[date] || !logs[date].e) return;
@@ -689,6 +709,12 @@ function importBackup(file, msg) {
         Object.assign(fin.habit, data.fin.habit || {});
         if (!ofReady() && data.fin.of && data.fin.of.url) fin.of = Object.assign({}, data.fin.of, { last: null });
         saveFin();
+      }
+      if (data.stamina && data.stamina.days) {
+        const st = ensureStamina();
+        Object.keys(data.stamina.days).forEach(d => { st.days[d] = st.days[d] || {}; Object.keys(data.stamina.days[d] || {}).forEach(pid => { const v = data.stamina.days[d][pid]; if (v && (!st.days[d][pid] || (v.sec || 0) > (st.days[d][pid].sec || 0))) st.days[d][pid] = v; }); });
+        if (!st.age && data.stamina.age) st.age = data.stamina.age;
+        saveStamina();
       }
       if (nf) { flashAuto(msg, "Backup importado: " + n + " dia(s) de treino, " + ni + " dia(s) de estudo e " + nf + " lançamento(s) financeiro(s)."); return; }
       flashAuto(msg, (n || ni) ? "Backup importado: " + n + " dia(s) de treino" + (data.intel ? " e " + ni + " dia(s) de estudo." : ".") : "O arquivo não tinha registros.");
@@ -1460,6 +1486,401 @@ function updateLive() {
   document.querySelectorAll('[data-live="running"]').forEach(n => { const s = intel.subjects.find(x => x.id === intel.timer.sid); n.textContent = "▶ " + (s ? s.name : "") + " " + fmtHMS(subjSec(today, intel.timer.sid)); });
 }
 setInterval(updateLive, 1000);
+
+/* ======================= Módulo Estamina ======================= */
+const STAM_KEY = "stek-stamina-v1";
+const STAM_TABS = [{ id: "est-hoje", label: "Hoje" }, { id: "est-progresso", label: "Progresso" }, { id: "est-praticas", label: "Práticas" }];
+// 4x4 norueguês: 10 min leve, 4 tiros de 4 min com 3 min leves entre eles, 5 min leve (40 min)
+const X4_PHASES = (() => { const p = [["Aquecimento", 600, "leve"]]; for (let i = 1; i <= 4; i++) { p.push(["Tiro " + i + " de 4", 240, "forte"]); if (i < 4) p.push(["Recuperação", 180, "leve"]); } p.push(["Desaquecimento", 300, "leve"]); return p; })();
+const PRACTICES = [
+  { id: "z2", kind: "cardio", name: "Zona 2", tag: "Cardio contínuo leve", factor: 1, target: 30,
+    how: "30 a 45 min num ritmo em que dá para conversar em frases curtas (60–70% da FC máxima). Vale caminhada rápida na esteira inclinada, bike, elíptico ou corrida leve.",
+    why: "Constrói a base aeróbica. Cada minuto conta 1 para 1 na meta da semana.", yt: "treino zona 2 cardio como fazer" },
+  { id: "x4", kind: "cardio", name: "Intervalado 4x4", tag: "Cardio intervalado forte", factor: 1.4, target: 40,
+    how: "10 min de aquecimento leve, 4 tiros de 4 min bem fortes (85–95% da FC máxima: só dá para falar palavras soltas) com 3 min leves entre eles e 5 min de desaquecimento. O cronômetro guia cada fase com aviso sonoro.",
+    why: "É o estímulo mais eficiente para subir o VO2máx. Uma vez por semana já ajuda, e os minutos fortes contam em dobro. Começando agora? Faça só 3 tiros nas primeiras semanas.", yt: "treino norueguês 4x4 intervalado" },
+  { id: "mod", kind: "cardio", name: "Outro moderado", tag: "Dá para falar, não para cantar", factor: 1, target: 30,
+    how: "Qualquer atividade contínua em que você consegue conversar mas não cantar: natação tranquila, pedal, trilha, dança.",
+    why: "Conta 1 para 1 na meta da semana." },
+  { id: "vig", kind: "cardio", name: "Outro vigoroso", tag: "Só poucas palavras", factor: 2, target: 20,
+    how: "Corrida forte, futebol, pular corda, natação intensa: a respiração não deixa falar mais que poucas palavras.",
+    why: "Cada minuto conta em dobro na meta da semana." },
+  { id: "med", kind: "foco", name: "Meditação", tag: "Treino de atenção", factor: 0,
+    how: "Sente confortável e preste atenção na respiração. Quando perceber que a mente foi para outro lugar, volte para a respiração sem se cobrar: cada volta é uma repetição do treino. Um sino toca no fim.",
+    why: "Treina atenção sustentada e controle do foco. O ganho vem da prática repetida, não de uma sessão só.", yt: "meditação atenção plena guiada iniciantes" },
+  { id: "resp", kind: "foco", name: "Respiração lenta", tag: "6 respirações por minuto", factor: 0,
+    how: "Inspire pelo nariz em 5 s e solte em 5 s, seguindo o círculo. Bom logo antes de estudar ou para baixar a agitação.",
+    why: "Desacelera a respiração e ajuda a começar o estudo mais calmo.", yt: "respiração ressonante 6 respirações por minuto" }
+];
+let stamina = null;
+const stUI = { cardio: null, foco: null, msg: "" };
+let stAudio = null, stWake = null, stLastPhase = null;
+
+function loadStamina() {
+  try { const v = JSON.parse(localStorage.getItem(STAM_KEY)); stamina = v && v.days ? v : null; } catch (e) { stamina = null; }
+  if (stamina) stamina.goals = Object.assign({ weekMin: 150, focusMin: 10 }, stamina.goals);
+  settleStamina();
+}
+function stam() { return stamina || { goals: { weekMin: 150, focusMin: 10 }, days: {}, timer: null, age: null }; }
+function ensureStamina() { if (!stamina) stamina = { version: 1, goals: { weekMin: 150, focusMin: 10 }, days: {}, timer: null, age: null }; return stamina; }
+function saveStamina() {
+  try { localStorage.setItem(STAM_KEY, JSON.stringify(stamina)); setStatus("Salvo no celular", "ok"); }
+  catch (e) { setStatus("Não foi possível salvar neste navegador", "err"); }
+}
+function practice(id) { return PRACTICES.find(p => p.id === id); }
+function capFirst(s) { return s.replace(/^./, c => c.toUpperCase()); }
+function sessionLen(pid) { return pid === "x4" ? 2400 : (pid === "med" || pid === "resp") ? Math.round(stam().goals.focusMin * 60) : 0; }
+function stCap(t) { const L = sessionLen(t.pid); return L ? L - ((t.startPos || 0) % L) : Infinity; }
+function stRec(iso, pid) { const d = stam().days[iso]; return (d && d[pid]) || { sec: 0 }; }
+function stRun(iso, pid) {
+  const t = stam().timer; if (!t || (pid && t.pid !== pid)) return 0;
+  const [a, b] = dayBounds(iso); const s = Math.max(a, t.startedAt), e = Math.min(b, Date.now(), t.startedAt + stCap(t) * 1000);
+  return e > s ? Math.floor((e - s) / 1000) : 0;
+}
+function stSec(iso, pid) { return stRec(iso, pid).sec + stRun(iso, pid); }
+function stKindSec(iso, kind) { return PRACTICES.filter(p => p.kind === kind).reduce((a, p) => a + stSec(iso, p.id), 0); }
+function stEqMin(iso) { return PRACTICES.reduce((a, p) => a + p.factor * stSec(iso, p.id) / 60, 0); }
+function weekStart(iso) { const [y, m, d] = iso.split("-").map(Number); const w = (new Date(y, m - 1, d).getDay() + 6) % 7; return ymd(new Date(y, m - 1, d - w)); }
+function weekDays(start) { const [y, m, d] = start.split("-").map(Number); return Array.from({ length: 7 }, (_, i) => ymd(new Date(y, m - 1, d + i))); }
+function weekEq(iso, onlyBefore) { return weekDays(weekStart(iso)).filter(d => !onlyBefore || d < iso).reduce((a, d) => a + stEqMin(d), 0); }
+function focusStreak(iso) {
+  const goal = stam().goals.focusMin * 60, [y, m, d] = iso.split("-").map(Number); let n = 0;
+  for (let i = 0; i < 400; i++) { const day = ymd(new Date(y, m - 1, d - i)); if (stKindSec(day, "foco") >= goal) n++; else if (i === 0) continue; else break; }
+  return n;
+}
+function strengthDay(iso) {
+  if (!profileId) return null;
+  const [y, m, d] = iso.split("-").map(Number); const w = prof().dayTab[new Date(y, m - 1, d).getDay()];
+  const p = w && PLAN.find(x => x.id === w);
+  return !!(p && !p.optional);
+}
+function cardioPlan(iso) {
+  const sd = strengthDay(iso), goal = stam().goals.weekMin;
+  if (sd) return { pid: "z2", target: 15, optional: true, why: "Dia de musculação: se sobrar fôlego, 10 a 20 min de Zona 2 depois do treino." };
+  const x4done = weekDays(weekStart(iso)).some(d => d < iso && stSec(d, "x4") >= 900);
+  const pid = x4done ? "z2" : "x4", opt = weekEq(iso, true) >= goal;
+  return { pid, target: practice(pid).target, optional: opt,
+    why: (sd === false ? "Dia sem musculação" : "Dia livre") + (pid === "x4" ? ": o intervalado 4x4 da semana ainda não foi feito." : ": cardio leve para somar na meta da semana.") + (opt ? " A meta da semana já foi batida, então hoje é opcional." : "") };
+}
+
+/* ---------- cronômetro ---------- */
+function stAddTime(a, b, pid) {
+  let x = a;
+  while (x < b) {
+    const dt = new Date(x); const next = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + 1).getTime(); const e = Math.min(b, next);
+    const iso = ymd(dt); stamina.days[iso] = stamina.days[iso] || {};
+    const r = stamina.days[iso][pid] = stamina.days[iso][pid] || { sec: 0 };
+    r.sec += Math.round((e - x) / 1000); x = e;
+  }
+}
+function stStart(pid) {
+  const s = ensureStamina();
+  if (s.timer) stStop(true);
+  s.timer = { pid, startedAt: Date.now(), startPos: stRec(todayISO(), pid).sec };
+  stLastPhase = null; stSoundInit(); if (sessionLen(pid)) stWakeOn();
+  saveStamina();
+}
+function stStop(silent) {
+  const t = stamina && stamina.timer; if (!t) return;
+  stAddTime(t.startedAt, Math.min(Date.now(), t.startedAt + stCap(t) * 1000), t.pid);
+  stamina.timer = null; stWakeOff();
+  if (!silent) saveStamina();
+}
+function settleStamina() {
+  const t = stamina && stamina.timer; if (!t || Date.now() < t.startedAt + stCap(t) * 1000) return false;
+  stStop(true); saveStamina(); return true;
+}
+function guideState(t) {
+  const L = sessionLen(t.pid); if (!L) return null;
+  const pos = ((t.startPos || 0) % L) + Math.min((Date.now() - t.startedAt) / 1000, stCap(t));
+  if (t.pid === "x4") {
+    let acc = 0;
+    for (let i = 0; i < X4_PHASES.length; i++) {
+      const [name, dur, lvl] = X4_PHASES[i];
+      if (pos < acc + dur) return { i, name, lvl, left: acc + dur - pos, next: X4_PHASES[i + 1] ? "Depois: " + X4_PHASES[i + 1][0].toLowerCase() : "Depois: fim da sessão", pct: pos / L };
+      acc += dur;
+    }
+    return { i: X4_PHASES.length, name: "Fim", lvl: "leve", left: 0, next: "", pct: 1 };
+  }
+  if (t.pid === "resp") { const c = pos % 10, inh = c < 5; return { i: Math.floor(pos / 5), name: inh ? "Inspire" : "Solte", lvl: inh ? "in" : "out", left: (inh ? 5 : 10) - c, next: "Faltam " + fmtMS(L - pos), pct: pos / L }; }
+  return { i: 0, name: "Atenção na respiração", lvl: "med", left: L - pos, next: "O sino toca no fim", pct: pos / L };
+}
+function fmtMS(sec) { sec = Math.max(0, Math.ceil(sec)); return String(Math.floor(sec / 60)).padStart(2, "0") + ":" + String(sec % 60).padStart(2, "0"); }
+function stSoundInit() { try { stAudio = stAudio || new (window.AudioContext || window.webkitAudioContext)(); if (stAudio.state === "suspended") stAudio.resume(); } catch (e) { stAudio = null; } }
+function stBeep(freq, ms, times) {
+  try { if (navigator.vibrate) navigator.vibrate(times > 1 ? [180, 120, 180] : 300); } catch (e) {}
+  if (!stAudio) return;
+  try {
+    for (let k = 0; k < (times || 1); k++) {
+      const o = stAudio.createOscillator(), g = stAudio.createGain(), t0 = stAudio.currentTime + k * (ms + 140) / 1000;
+      o.type = "sine"; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.35, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + ms / 1000);
+      o.connect(g); g.connect(stAudio.destination); o.start(t0); o.stop(t0 + ms / 1000 + 0.05);
+    }
+  } catch (e) {}
+}
+async function stWakeOn() { try { if ("wakeLock" in navigator && document.visibilityState === "visible") stWake = await navigator.wakeLock.request("screen"); } catch (e) { stWake = null; } }
+function stWakeOff() { try { if (stWake) stWake.release(); } catch (e) {} stWake = null; }
+
+/* ---------- pendências da tela inicial ---------- */
+function staminaTasks() {
+  const iso = todayISO(), s = stam();
+  const plan = cardioPlan(iso), csec = stKindSec(iso, "cardio"), ct = plan.target * 60;
+  const fsec = stKindSec(iso, "foco"), fg = s.goals.focusMin * 60;
+  return { tasks: [
+    { id: "task-cardio", title: "Cardio: " + practice(plan.pid).name, optional: plan.optional, complete: csec >= ct, pct: Math.min(1, csec / ct), live: "st-home",
+      label: csec >= ct ? "Concluído" : (plan.optional ? "Opcional · " : "") + Math.floor(csec / 60) + "/" + plan.target + " min",
+      sub: plan.why + " Semana: " + Math.round(weekEq(iso)) + " de " + s.goals.weekMin + " min.", go: () => enterStamina("est-hoje", "cardio") },
+    { id: "task-foco", title: "Foco: " + s.goals.focusMin + " min", complete: fsec >= fg, pct: Math.min(1, fsec / fg), live: "st-home",
+      label: fsec >= fg ? "Concluído" : Math.floor(fsec / 60) + "/" + s.goals.focusMin + " min",
+      sub: fsec >= fg ? "Prática de foco feita hoje." : "Meditação ou respiração lenta. Um bom momento é logo antes de estudar.", go: () => enterStamina("est-hoje", "foco") }
+  ] };
+}
+
+/* ---------- telas ---------- */
+function enterStamina(tab, focus) {
+  state.view = "est"; document.body.dataset.view = "est";
+  document.getElementById("crumb").textContent = "/ Estamina";
+  state.sdate = todayISO();
+  state.stab = STAM_TABS.some(t => t.id === tab) ? tab : "est-hoje";
+  history.replaceState(null, "", "#" + state.stab);
+  renderTabs(); renderStamina();
+  const target = focus && document.getElementById("st-" + focus);
+  if (target) target.scrollIntoView({ block: "start" }); else window.scrollTo(0, 0);
+}
+function renderStamina() {
+  const main = document.getElementById("main"); main.innerHTML = "";
+  if (state.stab === "est-progresso") renderStProgress(main);
+  else if (state.stab === "est-praticas") renderStPraticas(main);
+  else renderStHoje(main);
+}
+function stTile(label, num, sub, mod, live) { const t = el("div", "tile" + (mod ? " " + mod : "")); const n = el("span", "tile-num", String(num)); if (live) n.dataset.live = live; t.append(el("span", "tile-label", label), n, el("span", "tile-sub", sub)); return t; }
+
+function renderStHoje(main) {
+  const iso = state.sdate, today = todayISO(), s = stam();
+  const [y, m, d] = iso.split("-").map(Number); const sd = strengthDay(iso);
+  head2(main, iso === today ? "Estamina" : "Outro dia", capFirst(WEEKDAYS[new Date(y, m - 1, d).getDay()]) + ", " + d + " de " + MONTHS[m - 1] + ". " +
+    (sd ? "Dia de musculação." : sd === false ? "Dia sem musculação." : "Escolha um plano no módulo Força para o app saber seus dias de musculação."));
+  const bar = el("div", "datebar");
+  const lab = el("label", null, "Dia"); lab.htmlFor = "st-date";
+  const di = el("input"); di.type = "date"; di.id = "st-date"; di.value = iso;
+  di.addEventListener("change", () => { if (di.value) { state.sdate = di.value; stUI.cardio = null; stUI.foco = null; renderStamina(); } });
+  bar.append(lab, di, el("span", "hint", iso === today ? "Hoje" : "Outro dia: ajuste os minutos com os botões de 5 min"));
+  main.appendChild(bar);
+
+  const wk = Math.round(weekEq(iso)), goal = s.goals.weekMin, fmin = Math.floor(stKindSec(iso, "foco") / 60), streak = focusStreak(iso);
+  const g = el("section", "guide");
+  g.appendChild(el("h3", null, "Semana"));
+  const tiles = el("div", "tiles tiles-3");
+  tiles.append(stTile("Cardio", wk, "de " + goal + " min na semana", wk >= goal ? "good" : "", "st-week"),
+    stTile("Foco", fmin, "de " + s.goals.focusMin + " min no dia", fmin >= s.goals.focusMin ? "good" : "", "st-focus"),
+    stTile("Sequência", streak, streak === 1 ? "dia de foco na meta" : "dias de foco na meta", streak ? "good" : ""));
+  g.appendChild(tiles);
+  const pb = el("div", "goalbar"); const pf = el("span"); pf.style.width = Math.min(100, wk / goal * 100) + "%"; pf.dataset.live = "st-weekbar"; pb.appendChild(pf); g.appendChild(pb);
+  g.appendChild(el("p", "note muted", "Minutos equivalentes: os de intensidade vigorosa contam em dobro, como na recomendação da OMS."));
+  main.appendChild(g);
+  if (stUI.msg) { const f = el("p", "note"); flash(f, stUI.msg, "ok"); main.appendChild(f); stUI.msg = ""; }
+
+  const plan = cardioPlan(iso);
+  main.appendChild(stCard("cardio", 1, iso, plan.pid, iso === today ? plan.why : "Registre o cardio deste dia.", plan.target));
+  main.appendChild(stCard("foco", 2, iso, "med", iso === today ? "Meditação ou respiração lenta, " + s.goals.focusMin + " min. Um bom momento é logo antes de estudar." : "Registre a prática de foco deste dia.", s.goals.focusMin));
+}
+
+function stCard(kind, n, iso, suggested, intro, targetMin) {
+  const today = todayISO(), s = stam(), t = s.timer;
+  const running = t && practice(t.pid).kind === kind && iso === today ? t.pid : null;
+  const pid = running || stUI[kind] || suggested; const p = practice(pid);
+  const card = el("section", "card st-card"); card.id = "st-" + kind;
+  const top = el("div", "card-top"); const box = el("div");
+  box.append(el("p", "ex-name", kind === "cardio" ? "Cardio" : "Foco"), el("p", "ex-note", intro));
+  top.append(el("div", "num", String(n).padStart(2, "0")), box); card.appendChild(top);
+
+  const chips = el("div", "chips"); chips.setAttribute("role", "group"); chips.setAttribute("aria-label", "Prática");
+  PRACTICES.filter(x => x.kind === kind).forEach(x => {
+    const c = el("button", "gchip", x.name + (x.id === suggested && iso === today ? " ★" : "")); c.type = "button"; c.id = "stp-" + x.id;
+    c.setAttribute("aria-pressed", String(x.id === pid));
+    if (running && running !== x.id) c.disabled = true;
+    c.addEventListener("click", () => { stUI[kind] = x.id; renderStamina(); });
+    chips.appendChild(c);
+  });
+  card.appendChild(chips);
+  const desc = el("div", "plan");
+  desc.append(el("span", "plan-t", p.tag), el("p", "plan-items", p.how));
+  if (p.yt) { const a = el("a", "howto", "Ver como fazer ↗"); a.href = "https://www.youtube.com/results?search_query=" + encodeURIComponent(p.yt) + "&sp=EgIQAQ%253D%253D"; a.target = "_blank"; a.rel = "noopener"; desc.appendChild(a); }
+  const isRun = running === pid;
+  if (!isRun) card.appendChild(desc);
+
+  const trow = el("div", "timer-row" + (isRun ? " running" : ""));
+  const td = el("span", "timer", fmtHMS(stSec(iso, pid))); td.id = "st-tmr-" + kind; if (isRun) { td.dataset.live = "st-time"; td.dataset.pid = pid; }
+  const tb = el("div", "timer-btns");
+  if (iso === today) {
+    const go = el("button", "btn" + (isRun ? " stop" : ""), isRun ? "Pausar" : "Iniciar"); go.type = "button"; go.id = "st-go-" + kind;
+    go.addEventListener("click", () => { if (isRun) stStop(); else { stUI[kind] = pid; stStart(pid); } renderStamina(); });
+    tb.appendChild(go);
+  }
+  const adj = (delta, txt) => { const b = el("button", "step wide", txt); b.type = "button"; b.id = "st-adj" + (delta > 0 ? "p" : "m") + "-" + kind; b.setAttribute("aria-label", (delta > 0 ? "Somar " : "Tirar ") + "5 minutos de " + p.name);
+    b.addEventListener("click", () => { const st = ensureStamina(); st.days[iso] = st.days[iso] || {}; const r = st.days[iso][pid] = st.days[iso][pid] || { sec: 0 }; r.sec = Math.max(0, r.sec + delta); saveStamina(); renderStamina(); }); return b; };
+  tb.append(adj(-300, "−5 min"), adj(300, "+5 min"));
+  trow.append(td, tb); card.appendChild(trow);
+
+  if (isRun && sessionLen(pid)) card.appendChild(buildGuide(t));
+  else if (isRun) card.appendChild(el("p", "ex-note", "Cronômetro rodando. Ele continua contando mesmo se você fechar o app."));
+
+  const done = PRACTICES.filter(x => x.kind === kind && stSec(iso, x.id) >= 60).map(x => x.name + " " + fmtHM(stSec(iso, x.id)));
+  const tot = Math.floor(stKindSec(iso, kind) / 60);
+  const line = el("div", "meta");
+  line.append(el("span", "presc", tot + " de " + targetMin + " min"), el("span", "st " + (tot >= targetMin ? "ok" : "pend"), tot >= targetMin ? "Meta do dia feita" : "Faltam " + (targetMin - tot) + " min"));
+  if (done.length) line.appendChild(el("span", "last", done.join(" · ")));
+  card.appendChild(line);
+  if (kind === "cardio" && (pid === "z2" || pid === "mod")) card.appendChild(el("p", "note muted", "Dica: 20 a 30 min de cardio moderado logo antes de estudar melhoram o foco por cerca de meia hora."));
+  return card;
+}
+
+function buildGuide(t) {
+  const gs = guideState(t);
+  const w = el("div", "guide-run lvl-" + gs.lvl); w.id = "st-guide";
+  if (t.pid === "resp") {
+    const b = el("div", "breath " + gs.lvl); b.id = "st-breath";
+    b.append(el("span", "breath-dot"), el("span", "breath-t", gs.name));
+    w.appendChild(b);
+  } else w.appendChild(el("span", "gr-phase", gs.name));
+  const left = el("span", "gr-left", fmtMS(gs.left)); left.id = "st-gleft";
+  const nx = el("span", "gr-next", gs.next); nx.id = "st-gnext";
+  const pb = el("div", "goalbar thin"); const pf = el("span"); pf.id = "st-gbar"; pf.style.width = Math.min(100, gs.pct * 100) + "%"; pb.appendChild(pf);
+  w.append(left, nx, pb);
+  if (t.pid === "x4") w.appendChild(el("p", "note muted", "Deixe a tela ligada e o som alto: o app avisa com bipes a cada troca de fase."));
+  stLastPhase = gs.i;
+  return w;
+}
+
+function updateStaminaLive() {
+  const t = stamina && stamina.timer; if (!t) return;
+  if (settleStamina()) {
+    stBeep(t.pid === "x4" ? 660 : 528, 900, 2);
+    stUI.msg = practice(t.pid).name + ": sessão concluída e registrada.";
+    if (state.view === "est") renderStamina(); else if (state.view === "home") renderHome();
+    return;
+  }
+  const today = todayISO();
+  document.querySelectorAll('[data-live="st-time"]').forEach(n => { n.textContent = fmtHMS(stSec(today, n.dataset.pid)); });
+  document.querySelectorAll('[data-live="st-running"]').forEach(n => { n.textContent = "▶ " + practice(t.pid).name + " " + fmtHMS(stSec(today, t.pid)); });
+  if (state.view === "est" && state.stab === "est-hoje" && state.sdate === today) {
+    const wk = Math.round(weekEq(today)), fmin = Math.floor(stKindSec(today, "foco") / 60);
+    document.querySelectorAll('[data-live="st-week"]').forEach(n => { n.textContent = String(wk); });
+    document.querySelectorAll('[data-live="st-focus"]').forEach(n => { n.textContent = String(fmin); });
+    document.querySelectorAll('[data-live="st-weekbar"]').forEach(n => { n.style.width = Math.min(100, wk / stam().goals.weekMin * 100) + "%"; });
+  }
+  if (state.view === "home") staminaTasks().tasks.forEach(k => { const n = document.querySelector("#" + k.id + ' [data-live="st-home"]'); if (n) n.textContent = k.label; });
+  const gw = document.getElementById("st-guide"); if (!gw) return;
+  const gs = guideState(t); if (!gs) return;
+  const set = (id, v) => { const n = document.getElementById(id); if (n && n.textContent !== v) n.textContent = v; };
+  set("st-gleft", fmtMS(gs.left)); set("st-gnext", gs.next);
+  const gb = document.getElementById("st-gbar"); if (gb) gb.style.width = Math.min(100, gs.pct * 100) + "%";
+  if (gs.i !== stLastPhase) {
+    const first = stLastPhase == null; stLastPhase = gs.i;
+    gw.className = "guide-run lvl-" + gs.lvl;
+    const ph = gw.querySelector(".gr-phase"); if (ph) ph.textContent = gs.name;
+    const br = document.getElementById("st-breath"); if (br) { br.className = "breath " + gs.lvl; br.querySelector(".breath-t").textContent = gs.name; }
+    if (!first && t.pid === "x4") { if (gs.lvl === "forte") stBeep(880, 260, 3); else stBeep(520, 400, 1); }
+  }
+}
+setInterval(updateStaminaLive, 250);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && stamina && stamina.timer && sessionLen(stamina.timer.pid)) stWakeOn(); });
+
+function stBarsSVG(rows, aria) {
+  const mx = Math.max(1, ...rows.map(r => Math.max(r.v, r.goal))) * 1.1;
+  const top = mx <= 20 ? Math.ceil(mx / 10) * 10 : mx <= 100 ? Math.ceil(mx / 20) * 20 : Math.ceil(mx / 100) * 100;
+  const iw = CW - PL - PR, ih = CH - PT - PB, n = rows.length, bw = Math.min(18, iw / n * 0.6);
+  const xs = i => PL + iw * (i + 0.5) / n, ys = v => PT + ih * (1 - v / top);
+  let g = "";
+  [0, top / 2, top].forEach(v => { g += '<line class="grid" x1="' + PL + '" x2="' + (CW - PR) + '" y1="' + ys(v) + '" y2="' + ys(v) + '"/><text class="ax" x="' + (PL - 6) + '" y="' + (ys(v) + 4) + '" text-anchor="end">' + Math.round(v) + '</text>'; });
+  rows.forEach((r, i) => {
+    if (r.v > 0) g += '<rect class="' + (r.v >= r.goal ? "bar last" : "bar") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(r.v) + '" width="' + bw + '" height="' + (ys(0) - ys(r.v)) + '" rx="2"/>';
+    g += '<line class="goal" x1="' + (xs(i) - bw / 2 - 2) + '" x2="' + (xs(i) + bw / 2 + 2) + '" y1="' + ys(r.goal) + '" y2="' + ys(r.goal) + '"/>';
+  });
+  const step = n > 8 ? 2 : 1;
+  rows.forEach((r, i) => { if (i % step === (n - 1) % step) g += '<text class="ax" x="' + xs(i) + '" y="' + (CH - 6) + '" text-anchor="middle">' + r.label + '</text>'; });
+  return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="' + aria + '">' + g + '</svg>';
+}
+
+function renderStProgress(main) {
+  const today = todayISO(), s = stam(), goal = s.goals.weekMin, fg = s.goals.focusMin;
+  head2(main, "Progresso", "Cardio por semana em minutos equivalentes e minutos de foco por dia.");
+  const cur = weekStart(today), [y, m, d] = cur.split("-").map(Number);
+  const weeks = []; for (let i = 7; i >= 0; i--) { const st = ymd(new Date(y, m - 1, d - 7 * i)); weeks.push({ st, v: Math.round(weekEq(st)), goal, label: fmtDate(st).slice(0, 5) }); }
+  const past = weeks.slice(0, -1), last4 = past.slice(-4);
+  const avg = Math.round(last4.reduce((a, w) => a + w.v, 0) / 4);
+  const c = el("section", "guide"); c.appendChild(el("h3", null, "Cardio"));
+  const t1 = el("div", "tiles tiles-3");
+  t1.append(stTile("Esta semana", weeks[7].v, "de " + goal + " min", weeks[7].v >= goal ? "good" : ""),
+    stTile("Média", avg, "min nas 4 semanas anteriores", avg >= goal ? "good" : ""),
+    stTile("Na meta", past.filter(w => w.v >= goal).length + "/7", "semanas anteriores"));
+  c.appendChild(t1);
+  c.appendChild(el("p", "chart-t", "Minutos por semana (traço = meta)"));
+  c.appendChild(chartBox(stBarsSVG(weeks, "Minutos de cardio por semana nas últimas 8 semanas")));
+  const x4w = weeks.filter(w => weekDays(w.st).some(dd => stSec(dd, "x4") >= 900)).length;
+  c.appendChild(el("p", "note muted", "Intervalado 4x4 feito em " + x4w + " das últimas 8 semanas."));
+  main.appendChild(c);
+
+  const [ty, tm, tdd] = today.split("-").map(Number);
+  const days = []; for (let i = 13; i >= 0; i--) { const dd = ymd(new Date(ty, tm - 1, tdd - i)); days.push({ iso: dd, v: Math.floor(stKindSec(dd, "foco") / 60), goal: fg, label: fmtDate(dd).slice(0, 5) }); }
+  const f = el("section", "guide"); f.appendChild(el("h3", null, "Foco"));
+  const st = focusStreak(today), wk = days.slice(-7);
+  const t2 = el("div", "tiles tiles-3");
+  t2.append(stTile("Sequência", st, st === 1 ? "dia na meta" : "dias na meta", st ? "good" : ""),
+    stTile("7 dias", wk.reduce((a, r) => a + r.v, 0), "minutos de foco"),
+    stTile("Na meta", wk.filter(r => r.v >= fg).length + "/7", "dias da semana"));
+  f.appendChild(t2);
+  f.appendChild(el("p", "chart-t", "Minutos de foco por dia (traço = meta)"));
+  f.appendChild(chartBox(stBarsSVG(days, "Minutos de foco por dia nos últimos 14 dias")));
+  main.appendChild(f);
+
+  const h = el("section", "guide"); h.appendChild(el("h3", null, "Histórico"));
+  const rows = Object.keys(s.days).filter(dd => PRACTICES.some(p => stSec(dd, p.id) >= 60)).sort().reverse().slice(0, 14);
+  if (!rows.length) h.appendChild(el("p", "note muted", "Nada registrado ainda. Use o cronômetro ou os botões de 5 min na aba Hoje."));
+  else { const ul = el("ul", "hist"); rows.forEach(dd => { const li = el("li"); li.append(el("span", null, fmtDate(dd).slice(0, 5)), el("span", null, PRACTICES.filter(p => stSec(dd, p.id) >= 60).map(p => p.name + " " + fmtHM(stSec(dd, p.id))).join(" · "))); ul.appendChild(li); }); h.appendChild(ul); }
+  main.appendChild(h);
+}
+
+function renderStPraticas(main) {
+  const s = stam();
+  head2(main, "Práticas", "Metas, faixas de frequência cardíaca e como fazer cada prática.");
+  const gs = el("section", "guide"); gs.appendChild(el("h3", null, "Metas"));
+  const grow = el("div", "inputs two");
+  [["weekMin", "Cardio por semana (min)", 30, 1500], ["focusMin", "Foco por dia (min)", 1, 90]].forEach(([k, t, lo, hi]) => {
+    const fd = el("div", "field"); const l = el("label", null, t); l.htmlFor = "st-goal-" + k;
+    const i = el("input"); i.id = "st-goal-" + k; i.inputMode = "numeric"; i.value = String(s.goals[k]);
+    i.addEventListener("change", () => { const v = Math.round(parseNum(i.value) || 0); if (v >= lo && v <= hi) { const st = ensureStamina(); if (st.timer && k === "focusMin") stStop(true); st.goals[k] = v; saveStamina(); } i.value = String(stam().goals[k]); });
+    fd.append(l, i); grow.appendChild(fd);
+  });
+  gs.appendChild(grow);
+  gs.appendChild(el("p", "note muted", "A OMS recomenda para adultos de 150 a 300 min por semana de atividade aeróbica moderada, ou de 75 a 150 min de vigorosa. Aqui os minutos vigorosos contam em dobro."));
+  main.appendChild(gs);
+
+  const hr = el("section", "guide"); hr.appendChild(el("h3", null, "Frequência cardíaca"));
+  const af = el("div", "field"); const al = el("label", null, "Sua idade"); al.htmlFor = "st-age";
+  const ai = el("input"); ai.id = "st-age"; ai.inputMode = "numeric"; ai.placeholder = "ex.: 24"; ai.value = s.age ? String(s.age) : "";
+  ai.addEventListener("change", () => { const v = Math.round(parseNum(ai.value) || 0); const st = ensureStamina(); st.age = v >= 12 && v <= 90 ? v : null; saveStamina(); renderStamina(); });
+  af.append(al, ai); const ag = el("div", "inputs two"); ag.appendChild(af); hr.appendChild(ag);
+  if (s.age) {
+    const mx = Math.round(208 - 0.7 * s.age), r = (a, b) => Math.round(mx * a) + "–" + Math.round(mx * b) + " bpm";
+    const ul = el("ul", "hist");
+    [["FC máxima estimada", mx + " bpm"], ["Zona 2 e recuperação (60–70%)", r(0.6, 0.7)], ["Tiros do 4x4 (85–95%)", r(0.85, 0.95)]].forEach(([a, b]) => { const li = el("li"); li.append(el("span", null, a), el("span", null, b)); ul.appendChild(li); });
+    hr.appendChild(ul);
+    hr.appendChild(el("p", "note muted", "Estimativa pela fórmula 208 − 0,7 × idade; o valor real varia de pessoa para pessoa."));
+  }
+  hr.appendChild(el("p", "note muted", "Sem relógio? Use a fala: na Zona 2 dá para conversar em frases curtas; no tiro do 4x4 só saem palavras soltas."));
+  main.appendChild(hr);
+
+  PRACTICES.forEach(p => {
+    const c = el("section", "guide"); c.id = "st-info-" + p.id;
+    const h = el("h3", null, p.name); c.appendChild(h);
+    const meta = el("div", "meta"); meta.append(el("span", "st", p.kind === "cardio" ? "Cardio" : "Foco"), el("span", "last", p.tag)); c.appendChild(meta);
+    c.append(el("p", "note", p.how), el("p", "note muted", p.why));
+    if (p.yt) { const a = el("a", "howto", "Ver como fazer ↗"); a.href = "https://www.youtube.com/results?search_query=" + encodeURIComponent(p.yt) + "&sp=EgIQAQ%253D%253D"; a.target = "_blank"; a.rel = "noopener"; c.appendChild(a); }
+    main.appendChild(c);
+  });
+}
 
 /* ======================= Módulo Finanças ======================= */
 const FIN_KEY = "stek-fin-v1";
@@ -2255,7 +2676,7 @@ const ICONS = {
 const CHEVRON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 const MODULES = [
   { id: "inteligencia", name: "Inteligência", ready: true, desc: "Estudos, cronômetros e metas" },
-  { id: "estamina", name: "Estamina", ready: false },
+  { id: "estamina", name: "Estamina", ready: true, desc: "Cardio e foco" },
   { id: "forca", name: "Força", ready: true, desc: "Treinos, cargas e evolução" },
   { id: "financas", name: "Finanças", ready: true, desc: "Gastos, relatório e investimentos" }
 ];
@@ -2276,8 +2697,8 @@ function forcaTasks() {
     go: () => enterForca(w.id) }] };
 }
 
-function moduleTasks(id) { return id === "forca" ? forcaTasks() : id === "inteligencia" ? intelTasks() : id === "financas" ? finTasks() : { tasks: [] }; }
-function enterModule(id, tab) { if (id === "forca") enterForca(tab); else if (id === "inteligencia") enterIntel(tab); else if (id === "financas") enterFin(tab); }
+function moduleTasks(id) { return id === "forca" ? forcaTasks() : id === "inteligencia" ? intelTasks() : id === "financas" ? finTasks() : id === "estamina" ? staminaTasks() : { tasks: [] }; }
+function enterModule(id, tab) { if (id === "forca") enterForca(tab); else if (id === "inteligencia") enterIntel(tab); else if (id === "financas") enterFin(tab); else if (id === "estamina") enterStamina(tab); }
 
 function moduleStatus(m) {
   if (!m.ready) return { cls: "", text: "Em breve" };
@@ -2300,7 +2721,7 @@ function renderHome() {
   main.appendChild(head);
   if (!loggedIn()) {
     const bn = el("section", "guide login-cta");
-    bn.append(el("h3", null, "Leve seus dados para qualquer aparelho"), el("p", "note", "Entre na sua conta para salvar treinos, estudos e finanças na nuvem e abrir tudo no celular ou no computador."));
+    bn.append(el("h3", null, "Leve seus dados para qualquer aparelho"), el("p", "note", "Entre na sua conta para salvar treinos, cardio, estudos e finanças na nuvem e abrir tudo no celular ou no computador."));
     const bb = el("div", "btns"); const b = el("button", "btn", "Entrar ou criar conta"); b.type = "button"; b.id = "cta-login"; b.addEventListener("click", () => enterConta()); bb.appendChild(b); bn.appendChild(bb);
     main.appendChild(bn);
   }
@@ -2318,6 +2739,7 @@ function buildModule(m) {
   const st = moduleStatus(m);
   const meta = el("span", "mod-meta"); meta.appendChild(el("span", "st " + st.cls, st.text));
   if (m.id === "inteligencia" && intel && intel.timer) { const r = el("span", "st run"); r.dataset.live = "running"; meta.appendChild(r); }
+  else if (m.id === "estamina" && stamina && stamina.timer) { const r = el("span", "st run"); r.dataset.live = "st-running"; meta.appendChild(r); }
   else if (m.desc) meta.appendChild(el("span", null, m.desc));
   txt.append(el("span", "mod-name", m.name), meta);
   enter.append(ico, txt);
@@ -2347,7 +2769,7 @@ function fillModuleBody(body, m) {
   else if (f.free && !f.tasks.length) body.appendChild(el("p", "note muted", f.freeText));
   f.tasks.forEach(t => {
     const b = el("button", "task" + (t.complete ? " done" : t.optional ? " opt" : "")); b.type = "button"; b.id = t.id;
-    const n = el("span", "task-n", t.label); if (t.live && intel && intel.timer && !t.complete) n.dataset.live = t.live;
+    const n = el("span", "task-n", t.label); if (t.live && !t.complete) n.dataset.live = t.live;
     b.append(el("span", "task-t", t.title), n, el("span", "task-s", t.sub));
     const bar = el("span", "task-bar"); const fill = el("span"); fill.style.width = Math.round(t.pct * 100) + "%"; bar.appendChild(fill); b.appendChild(bar);
     b.addEventListener("click", t.go);
@@ -2384,7 +2806,7 @@ function startProfile(id) { loadProfile(id); enterForca(); }
 
 /* ======================= Conta e nuvem ======================= */
 const CLOUD_KEY = "stek-cloud";
-const SYNC_KEYS = ["treino-perfil", "treino-logs-v1", "treino-logs-irma-v1", "treino-settings-v1", "treino-settings-irma-v1", "stek-intel-v1", "stek-fin-v1"];
+const SYNC_KEYS = ["treino-perfil", "treino-logs-v1", "treino-logs-irma-v1", "treino-settings-v1", "treino-settings-irma-v1", "stek-intel-v1", "stek-fin-v1", "stek-stamina-v1"];
 const DEFAULT_SERVER = "https://stek-pluggy.nataniel-akio.workers.dev";
 const _lsSet = Storage.prototype.setItem;
 let cloud = null, cloudApplying = false, cloudTimer = null, cloudBusy = false;
@@ -2452,7 +2874,7 @@ function applyRemote(items) {
   saveCloud(); reloadAllState();
 }
 function reloadAllState() {
-  loadIntel(); loadFin();
+  loadIntel(); loadFin(); loadStamina();
   const p = readProfile();
   if (p) { if (p !== profileId) useProfile(p); state.logs = {}; loadLogs(); loadSettings(); }
   updateLevel(); rerenderView();
@@ -2464,6 +2886,7 @@ function rerenderView() {
   else if (v === "forca") { if (!profileId) renderChooser(); else if (!TABS.some(t => t.id === state.tab)) enterForca(); else { renderTabs(); renderMain(); } }
   else if (v === "intel") { if (!intel) renderIntelSetup(); else { renderTabs(); renderIntel(); } }
   else if (v === "fin") { renderTabs(); renderFin(); }
+  else if (v === "est") { renderTabs(); renderStamina(); }
 }
 function cloudExpired() {
   if (cloud) { cloud.token = ""; saveCloud(); }
@@ -2519,6 +2942,13 @@ function mergeKey(k, a, b) {
     out.timer = R.timer || L.timer || null;
     return JSON.stringify(out);
   }
+  if (k === "stek-stamina-v1") {
+    if (!L.days) return b; if (!R.days) return a;
+    const out = Object.assign({}, L, R, { goals: Object.assign({}, L.goals, R.goals), days: Object.assign({}, R.days) });
+    Object.keys(L.days).forEach(d => { const day = Object.assign({}, out.days[d]); Object.keys(L.days[d] || {}).forEach(pid => { const l = L.days[d][pid], r = day[pid]; if (!r || ((l && l.sec) || 0) > (r.sec || 0)) day[pid] = l; }); out.days[d] = day; });
+    out.timer = R.timer || L.timer || null; out.age = R.age || L.age || null;
+    return JSON.stringify(out);
+  }
   if (k === "stek-fin-v1") {
     if (!Array.isArray(L.tx)) return b; if (!Array.isArray(R.tx)) return a;
     const out = Object.assign({}, R, { tx: R.tx.slice() });
@@ -2569,7 +2999,7 @@ function enterConta() {
 }
 function renderConta() {
   const main = document.getElementById("main"); main.innerHTML = "";
-  head2(main, "Conta", "Com a conta, seus treinos, estudos e finanças ficam salvos na nuvem e aparecem em qualquer aparelho em que você entrar.");
+  head2(main, "Conta", "Com a conta, seus treinos, cardio, estudos e finanças ficam salvos na nuvem e aparecem em qualquer aparelho em que você entrar.");
   const flashBox = el("p", "note"); flashAuto(flashBox, cloudUI.msg); if (cloudUI.kind) flash(flashBox, cloudUI.msg, cloudUI.kind);
   if (cloudUI.pending && loggedIn()) {
     const s = el("section", "guide");
@@ -2669,11 +3099,13 @@ window.addEventListener("hashchange", () => {
   if (h === "conta") { if (state.view !== "conta") enterConta(); return; }
   if (INTEL_TABS.some(t => t.id === h)) { if (state.view !== "intel" || h !== state.itab) enterIntel(h); return; }
   if (FIN_TABS.some(t => t.id === h)) { if (state.view !== "fin" || h !== state.ftab) enterFin(h); return; }
+  if (STAM_TABS.some(t => t.id === h)) { if (state.view !== "est" || h !== state.stab) enterStamina(h); return; }
   if (profileId && TABS.some(t => t.id === h) && (state.view !== "forca" || h !== state.tab)) enterForca(h);
 });
 loadCloud();
 loadIntel();
 loadFin();
+loadStamina();
 const savedProfile = readProfile();
 if (savedProfile) loadProfile(savedProfile);
 history.replaceState(null, "", "#inicio");

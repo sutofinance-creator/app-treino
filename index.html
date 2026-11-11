@@ -2489,6 +2489,64 @@ async function doAuth(mode, server, user, pass, code) {
   if (!localHasData()) { applyRemote(items); return "Conta conectada. Seus dados da nuvem foram carregados neste aparelho."; }
   cloudUI.pending = items; return null;
 }
+function mergeKey(k, a, b) {
+  if (a == null) return b; if (b == null || a === b) return a;
+  let L, R; try { L = JSON.parse(a); R = JSON.parse(b); } catch (e) { return b; }
+  if (!L || typeof L !== "object") return b; if (!R || typeof R !== "object") return a;
+  if (/^treino-logs/.test(k)) {
+    const out = Object.assign({}, R);
+    Object.keys(L).forEach(d => { const l = L[d]; if (!l || !l.e) return; const r = out[d] && out[d].e ? out[d] : null; out[d] = Object.assign({}, l, r || {}, { e: Object.assign({}, l.e, r ? r.e : {}) }); });
+    return JSON.stringify(out);
+  }
+  if (/^treino-settings/.test(k)) return JSON.stringify(Object.assign({}, L, R, { goals: Object.assign({}, L.goals, R.goals) }));
+  if (k === "stek-intel-v1") {
+    if (!Array.isArray(L.subjects)) return b; if (!Array.isArray(R.subjects)) return a;
+    const out = Object.assign({}, R, { subjects: R.subjects.slice(), days: Object.assign({}, R.days) });
+    L.subjects.forEach(s => { if (!out.subjects.some(x => x.id === s.id)) out.subjects.push(s); });
+    Object.keys(L.days || {}).forEach(d => {
+      const day = Object.assign({}, out.days[d]);
+      Object.keys(L.days[d] || {}).forEach(sid => { const l = L.days[d][sid], r = day[sid]; if (!r || ((l && l.sec) || 0) > (r.sec || 0)) day[sid] = l; });
+      out.days[d] = day;
+    });
+    out.timer = R.timer || L.timer || null;
+    return JSON.stringify(out);
+  }
+  if (k === "stek-fin-v1") {
+    if (!Array.isArray(L.tx)) return b; if (!Array.isArray(R.tx)) return a;
+    const out = Object.assign({}, R, { tx: R.tx.slice() });
+    const ids = new Set(out.tx.map(t => t.id)), ext = new Set(out.tx.filter(t => t.extId).map(t => t.extId));
+    const seen = {}; out.tx.forEach(t => { try { const q = txKey(t); seen[q] = (seen[q] || 0) + 1; } catch (e) {} });
+    L.tx.forEach(t => {
+      if (ids.has(t.id) || (t.extId && ext.has(t.extId))) return;
+      let q = null; try { q = txKey(t); } catch (e) {}
+      if (q && seen[q]) { seen[q]--; return; }
+      out.tx.push(t);
+    });
+    out.rules = Object.assign({}, L.rules, R.rules);
+    const li = L.invest || {}, ri = R.invest || {};
+    const opIds = new Set((ri.ops || []).map(o => o.id));
+    out.invest = Object.assign({}, li, ri, { ops: (ri.ops || []).concat((li.ops || []).filter(o => !opIds.has(o.id))), quotes: Object.assign({}, li.quotes, ri.quotes), token: ri.token || li.token || "" });
+    out.habit = Object.assign({}, L.habit, R.habit);
+    out.of = (R.of && R.of.url) ? R.of : (L.of || R.of || {});
+    return JSON.stringify(out);
+  }
+  return b;
+}
+function mergeWithRemote(items) {
+  const byKey = {}; items.forEach(i => { byKey[i.key] = i; });
+  cloudApplying = true;
+  try {
+    SYNC_KEYS.forEach(k => {
+      const r = byKey[k], local = localStorage.getItem(k);
+      if (r) { cloud.revs[k] = r.rev; cloud.last = Math.max(cloud.last, r.rev); }
+      const merged = mergeKey(k, local, r ? r.value : null);
+      if (merged == null) return;
+      if (merged !== local) localStorage.setItem(k, merged);
+      if (!r || merged !== r.value) cloud.dirty[k] = Date.now();
+    });
+  } finally { cloudApplying = false; }
+  saveCloud(); reloadAllState();
+}
 function updateAcct() {
   const b = document.getElementById("acct-btn"); if (!b) return;
   b.textContent = loggedIn() ? cloud.user.slice(0, 1).toUpperCase() : "Entrar";
@@ -2507,14 +2565,18 @@ function renderConta() {
   const flashBox = el("p", "note"); flashAuto(flashBox, cloudUI.msg); if (cloudUI.kind) flash(flashBox, cloudUI.msg, cloudUI.kind);
   if (cloudUI.pending && loggedIn()) {
     const s = el("section", "guide");
-    s.append(el("h3", null, "Qual versão usar?"), el("p", "note", "Este aparelho e a sua conta na nuvem já têm dados. Escolha qual versão fica valendo. A outra será substituída."));
+    s.append(el("h3", null, "Juntar os dados?"), el("p", "note", "Este aparelho e a sua conta na nuvem já têm dados. Juntar soma os treinos, estudos e lançamentos dos dois lados, sem duplicar; se o mesmo registro existir nos dois, fica o da nuvem."));
     const b = el("div", "btns");
-    const useCloud = el("button", "btn", "Usar os dados da nuvem"); useCloud.type = "button"; useCloud.id = "use-cloud";
+    const useMerge = el("button", "btn", "Juntar os dois"); useMerge.type = "button"; useMerge.id = "use-merge";
+    useMerge.addEventListener("click", async () => { const items = cloudUI.pending; cloudUI.pending = null; mergeWithRemote(items); await cloudPush(); cloudUI.msg = "Pronto. Os dados deste aparelho e da nuvem foram juntados."; cloudUI.kind = "ok"; renderConta(); });
+    b.appendChild(useMerge); s.appendChild(b);
+    s.appendChild(el("p", "note muted", "Ou substitua tudo por uma das versões:"));
+    const b2 = el("div", "btns");
+    const useCloud = el("button", "btn", "Usar só os da nuvem"); useCloud.type = "button"; useCloud.id = "use-cloud";
     useCloud.addEventListener("click", () => { const items = cloudUI.pending; cloudUI.pending = null; applyRemote(items); SYNC_KEYS.forEach(k => { if (!items.some(i => i.key === k) && localStorage.getItem(k) != null) cloud.dirty[k] = Date.now(); }); saveCloud(); cloudPush(); cloudUI.msg = "Pronto. Os dados da nuvem foram carregados neste aparelho."; cloudUI.kind = "ok"; renderConta(); });
-    const useLocal = el("button", "btn danger", "Enviar os dados deste aparelho"); useLocal.type = "button"; useLocal.id = "use-local";
+    const useLocal = el("button", "btn danger", "Usar só os deste aparelho"); useLocal.type = "button"; useLocal.id = "use-local";
     useLocal.addEventListener("click", async () => { const items = cloudUI.pending; cloudUI.pending = null; items.forEach(i => { cloud.revs[i.key] = i.rev; }); SYNC_KEYS.forEach(k => { if (localStorage.getItem(k) != null) cloud.dirty[k] = Date.now(); }); saveCloud(); await cloudPush(true); cloudUI.msg = "Pronto. A nuvem agora tem os dados deste aparelho."; cloudUI.kind = "ok"; renderConta(); });
-    b.append(useCloud, useLocal); s.appendChild(b);
-    s.appendChild(el("p", "note muted", "Na dúvida, use os dados da nuvem: são os do aparelho em que você criou a conta."));
+    b2.append(useCloud, useLocal); s.appendChild(b2);
     main.appendChild(s); main.appendChild(flashBox); return;
   }
   if (loggedIn()) {

@@ -170,13 +170,54 @@ details summary { cursor: pointer; font: 600 14px var(--font-display); letter-sp
   .card, .guide { animation: rise .35s ease both; }
   @keyframes rise { from { transform: translateY(6px); } to { transform: none; } }
 }
+
+/* ---------- Tela inicial: módulos ---------- */
+.home-btn { display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; margin: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.crumb { font-size: 15px; color: var(--muted); letter-spacing: .1em; }
+.crumb:empty { display: none; }
+body[data-view="home"] nav.tabs { display: none; }
+body[data-view="home"] header.top { padding-bottom: 8px; }
+.mods { display: grid; gap: 14px; }
+@media (min-width: 640px) { .mods { grid-template-columns: 1fr 1fr; align-items: start; } }
+.module { display: grid; }
+.mod-head { display: grid; grid-template-columns: 1fr auto; }
+.mod-enter { display: grid; grid-template-columns: 50px 1fr; gap: 14px; align-items: center; padding: 16px 8px 16px 16px; background: none; border: 0; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.mod-enter:disabled { cursor: default; }
+.mod-ico { width: 50px; height: 50px; display: grid; place-items: center; border: 1px solid var(--line); background: var(--accent-soft); color: var(--accent); clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px); }
+.mod-ico svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 5px rgba(166, 107, 255, .8)); }
+.mod-name { display: block; font: 700 22px var(--font-display); letter-spacing: .12em; text-transform: uppercase; }
+.mod-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px; font-size: 13px; color: var(--muted); }
+.st { font: 700 12px var(--font-display); letter-spacing: .1em; text-transform: uppercase; padding: 2px 8px; border: 1px solid var(--line); color: var(--muted); }
+.st.pend { color: var(--warn); border-color: var(--warn); box-shadow: 0 0 10px rgba(255, 194, 75, .3); }
+.st.ok { color: var(--good); border-color: var(--good); box-shadow: 0 0 10px rgba(60, 240, 165, .3); }
+.mod-toggle { width: 54px; border: 0; border-left: 1px solid var(--line); background: none; color: var(--accent); cursor: pointer; display: grid; place-items: center; }
+.mod-toggle svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.mod-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.mod-body { border-top: 1px solid var(--line); padding: 12px 16px 16px; display: grid; gap: 10px; }
+.mod-body[hidden] { display: none; }
+.module.soon .mod-ico { color: var(--muted); }
+.module.soon .mod-ico svg { filter: none; }
+.module.soon .mod-name { color: var(--muted); }
+.task { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; width: 100%; text-align: left; font: inherit; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-left: 3px solid var(--warn); padding: 10px 12px; cursor: pointer; }
+.task.done { border-left-color: var(--good); }
+.task.opt { border-left-color: var(--muted); }
+.task-t { font: 700 17px var(--font-display); letter-spacing: .06em; text-transform: uppercase; }
+.task-s { grid-column: 1 / -1; font-size: 13px; color: var(--muted); }
+.task-n { font: 700 14px var(--font-display); letter-spacing: .06em; color: var(--warn); font-variant-numeric: tabular-nums; }
+.task.done .task-n { color: var(--good); }
+.task.opt .task-n { color: var(--muted); }
+.task-bar { grid-column: 1 / -1; height: 4px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+.task-bar > span { display: block; height: 100%; background: var(--warn); }
+.task.done .task-bar > span { background: var(--good); }
+.task.opt .task-bar > span { background: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { .mod-toggle svg { transition: transform .2s ease; } .module { animation: rise .35s ease both; } }
 </style>
 </head>
-<body>
+<body data-view="home">
 <header class="top">
-  <div class="brand"><h1><img src="logo-s.png" alt="" width="32" height="32">STEK</h1><span id="status" aria-live="polite"></span></div>
+  <div class="brand"><h1><button type="button" class="home-btn" id="home-btn" aria-label="Voltar ao início"><img src="logo-s.png" alt="" width="32" height="32">STEK</button><span class="crumb" id="crumb"></span></h1><span id="status" aria-live="polite"></span></div>
   <div class="lvl" aria-live="polite"><span class="lvl-badge" id="lvl-badge">NÍVEL 1</span><div class="lvl-bar"><div class="lvl-fill" id="lvl-fill" style="width:0%"></div></div><span class="lvl-xp" id="lvl-xp">0/5</span></div>
-  <nav class="tabs" id="tabs" role="tablist" aria-label="Treinos"></nav>
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Treinos do módulo Força"></nav>
 </header>
 <main id="main"></main>
 
@@ -217,7 +258,7 @@ const PLAN_AKIO = [
     { id: "d5", name: "Cadeira adutora", sets: "3", lo: 12, hi: 15 },
     { id: "d6", name: "Panturrilha sentada", sets: "4", lo: 12, hi: 20 }
   ]},
-  { id: "sabado", short: "Sábado", name: "Sábado opcional", day: "Sábado", focus: "Volume extra de deltoides e braços. Se as pernas ficarem para trás, troque por um terceiro treino de inferiores.", ex: [
+  { id: "sabado", optional: true, short: "Sábado", name: "Sábado opcional", day: "Sábado", focus: "Volume extra de deltoides e braços. Se as pernas ficarem para trás, troque por um terceiro treino de inferiores.", ex: [
     { id: "e1", name: "Elevação lateral", sets: "4", lo: 12, hi: 20 },
     { id: "e2", name: "Crucifixo invertido", sets: "3", lo: 12, hi: 20 },
     { id: "e3", name: "Rosca", sets: "3", lo: 8, hi: 12 },
@@ -765,19 +806,148 @@ function renderChooser() {
   });
 }
 
-function startProfile(id) {
+
+/* ---------- Tela inicial (módulos) ---------- */
+const WEEKDAYS = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
+const ICONS = {
+  inteligencia: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.4 1.1 2.2h5c0-.8.4-1.6 1.1-2.2A6 6 0 0 0 12 3z"/></svg>',
+  estamina: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>',
+  forca: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6v12M3 9v6M17.5 6v12M21 9v6M6.5 12h11"/></svg>',
+  financas: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16h16"/><path d="m7 15 4-4 3 3 5-6"/></svg>'
+};
+const CHEVRON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+const MODULES = [
+  { id: "inteligencia", name: "Inteligência", ready: false },
+  { id: "estamina", name: "Estamina", ready: false },
+  { id: "forca", name: "Força", ready: true },
+  { id: "financas", name: "Finanças", ready: false }
+];
+const expanded = new Set();
+
+function exerciseDone(r) { return !!(r && (r.kg != null || r.sets != null || r.reps != null)); }
+
+function forcaTasks() {
+  if (!profileId) return { setup: true, tasks: [] };
+  const tabId = prof().dayTab[new Date().getDay()];
+  const w = tabId && PLAN.find(p => p.id === tabId);
+  if (!w) return { free: true, tasks: [] };
+  const rec = (state.logs[todayISO()] && state.logs[todayISO()].e) || {};
+  const done = w.ex.filter(x => exerciseDone(rec[x.id])).length;
+  return { tasks: [{ tab: w.id, title: w.name, sub: w.focus, done, total: w.ex.length, complete: done === w.ex.length, optional: !!w.optional }] };
+}
+
+function moduleStatus(m) {
+  if (!m.ready) return { cls: "", text: "Em breve" };
+  const f = forcaTasks();
+  if (f.setup) return { cls: "pend", text: "Escolha seu plano" };
+  const pend = f.tasks.filter(t => !t.complete && !t.optional).length;
+  if (pend) return { cls: "pend", text: pend + (pend === 1 ? " pendente" : " pendentes") };
+  if (f.tasks.some(t => t.complete)) return { cls: "ok", text: "Concluído hoje" };
+  return { cls: "ok", text: "Sem pendências" };
+}
+
+function renderHome() {
+  state.view = "home"; document.body.dataset.view = "home";
+  document.getElementById("crumb").textContent = "";
+  document.getElementById("tabs").innerHTML = "";
+  const main = document.getElementById("main"); main.innerHTML = "";
+  const now = new Date();
+  const head = el("div", "wk-head");
+  head.append(el("h2", null, "Início"), el("p", null, WEEKDAYS[now.getDay()].replace(/^./, c => c.toUpperCase()) + ", " + now.getDate() + " de " + MONTHS[now.getMonth()] + ". Toque num módulo para entrar ou na seta para ver as pendências."));
+  main.appendChild(head);
+  const grid = el("div", "mods");
+  MODULES.forEach(m => grid.appendChild(buildModule(m)));
+  main.appendChild(grid);
+}
+
+function buildModule(m) {
+  const card = el("section", "guide module" + (m.ready ? "" : " soon")); card.id = "mod-" + m.id;
+  const head = el("div", "mod-head");
+  const enter = el("button", "mod-enter"); enter.type = "button"; enter.id = "enter-" + m.id;
+  const ico = el("span", "mod-ico"); ico.innerHTML = ICONS[m.id];
+  const txt = el("span");
+  const st = moduleStatus(m);
+  const meta = el("span", "mod-meta"); meta.appendChild(el("span", "st " + st.cls, st.text));
+  if (m.ready) meta.appendChild(el("span", null, "Treinos, cargas e evolução"));
+  txt.append(el("span", "mod-name", m.name), meta);
+  enter.append(ico, txt);
+  if (m.ready) enter.addEventListener("click", () => enterForca());
+  else enter.addEventListener("click", () => toggle());
+  enter.setAttribute("aria-label", m.ready ? "Entrar no módulo " + m.name : m.name + ": em breve");
+  const tg = el("button", "mod-toggle"); tg.type = "button"; tg.id = "toggle-" + m.id; tg.innerHTML = CHEVRON;
+  tg.setAttribute("aria-label", "Ver pendências de " + m.name);
+  tg.setAttribute("aria-controls", "body-" + m.id);
+  tg.setAttribute("aria-expanded", String(expanded.has(m.id)));
+  tg.addEventListener("click", () => toggle());
+  head.append(enter, tg);
+  const body = el("div", "mod-body"); body.id = "body-" + m.id; body.hidden = !expanded.has(m.id);
+  fillModuleBody(body, m);
+  card.append(head, body);
+  function toggle() {
+    if (expanded.has(m.id)) expanded.delete(m.id); else expanded.add(m.id);
+    const open = expanded.has(m.id);
+    tg.setAttribute("aria-expanded", String(open)); body.hidden = !open;
+  }
+  return card;
+}
+
+function fillModuleBody(body, m) {
+  if (!m.ready) { body.appendChild(el("p", "note muted", "Este módulo ainda está em desenvolvimento.")); return; }
+  const f = forcaTasks();
+  if (f.setup) {
+    body.appendChild(el("p", "note muted", "Escolha seu plano de treino para ver as tarefas de cada dia."));
+  } else if (f.free) {
+    body.appendChild(el("p", "note muted", "Hoje é dia livre no seu plano. Nada pendente."));
+  } else {
+    f.tasks.forEach(t => {
+      const b = el("button", "task" + (t.complete ? " done" : t.optional ? " opt" : "")); b.type = "button"; b.id = "task-" + t.tab;
+      b.append(el("span", "task-t", t.title),
+        el("span", "task-n", t.complete ? "Concluído" : (t.optional ? "Opcional · " : "") + t.done + "/" + t.total),
+        el("span", "task-s", t.complete ? "Todos os exercícios registrados hoje." : t.sub + " Faltam " + (t.total - t.done) + " de " + t.total + " exercícios."));
+      const bar = el("span", "task-bar"); const fill = el("span"); fill.style.width = (t.done / t.total * 100) + "%"; bar.appendChild(fill); b.appendChild(bar);
+      b.addEventListener("click", () => enterForca(t.tab));
+      body.appendChild(b);
+    });
+  }
+  const go = el("button", "btn", "Entrar em Força"); go.type = "button"; go.id = "go-forca";
+  go.addEventListener("click", () => enterForca());
+  const row = el("div", "btns"); row.appendChild(go); body.appendChild(row);
+}
+
+function goHome() {
+  history.replaceState(null, "", "#inicio");
+  renderHome(); window.scrollTo(0, 0);
+}
+
+function enterForca(tab) {
+  state.view = "forca"; document.body.dataset.view = "forca";
+  document.getElementById("crumb").textContent = "/ Força";
+  if (!profileId) { renderChooser(); window.scrollTo(0, 0); return; }
+  state.date = todayISO();
+  state.tab = (tab && TABS.some(t => t.id === tab)) ? tab : (prof().dayTab[new Date().getDay()] || "guia");
+  history.replaceState(null, "", "#" + state.tab);
+  renderTabs(); renderMain(); window.scrollTo(0, 0);
+}
+
+function loadProfile(id) {
   useProfile(id);
   state.logs = {}; state.group = null; state.date = todayISO();
   loadLogs(); loadSettings(); updateLevel();
-  state.tab = defaultTab();
-  history.replaceState(null, "", "#" + state.tab);
-  renderTabs(); renderMain();
   setStatus(state.canWrite ? "Salvo no celular" : "Somente leitura", state.canWrite ? "ok" : "err");
 }
 
-window.addEventListener("hashchange", () => { const h = location.hash.replace("#", ""); if (profileId && TABS.some(t => t.id === h) && h !== state.tab) { state.tab = h; renderTabs(); renderMain(); } });
+function startProfile(id) { loadProfile(id); enterForca(); }
+
+document.getElementById("home-btn").addEventListener("click", goHome);
+window.addEventListener("hashchange", () => {
+  const h = location.hash.replace("#", "");
+  if (h === "inicio" || h === "") { if (state.view !== "home") renderHome(); return; }
+  if (profileId && TABS.some(t => t.id === h) && (state.view !== "forca" || h !== state.tab)) enterForca(h);
+});
 const savedProfile = readProfile();
-if (savedProfile) startProfile(savedProfile); else renderChooser();
+if (savedProfile) loadProfile(savedProfile);
+history.replaceState(null, "", "#inicio");
+renderHome();
 if ("serviceWorker" in navigator) { window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); }); }
 </script>
 </body>

@@ -242,6 +242,81 @@ body[data-view="home"] header.top { padding-bottom: 8px; }
 .sel { width: 100%; font: 600 16px var(--font-body); color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); padding: 10px; color-scheme: dark; }
 .st.run { color: var(--accent); border-color: var(--accent); font-variant-numeric: tabular-nums; }
 .chart .goal { stroke: var(--ink); stroke-width: 2; opacity: .8; }
+
+/* ---------- Módulo Finanças ---------- */
+.tiles, .fin-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tile { min-width: 0; }
+.tiles.tiles-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (min-width: 560px) { .fin-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.tile-num.money { font-size: clamp(17px, 5.4vw, 24px); white-space: nowrap; letter-spacing: .01em; }
+.tiles-3 .tile-num.money { font-size: clamp(15px, 4.2vw, 22px); }
+.tile-sub.up { color: var(--good); }
+.tile-sub.down { color: var(--bad); }
+details.imp > summary, details.tok > summary { cursor: pointer; font: 700 18px var(--font-display); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+details.tok > summary { font-size: 14px; }
+details.imp[open] { gap: 10px; }
+.search { width: 100%; font: 500 16px var(--font-body); color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); padding: 8px 10px; flex: 1 1 200px; }
+.txlist { display: grid; gap: 10px; }
+.card.tx { padding: 0; gap: 0; }
+.tx-head { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: start; width: 100%; text-align: left; background: none; border: 0; color: var(--ink); font: inherit; padding: 14px; cursor: pointer; }
+.tx-l { display: grid; gap: 3px; min-width: 0; }
+.tx-desc { font-weight: 600; overflow-wrap: anywhere; }
+.tx-meta { font-size: 13px; color: var(--muted); }
+.tx-sug { font-size: 13px; color: var(--accent); }
+.tx-val { font: 700 18px var(--font-display); letter-spacing: .03em; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tx-val.out { color: var(--ink); }
+.tx-val.in { color: var(--good); }
+.tx-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+.mini { font: 700 11px var(--font-display); letter-spacing: .08em; text-transform: uppercase; padding: 1px 7px; border: 1px solid var(--line); color: var(--muted); }
+.mini.ess-necessario, .gchip.ess-necessario[aria-pressed="true"] { color: var(--good); border-color: var(--good); }
+.mini.ess-substituivel, .gchip.ess-substituivel[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+.mini.ess-superfluo, .gchip.ess-superfluo[aria-pressed="true"] { color: var(--warn); border-color: var(--warn); }
+.mini.ess-luxo, .gchip.ess-luxo[aria-pressed="true"] { color: var(--bad); border-color: var(--bad); }
+.gchip.ess-necessario[aria-pressed="true"], .gchip.ess-substituivel[aria-pressed="true"], .gchip.ess-superfluo[aria-pressed="true"], .gchip.ess-luxo[aria-pressed="true"] { background: var(--surface-2); }
+.tx-edit { display: grid; gap: 12px; padding: 0 14px 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.cg { display: grid; gap: 6px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.insights { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
+.hbars { display: grid; gap: 10px; }
+.hb { display: grid; gap: 4px; }
+.hb-top { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
+.hb-l { font-weight: 600; overflow-wrap: anywhere; }
+.hb-v { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hb-bar { height: 8px; background: var(--surface-2); border: 1px solid var(--line); }
+.hb-bar > span { display: block; height: 100%; background: linear-gradient(90deg, #6a2bff, var(--accent)); box-shadow: 0 0 8px rgba(166, 107, 255, .5); }
+.hb-n { font-size: 12px; color: var(--muted); }
+.stk { display: grid; gap: 6px; }
+.stk + .stk { margin-top: 6px; }
+.stk-bar { display: flex; height: 14px; border: 1px solid var(--line); background: var(--surface-2); overflow: hidden; }
+.stk-bar > span { display: block; height: 100%; }
+.stk-lg { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+.ess-necessario.sw, .stk-bar .ess-necessario { background: var(--good); }
+.ess-substituivel.sw, .stk-bar .ess-substituivel { background: var(--accent); }
+.ess-superfluo.sw, .stk-bar .ess-superfluo { background: var(--warn); }
+.ess-luxo.sw, .stk-bar .ess-luxo { background: var(--bad); }
+.s0.sw, .stk-bar .s0 { background: var(--accent); }
+.s1.sw, .stk-bar .s1 { background: #5b3f9e; }
+.chart .bar-in { fill: var(--good); opacity: .85; }
+.chart .bar-out { fill: var(--accent); }
+.chart .dot.pos { fill: var(--good); stroke: var(--bg); stroke-width: 1.5; }
+.chart .dot.neg { fill: var(--bad); stroke: var(--bg); stroke-width: 1.5; }
+.chart .line.dash { stroke: var(--muted); stroke-dasharray: 5 4; stroke-width: 2; }
+.sw.leg-in { background: var(--good); }
+.sw.leg-out { background: var(--accent); }
+.sw.leg-dot { background: var(--ink); border-radius: 50%; }
+.sw.leg-line { background: var(--accent); height: 3px; }
+.sw.leg-dash { background: repeating-linear-gradient(90deg, var(--muted) 0 4px, transparent 4px 7px); height: 3px; }
+.pos-list { display: grid; gap: 12px; }
+.pos-t { font: 700 22px var(--font-display); letter-spacing: .08em; color: var(--accent); }
+.pos-t.sm { font-size: 16px; }
+.pos-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 14px; }
+@media (min-width: 560px) { .pos-grid { grid-template-columns: repeat(4, 1fr); } }
+.pos-grid > div { display: grid; gap: 2px; }
+.pos-v { font: 700 18px var(--font-display); letter-spacing: .03em; font-variant-numeric: tabular-nums; }
+.count-in.wide { width: 120px; }
+.ops { display: grid; gap: 8px; }
+.op-row { display: grid; grid-template-columns: auto auto 1fr auto; gap: 10px; align-items: center; font-size: 14px; padding-bottom: 8px; border-bottom: 1px dashed var(--line); }
+@media (max-width: 460px) { .op-row { grid-template-columns: auto 1fr auto; } .op-row > span:nth-child(3) { grid-column: 1 / -1; grid-row: 2; } }
 </style>
 </head>
 <body data-view="home">
@@ -406,22 +481,24 @@ function setStatus(text, cls) { const el = document.getElementById("status"); el
 function renderTabs() {
   const nav = document.getElementById("tabs");
   nav.innerHTML = "";
-  const intelView = state.view === "intel";
-  if (state.view === "home") return;
-  nav.setAttribute("aria-label", intelView ? "Seções do módulo Inteligência" : "Treinos do módulo Força");
-  const cur = intelView ? state.itab : state.tab;
-  (intelView ? INTEL_TABS : TABS).forEach(t => {
+  const v = state.view;
+  if (v === "home") return;
+  const cfg = {
+    forca: { tabs: TABS, cur: state.tab, label: "Treinos do módulo Força", set: id => { state.tab = id; }, draw: () => renderMain() },
+    intel: { tabs: INTEL_TABS, cur: state.itab, label: "Seções do módulo Inteligência", set: id => { state.itab = id; if (id === "estudo") state.idate = todayISO(); }, draw: () => renderIntel() },
+    fin: { tabs: FIN_TABS, cur: state.ftab, label: "Seções do módulo Finanças", set: id => { state.ftab = id; finUI.open = null; finUI.confirm = null; finUI.msg = ""; }, draw: () => renderFin() }
+  }[v];
+  if (!cfg) return;
+  nav.setAttribute("aria-label", cfg.label);
+  cfg.tabs.forEach(t => {
     const b = document.createElement("button");
     b.type = "button"; b.id = "tab-" + t.id; b.setAttribute("role", "tab");
-    b.setAttribute("aria-selected", String(t.id === cur));
+    b.setAttribute("aria-selected", String(t.id === cfg.cur));
     b.textContent = t.label;
-    b.addEventListener("click", () => {
-      if (intelView) { state.itab = t.id; if (t.id === "estudo") state.idate = todayISO(); } else state.tab = t.id;
-      history.replaceState(null, "", "#" + t.id); renderTabs(); if (intelView) renderIntel(); else renderMain(); window.scrollTo(0, 0);
-    });
+    b.addEventListener("click", () => { cfg.set(t.id); history.replaceState(null, "", "#" + t.id); renderTabs(); cfg.draw(); window.scrollTo(0, 0); });
     nav.appendChild(b);
   });
-  const sel = document.getElementById("tab-" + cur);
+  const sel = document.getElementById("tab-" + cfg.cur);
   if (sel) sel.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
@@ -552,7 +629,7 @@ function onEdit(ex, field, raw) {
 }
 
 function exportBackup() {
-  const blob = new Blob([JSON.stringify({ app: "plano-treino", version: 2, plan: profileId, logs: state.logs, intel: intel }, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify({ app: "plano-treino", version: 3, plan: profileId, logs: state.logs, intel: intel, fin: fin }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "backup-stek-" + todayISO() + ".json";
@@ -566,7 +643,7 @@ function importBackup(file, msg) {
     try {
       const data = JSON.parse(r.result);
       const logs = (data && data.logs) || {};
-      if (typeof logs !== "object" || (!data.logs && !data.intel)) throw new Error();
+      if (typeof logs !== "object" || (!data.logs && !data.intel && !data.fin)) throw new Error();
       let n = 0;
       Object.keys(logs).forEach(date => {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !logs[date] || !logs[date].e) return;
@@ -584,6 +661,18 @@ function importBackup(file, msg) {
         }
         loadIntelDefaults(); saveIntel(); ni = Object.keys(data.intel.days || {}).length;
       }
+      let nf = 0;
+      if (data.fin && Array.isArray(data.fin.tx)) {
+        nf = mergeTx(data.fin.tx.map(t => Object.assign({}, t))).added;
+        Object.assign(fin.rules, data.fin.rules || {});
+        const ids = new Set(fin.invest.ops.map(o => o.id));
+        ((data.fin.invest && data.fin.invest.ops) || []).forEach(o => { if (!ids.has(o.id)) fin.invest.ops.push(o); });
+        Object.assign(fin.invest.quotes, (data.fin.invest && data.fin.invest.quotes) || {});
+        if (!fin.invest.token && data.fin.invest && data.fin.invest.token) fin.invest.token = data.fin.invest.token;
+        Object.assign(fin.habit, data.fin.habit || {});
+        saveFin();
+      }
+      if (nf) { msg.textContent = "Backup importado: " + n + " dia(s) de treino, " + ni + " dia(s) de estudo e " + nf + " lançamento(s) financeiro(s)."; return; }
       msg.textContent = (n || ni) ? "Backup importado: " + n + " dia(s) de treino" + (data.intel ? " e " + ni + " dia(s) de estudo." : ".") : "O arquivo não tinha registros.";
     } catch (e) { msg.textContent = "Arquivo inválido. Escolha um backup gerado por este app."; }
   };
@@ -818,7 +907,7 @@ function renderGuide(main) {
   const s = document.createElement("section"); s.className = "guide";
   const h = document.createElement("h3"); h.textContent = "Backup";
   const p = document.createElement("p"); p.style.margin = "0";
-  p.textContent = "Exporte um arquivo com todos os seus registros de treino e de estudo e guarde no Drive ou mande para você mesmo. Para restaurar, importe esse arquivo.";
+  p.textContent = "Exporte um arquivo com todos os seus registros de treino, estudo e finanças e guarde no Drive ou mande para você mesmo. Para restaurar, importe esse arquivo.";
   const btns = document.createElement("div"); btns.className = "btns";
   const ex = document.createElement("button"); ex.type = "button"; ex.className = "btn"; ex.id = "btn-export"; ex.textContent = "Exportar backup";
   ex.addEventListener("click", exportBackup);
@@ -1345,6 +1434,698 @@ function updateLive() {
 }
 setInterval(updateLive, 1000);
 
+/* ======================= Módulo Finanças ======================= */
+const FIN_KEY = "stek-fin-v1";
+const FIN_TABS = [{ id: "fin-pendentes", label: "Pendentes" }, { id: "fin-classificados", label: "Classificados" }, { id: "fin-relatorio", label: "Relatório" }, { id: "fin-invest", label: "Investimentos" }];
+const ESS = [["necessario", "Necessário"], ["substituivel", "Substituível"], ["superfluo", "Supérfluo"], ["luxo", "Luxo"]];
+const FREQ = [["recorrente", "Recorrente"], ["esporadico", "Esporádico"]];
+const NAT = [["fixo", "Fixo"], ["variavel", "Variável"]];
+const KIND_OUT = [["gasto", "Gasto"], ["investimento", "Aporte em investimento"], ["transferencia", "Transferência entre contas"]];
+const KIND_IN = [["receita", "Receita"], ["transferencia", "Transferência entre contas"]];
+const ESS_COLOR = { necessario: "var(--good)", substituivel: "var(--accent)", superfluo: "var(--warn)", luxo: "var(--bad)" };
+const LABEL = Object.fromEntries([...ESS, ...FREQ, ...NAT, ...KIND_OUT, ...KIND_IN]);
+const RATE_MES = 0.01; // premissa de rendimento usada nas simulações (1% ao mês)
+let fin = null;
+const finUI = { open: null, month: null, cmonth: "", q: "", confirm: null, msg: "" };
+
+function loadFin() {
+  try { const v = JSON.parse(localStorage.getItem(FIN_KEY)); fin = v && Array.isArray(v.tx) ? v : null; } catch (e) { fin = null; }
+  if (!fin) fin = { version: 1, tx: [], rules: {}, invest: { ops: [], quotes: {}, token: "" }, habit: {} };
+  fin.rules = fin.rules || {}; fin.invest = fin.invest || { ops: [], quotes: {}, token: "" }; fin.invest.ops = fin.invest.ops || []; fin.invest.quotes = fin.invest.quotes || {}; fin.habit = fin.habit || {};
+}
+function saveFin() {
+  try { localStorage.setItem(FIN_KEY, JSON.stringify(fin)); setStatus("Salvo no celular", "ok"); }
+  catch (e) { setStatus("Não foi possível salvar neste navegador", "err"); }
+}
+const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+function brl(v) { return BRL.format(v || 0); }
+function pctf(v) { return v == null || !isFinite(v) ? "—" : (v * 100).toFixed(1).replace(".", ",") + "%"; }
+function normTxt(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z ]/g, " ").replace(/\s+/g, " ").trim(); }
+function monthKey(iso) { return iso.slice(0, 7); }
+function monthLabel(k) { const [y, m] = k.split("-").map(Number); return MONTHS[m - 1].replace(/^./, c => c.toUpperCase()) + "/" + y; }
+function monthShort(k) { const [y, m] = k.split("-").map(Number); return MONTHS[m - 1].slice(0, 3) + "/" + String(y).slice(2); }
+function addMonths(k, n) { const [y, m] = k.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
+function daysInMonth(k) { const [y, m] = k.split("-").map(Number); return new Date(y, m, 0).getDate(); }
+function uid() { return "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+/* ---------- sugestões (aprende com o que você já classificou) ---------- */
+function cleanDesc(s) {
+  const parts = String(s || "").split(/\s+-\s+/);
+  if (parts.length >= 2 && /^(COMPRA|TRANSFERENCIA|PAGAMENTO|PIX|DEBITO|CREDITO|RESGATE|APLICACAO|ESTORNO|REEMBOLSO|DEPOSITO)/.test(normTxt(parts[0]))) return parts[1].trim();
+  return String(s || "").trim();
+}
+function methodFrom(s) {
+  const n = normTxt(s);
+  if (/PIX/.test(n)) return "Pix"; if (/BOLETO/.test(n)) return "Boleto"; if (/DEBITO/.test(n)) return "Débito"; if (/CREDITO/.test(n)) return "Cartão de Crédito";
+  return "";
+}
+function ruleKey(desc) { return normTxt(cleanDesc(desc)); }
+function learnRule(t) {
+  const k = ruleKey(t.desc); if (!k) return;
+  const r = fin.rules[k] || { n: 0 };
+  Object.assign(r, { cat: t.cat, item: t.item || r.item || "", kind: t.kind, ess: t.ess, freq: t.freq, nat: t.nat, dir: t.dir });
+  r.n = (r.n || 0) + 1; fin.rules[k] = r;
+}
+function suggestFor(t) {
+  const k = ruleKey(t.desc);
+  let r = fin.rules[k];
+  if (!r) {
+    const first = k.split(" ")[0];
+    if (first && first.length >= 4) { const hit = Object.keys(fin.rules).find(x => x.split(" ")[0] === first && fin.rules[x].dir === t.dir); if (hit) r = fin.rules[hit]; }
+  }
+  return r && r.dir === t.dir ? r : null;
+}
+function isComplete(t) {
+  if (!t.cat || !t.kind) return false;
+  if (t.dir === "out" && t.kind === "gasto") return !!(t.ess && t.freq && t.nat && (t.item || "").trim());
+  return true;
+}
+
+/* ---------- importação ---------- */
+function parseMoney(v) {
+  if (typeof v === "number") return v;
+  let s = String(v || "").replace(/R\$/g, "").replace(/\s/g, "");
+  if (!s) return NaN;
+  const neg = /^-|^\(.*\)$/.test(s); s = s.replace(/[()\-+]/g, "");
+  if (s.indexOf(",") > -1) s = s.replace(/\./g, "").replace(",", ".");
+  const n = Number(s); return isNaN(n) ? NaN : (neg ? -n : n);
+}
+function parseDateAny(s) {
+  s = String(s || "").trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[1] + "-" + m[2] + "-" + m[3];
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if (m) { const y = m[3].length === 2 ? "20" + m[3] : m[3]; return y + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0"); }
+  m = s.match(/^(\d{4})(\d{2})(\d{2})/); if (m) return m[1] + "-" + m[2] + "-" + m[3];
+  return null;
+}
+function parseCSV(text) {
+  const rows = []; let row = [], cell = "", q = false;
+  const sep = (text.split("\n")[0].match(/;/g) || []).length > (text.split("\n")[0].match(/,/g) || []).length ? ";" : ",";
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === sep) { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += c;
+  }
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(x => String(x).trim() !== ""));
+}
+function mapOldTipo(tipo) {
+  const t = normTxt(tipo);
+  if (/RECEB|RECEITA|ENTRADA/.test(t)) return { dir: "in", kind: "receita" };
+  if (!t) return null;
+  const fixo = t.indexOf("FIXO") > -1, desn = t.indexOf("DESNECESS") > -1;
+  return { dir: "out", kind: "gasto", nat: fixo ? "fixo" : "variavel", freq: fixo ? "recorrente" : "esporadico", ess: desn ? "superfluo" : "necessario" };
+}
+function rowsFromCSV(text) {
+  const rows = parseCSV(text.replace(/^﻿/, "")); if (rows.length < 2) return [];
+  const h = rows[0].map(normTxt);
+  const col = (...names) => h.findIndex(x => names.some(n => x === n || x.indexOf(n) === 0));
+  const out = [];
+  const iBenef = col("BENEFICIARIO"), iTipo = col("TIPO"), iTag = col("TAG", "CATEGORIA");
+  if (iBenef > -1) { // planilha Gestão (Extrato)
+    const iV = col("VALOR"), iD = col("DATA"), iBank = col("BANCO"), iF = col("FORMA"), iDesc = col("DESCRICAO");
+    rows.slice(1).forEach(r => {
+      const v = parseMoney(r[iV]), d = parseDateAny(r[iD]), desc = (r[iBenef] || "").trim();
+      if (!d || isNaN(v) || !desc) return;
+      const m = mapOldTipo(r[iTipo]); const tag = (r[iTag] || "").trim();
+      const t = { id: uid(), date: d, desc, amount: Math.abs(v), dir: m ? m.dir : (v < 0 ? "in" : "out"), bank: (r[iBank] || "").trim(), method: (r[iF] || "").trim(), source: "planilha", item: (iDesc > -1 ? r[iDesc] || "" : "").trim() };
+      if (m && tag) { Object.assign(t, m, { cat: tag, status: "done" }); } else t.status = "pending";
+      out.push(t);
+    });
+    return out;
+  }
+  const iTitle = col("TITLE"), iAmount = col("AMOUNT");
+  const iData = col("DATA", "DATE"), iValor = iAmount > -1 ? iAmount : col("VALOR"), iId = col("IDENTIFICADOR", "ID");
+  const iDesc = iTitle > -1 ? iTitle : col("DESCRICAO", "HISTORICO", "LANCAMENTO", "MEMO");
+  if (iData < 0 || iValor < 0 || iDesc < 0) return null;
+  const card = iTitle > -1 && iAmount > -1; // fatura do cartão (valor positivo = compra)
+  rows.slice(1).forEach(r => {
+    const v = parseMoney(r[iValor]), d = parseDateAny(r[iData]), desc = String(r[iDesc] || "").trim();
+    if (!d || isNaN(v) || !desc || v === 0) return;
+    const dir = card ? (v > 0 ? "out" : "in") : (v < 0 ? "out" : "in");
+    out.push({ id: uid(), date: d, desc: cleanDesc(desc), memo: desc, amount: Math.abs(v), dir, bank: "", method: card ? "Cartão de Crédito" : methodFrom(desc), source: "csv", extId: iId > -1 ? String(r[iId] || "") : "", status: "pending" });
+  });
+  return out;
+}
+function rowsFromOFX(text) {
+  const out = []; const blocks = text.split(/<STMTTRN>/i).slice(1);
+  const tag = (b, n) => { const m = b.match(new RegExp("<" + n + ">([^<\\r\\n]*)", "i")); return m ? m[1].trim() : ""; };
+  blocks.forEach(b => {
+    const v = parseMoney(tag(b, "TRNAMT").replace(",", ".")), d = parseDateAny(tag(b, "DTPOSTED"));
+    const desc = tag(b, "MEMO") || tag(b, "NAME");
+    if (!d || isNaN(v) || !desc || v === 0) return;
+    out.push({ id: uid(), date: d, desc: cleanDesc(desc), memo: desc, amount: Math.abs(v), dir: v < 0 ? "out" : "in", bank: "", method: methodFrom(desc), source: "ofx", extId: tag(b, "FITID"), status: "pending" });
+  });
+  return out;
+}
+function txKey(t) { return t.date + "|" + t.dir + "|" + t.amount.toFixed(2) + "|" + normTxt(t.desc); }
+function mergeTx(list) {
+  const ext = new Set(fin.tx.filter(t => t.extId).map(t => t.extId));
+  const seen = {}; fin.tx.forEach(t => { const k = txKey(t); seen[k] = (seen[k] || 0) + 1; });
+  let added = 0, dup = 0, auto = 0;
+  list.forEach(t => {
+    if (t.extId && ext.has(t.extId)) { dup++; return; }
+    const k = txKey(t); if (seen[k]) { seen[k]--; dup++; return; }
+    if (t.status === "done") { learnRule(t); auto++; }
+    fin.tx.push(t); added++;
+  });
+  saveFin();
+  return { added, dup, auto };
+}
+function importFile(file, done) {
+  const r = new FileReader();
+  r.onload = () => {
+    const text = String(r.result || "");
+    let list = /<OFX|<STMTTRN/i.test(text) ? rowsFromOFX(text) : rowsFromCSV(text);
+    if (!list) { done("Não reconheci as colunas desse arquivo. Use o OFX ou CSV exportado pelo banco, ou a aba Extrato da sua planilha em CSV."); return; }
+    if (!list.length) { done("O arquivo não tinha lançamentos válidos."); return; }
+    const res = mergeTx(list);
+    done(res.added + " lançamento(s) importado(s)" + (res.auto ? ", " + res.auto + " já classificado(s) pela planilha" : "") + (res.dup ? ". " + res.dup + " repetido(s) ignorado(s)." : "."));
+  };
+  r.readAsText(file);
+}
+
+/* ---------- agregados ---------- */
+function monthAgg(k) {
+  const a = { k, recebido: 0, gastos: 0, aportes: 0, byCat: {}, catCount: {}, catNat: {}, byEss: {}, byFreq: {}, byNat: {}, daily: {}, n: 0, pending: 0, recCat: {} };
+  fin.tx.forEach(t => {
+    if (monthKey(t.date) !== k) return;
+    if (t.status !== "done") { a.pending++; return; }
+    a.n++;
+    if (t.kind === "receita") { a.recebido += t.amount; a.recCat[t.cat] = (a.recCat[t.cat] || 0) + t.amount; }
+    else if (t.kind === "investimento") a.aportes += t.amount;
+    else if (t.kind === "gasto") {
+      a.gastos += t.amount;
+      a.byCat[t.cat] = (a.byCat[t.cat] || 0) + t.amount; a.catCount[t.cat] = (a.catCount[t.cat] || 0) + 1;
+      a.catNat[t.cat] = t.nat;
+      a.byEss[t.ess] = (a.byEss[t.ess] || 0) + t.amount; a.byFreq[t.freq] = (a.byFreq[t.freq] || 0) + t.amount; a.byNat[t.nat] = (a.byNat[t.nat] || 0) + t.amount;
+      const d = Number(t.date.slice(8, 10)); a.daily[d] = (a.daily[d] || 0) + t.amount;
+    }
+  });
+  a.saldo = a.recebido - a.gastos;
+  return a;
+}
+function finMonths() {
+  const ks = [...new Set(fin.tx.map(t => monthKey(t.date)))].sort();
+  const cur = monthKey(todayISO()); if (!ks.includes(cur)) ks.push(cur);
+  return ks.sort();
+}
+function estimateNext(k) {
+  const cur = monthKey(todayISO()), partial = k === cur, dim = daysInMonth(k), elapsed = partial ? Number(todayISO().slice(8, 10)) : dim;
+  const win = [k, addMonths(k, -1), addMonths(k, -2)].map(monthAgg).filter(a => a.n > 0);
+  const cats = {}; win.forEach(a => Object.keys(a.byCat).forEach(c => { cats[c] = true; }));
+  let gastos = 0; const rows = [];
+  Object.keys(cats).forEach(c => {
+    const src = win.find(a => a.catNat[c]); const nat = src ? src.catNat[c] : "variavel";
+    let est;
+    if (nat === "fixo") { const closed = win.filter(a => !(partial && a.k === k) && a.byCat[c]); est = Math.max(closed.length ? closed[0].byCat[c] : 0, (win[0] && win[0].k === k && win[0].byCat[c]) || 0); }
+    else est = win.reduce((s, a) => s + (a.byCat[c] || 0) * (partial && a.k === k ? dim / elapsed : 1), 0) / Math.max(1, win.length);
+    gastos += est; rows.push({ cat: c, est });
+  });
+  const closedRec = win.filter(a => !(partial && a.k === k));
+  const recebido = (closedRec.length ? closedRec : win).reduce((s, a) => s + a.recebido, 0) / Math.max(1, (closedRec.length ? closedRec : win).length);
+  return { gastos, recebido, saldo: recebido - gastos, rows: rows.sort((a, b) => b.est - a.est), partial, elapsed, dim };
+}
+
+/* ---------- investimentos ---------- */
+function positions() {
+  const pos = {};
+  fin.invest.ops.slice().sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0).forEach(o => {
+    const p = pos[o.ticker] = pos[o.ticker] || { ticker: o.ticker, qty: 0, cost: 0, bought: 0, divs: 0, realized: 0 };
+    if (o.type === "compra") { p.qty += o.qty; p.cost += o.qty * o.price; p.bought += o.qty * o.price; }
+    else if (o.type === "venda") { const pm = p.qty ? p.cost / p.qty : 0; const q = Math.min(o.qty, p.qty); p.cost -= q * pm; p.qty -= q; p.realized += q * (o.price - pm); }
+    else if (o.type === "dividendo") p.divs += o.value;
+  });
+  return Object.values(pos).map(p => {
+    const q = fin.invest.quotes[p.ticker]; const price = q ? q.price : null;
+    const pm = p.qty ? p.cost / p.qty : 0, value = price != null ? p.qty * price : null;
+    const gain = value != null ? value - p.cost : null;
+    return Object.assign(p, { pm, price, value, gain, gainPct: gain != null && p.cost ? gain / p.cost : null, total: gain != null ? gain + p.divs + p.realized : null, quoteAt: q ? q.at : null });
+  }).sort((a, b) => (b.value || b.cost) - (a.value || a.cost));
+}
+function investedInMonth(k) {
+  const compras = fin.invest.ops.filter(o => o.type === "compra" && monthKey(o.date) === k).reduce((s, o) => s + o.qty * o.price, 0);
+  const aportes = fin.tx.filter(t => t.status === "done" && t.kind === "investimento" && monthKey(t.date) === k).reduce((s, t) => s + t.amount, 0);
+  return Math.max(compras, aportes);
+}
+function sobraInfo() {
+  const cur = monthKey(todayISO()), prev = addMonths(cur, -1), a = monthAgg(prev);
+  if (!a.n) return null;
+  const inv = investedInMonth(cur), flag = fin.habit[cur];
+  return { cur, prev, sobra: a.saldo, invested: inv, flag, complete: a.saldo <= 0 || inv >= a.saldo || !!flag };
+}
+async function refreshQuotes(msgEl) {
+  const tickers = positions().filter(p => p.qty > 0).map(p => p.ticker);
+  if (!tickers.length) { msgEl.textContent = "Nenhuma ação na carteira."; return; }
+  msgEl.textContent = "Buscando cotações…";
+  try {
+    const url = "https://brapi.dev/api/quote/" + tickers.join(",") + (fin.invest.token ? "?token=" + encodeURIComponent(fin.invest.token) : "");
+    const res = await fetch(url); const data = await res.json();
+    if (!res.ok || !data.results) throw new Error(data && data.message ? data.message : "HTTP " + res.status);
+    let n = 0; data.results.forEach(r => { if (r.symbol && typeof r.regularMarketPrice === "number") { fin.invest.quotes[r.symbol.toUpperCase()] = { price: r.regularMarketPrice, at: new Date().toISOString(), src: "brapi" }; n++; } });
+    saveFin(); renderFin();
+    const m = document.getElementById("quote-msg"); if (m) m.textContent = n + " cotação(ões) atualizada(s) pela brapi (podem ter atraso de até 15 min).";
+  } catch (e) {
+    msgEl.textContent = "Não consegui buscar as cotações (" + e.message + "). Confira o token da brapi ou digite o preço manualmente.";
+  }
+}
+
+/* ---------- tarefas da tela inicial ---------- */
+function finTasks() {
+  if (!fin.tx.length && !fin.invest.ops.length) return { setup: true, setupLabel: "Importar extrato", setupText: "Importe o extrato do banco ou da sua planilha para começar a acompanhar seu dinheiro.", tasks: [] };
+  const tasks = [];
+  const pend = fin.tx.filter(t => t.status !== "done");
+  if (pend.length) {
+    const tot = pend.filter(t => t.dir === "out").reduce((s, t) => s + t.amount, 0);
+    tasks.push({ id: "task-classificar", title: "Classificar lançamentos", label: pend.length + (pend.length === 1 ? " pendente" : " pendentes"), sub: brl(tot) + " em saídas esperando classificação.", pct: 0, complete: false, go: () => enterFin("fin-pendentes") });
+  }
+  const s = sobraInfo();
+  if (s && s.sobra > 0) tasks.push({ id: "task-investir", title: "Investir a sobra de " + monthLabel(s.prev).split("/")[0], label: s.complete ? "Concluído" : brl(s.invested) + " / " + brl(s.sobra), sub: s.flag === "skip" ? "Você decidiu pular este mês." : "Sobrou " + brl(s.sobra) + " no mês passado. Transforme a sobra em aporte.", pct: Math.min(1, s.invested / s.sobra), complete: s.complete, go: () => enterFin("fin-invest") });
+  return { tasks, free: !tasks.length, freeText: fin.tx.length ? "Nenhum lançamento para classificar." : "Importe um extrato para começar a acompanhar seu dinheiro." };
+}
+
+/* ---------- navegação ---------- */
+function enterFin(tab) {
+  state.view = "fin"; document.body.dataset.view = "fin";
+  document.getElementById("crumb").textContent = "/ Finanças";
+  state.ftab = FIN_TABS.some(t => t.id === tab) ? tab : ((!fin.tx.length || fin.tx.some(t => t.status !== "done")) ? "fin-pendentes" : "fin-relatorio");
+  history.replaceState(null, "", "#" + state.ftab);
+  renderTabs(); renderFin(); window.scrollTo(0, 0);
+}
+function renderFin() {
+  const main = document.getElementById("main"); main.innerHTML = "";
+  catDatalist();
+  if (state.ftab === "fin-classificados") renderClassificados(main);
+  else if (state.ftab === "fin-relatorio") renderRelatorio(main);
+  else if (state.ftab === "fin-invest") renderInvest(main);
+  else renderPendentes(main);
+}
+function head2(main, title, text) { const h = el("div", "wk-head"); h.append(el("h2", null, title), el("p", null, text)); main.appendChild(h); }
+
+/* ---------- aba Pendentes ---------- */
+function renderPendentes(main) {
+  const pend = fin.tx.filter(t => t.status !== "done").sort((a, b) => a.date < b.date ? 1 : -1);
+  head2(main, "Pendentes", pend.length ? pend.length + " lançamento(s) esperando classificação. Toque em um para dizer o que foi comprado." : "Nada para classificar agora.");
+
+  // importação
+  const imp = el("details", "guide imp"); if (!fin.tx.length || finUI.msg || finUI.impOpen) imp.open = true;
+  imp.addEventListener("toggle", () => { finUI.impOpen = imp.open; });
+  const sm = el("summary", null, "Trazer lançamentos"); imp.appendChild(sm);
+  imp.appendChild(el("p", "note muted", "Importe o extrato do banco (OFX ou CSV), a aba Extrato da sua planilha em CSV ou adicione à mão. Lançamentos repetidos são ignorados."));
+  const fb = el("div", "btns");
+  const lab = el("label", "btn", "Importar arquivo"); lab.htmlFor = "fin-file";
+  const fi = el("input"); fi.type = "file"; fi.id = "fin-file"; fi.accept = ".ofx,.csv,.txt,text/csv"; fi.hidden = true;
+  const msg = el("p", "note"); msg.id = "imp-msg"; msg.setAttribute("aria-live", "polite"); msg.textContent = finUI.msg;
+  fi.addEventListener("change", () => { const f = fi.files[0]; if (!f) return; importFile(f, txt => { finUI.msg = txt; renderFin(); }); fi.value = ""; });
+  fb.append(lab, fi); imp.append(fb, msg);
+  // manual
+  const form = el("form", "inputs two"); form.id = "fin-add";
+  const mk = (id, label, type, ph) => { const f = el("div", "field"); const l = el("label", null, label); l.htmlFor = id; const i = el("input"); i.id = id; i.type = type || "text"; if (ph) i.placeholder = ph; f.append(l, i); form.appendChild(f); return i; };
+  const dIn = mk("add-date", "Data", "date"); dIn.value = todayISO();
+  const vIn = mk("add-val", "Valor (R$)", "text", "0,00"); vIn.inputMode = "decimal";
+  const nIn = mk("add-desc", "Estabelecimento / pessoa", "text", "Ex.: Padaria");
+  const sf = el("div", "field"); const sl = el("label", null, "Entrada ou saída"); sl.htmlFor = "add-dir";
+  const ss = el("select", "sel"); ss.id = "add-dir"; [["out", "Saída"], ["in", "Entrada"]].forEach(([v, t]) => { const o = el("option", null, t); o.value = v; ss.appendChild(o); }); sf.append(sl, ss); form.appendChild(sf);
+  const ab = el("button", "btn", "Adicionar"); ab.type = "submit"; ab.id = "add-tx"; ab.setAttribute("form", "fin-add");
+  form.addEventListener("submit", e => { e.preventDefault(); const v = parseMoney(vIn.value); if (!nIn.value.trim() || !(v > 0) || !dIn.value) { finUI.msg = "Preencha data, valor e estabelecimento."; renderFin(); return; }
+    fin.tx.push({ id: uid(), date: dIn.value, desc: nIn.value.trim(), amount: Math.abs(v), dir: ss.value, bank: "", method: "", source: "manual", status: "pending" }); finUI.msg = "Lançamento adicionado."; saveFin(); renderFin(); });
+  imp.append(el("p", "plan-t", "Adicionar à mão"), form, (() => { const b = el("div", "btns"); b.appendChild(ab); return b; })());
+  imp.appendChild(el("p", "note muted", "Conexão automática com o banco (Open Finance): ainda não configurada. Quando estiver ativa, os lançamentos novos chegam aqui sozinhos."));
+  main.appendChild(imp);
+
+  if (!pend.length) return;
+  const sug = pend.filter(t => { const r = suggestFor(t); return r && isComplete(Object.assign({}, t, pickAll(r))); });
+  if (sug.length) {
+    const s = el("section", "guide");
+    s.append(el("h3", null, "Sugestões prontas"), el("p", "note", sug.length + " lançamento(s) têm a mesma origem de algo que você já classificou. Dá para aceitar todos de uma vez e revisar depois em Classificados."));
+    const b = el("button", "btn", "Aceitar " + sug.length + " sugestão(ões)"); b.type = "button"; b.id = "accept-all";
+    b.addEventListener("click", () => { sug.forEach(t => { Object.assign(t, pickAll(suggestFor(t)), { status: "done" }); learnRule(t); }); finUI.msg = ""; saveFin(); renderFin(); });
+    const bb = el("div", "btns"); bb.appendChild(b); s.appendChild(bb); main.appendChild(s);
+  }
+  const list = el("div", "txlist");
+  pend.forEach(t => list.appendChild(txRow(t, true)));
+  main.appendChild(list);
+}
+function pick(r) { return { cat: r.cat, item: r.item, kind: r.kind, ess: r.ess, freq: r.freq, nat: r.nat }; }
+function pickAll(r) { const o = pick(r); if (!o.item) o.item = r.cat; return o; }
+
+function txRow(t, pending) {
+  const wrap = el("section", "card tx" + (finUI.open === t.id ? " open" : "")); wrap.id = "tx-" + t.id;
+  const b = el("button", "tx-head"); b.type = "button"; b.id = "txb-" + t.id; b.setAttribute("aria-expanded", String(finUI.open === t.id));
+  const left = el("span", "tx-l");
+  left.append(el("span", "tx-desc", t.desc), el("span", "tx-meta", fmtDate(t.date) + (t.method ? " · " + t.method : "") + (t.status === "done" && t.item ? " · " + t.item : "")));
+  if (t.memo && t.memo !== t.desc && finUI.open === t.id) left.appendChild(el("span", "tx-meta", "Extrato: " + t.memo));
+  const r = el("span", "tx-r");
+  r.appendChild(el("span", "tx-val " + (t.dir === "in" ? "in" : "out"), (t.dir === "in" ? "+ " : "− ") + brl(t.amount)));
+  if (t.status === "done") {
+    const chips = el("span", "tx-chips");
+    chips.appendChild(el("span", "mini", t.cat));
+    if (t.kind === "gasto") chips.appendChild(el("span", "mini ess-" + t.ess, LABEL[t.ess]));
+    else chips.appendChild(el("span", "mini", LABEL[t.kind]));
+    left.appendChild(chips);
+  } else {
+    const s = suggestFor(t);
+    if (s) left.appendChild(el("span", "tx-sug", "Sugestão: " + s.cat + (s.kind === "gasto" && s.ess ? " · " + LABEL[s.ess] : "")));
+  }
+  b.append(left, r);
+  b.addEventListener("click", () => { finUI.open = finUI.open === t.id ? null : t.id; finUI.confirm = null; renderFin(); const n = document.getElementById("tx-" + t.id); if (n) n.scrollIntoView({ block: "nearest" }); });
+  wrap.appendChild(b);
+  if (finUI.open === t.id) wrap.appendChild(txEditor(t));
+  return wrap;
+}
+
+function chipGroup(label, opts, value, onPick, idp) {
+  const g = el("div", "cg"); g.appendChild(el("span", "field-l", label));
+  const row = el("div", "chips");
+  opts.forEach(([v, txt]) => { const c = el("button", "gchip" + (ESS_COLOR[v] ? " ess-" + v : ""), txt); c.type = "button"; c.id = idp + "-" + v; c.setAttribute("aria-pressed", String(value === v)); c.addEventListener("click", () => onPick(v)); row.appendChild(c); });
+  g.appendChild(row); return g;
+}
+
+function txEditor(t) {
+  const d = Object.assign({}, t);
+  if (t.status !== "done") { const s = suggestFor(t); if (s) Object.keys(pick(s)).forEach(k => { if (d[k] == null || d[k] === "") d[k] = s[k]; }); }
+  if (!d.kind) d.kind = t.dir === "in" ? "receita" : "gasto";
+  const box = el("div", "tx-edit");
+  const draw = () => {
+    box.innerHTML = "";
+    if (t.status !== "done" && suggestFor(t)) box.appendChild(el("p", "note muted", "Campos preenchidos com base no que você já classificou para \"" + t.desc + "\". Confira e ajuste."));
+    box.appendChild(chipGroup("Tipo de lançamento", t.dir === "in" ? KIND_IN : KIND_OUT, d.kind, v => { d.kind = v; draw(); }, "k-" + t.id));
+    const grid = el("div", "inputs two");
+    const fld = (k, label, ph, list) => { const f = el("div", "field"); const l = el("label", null, label); l.htmlFor = "f-" + k + "-" + t.id; const i = el("input"); i.id = "f-" + k + "-" + t.id; i.value = d[k] || ""; i.placeholder = ph; if (list) i.setAttribute("list", list); i.addEventListener("input", () => { d[k] = i.value; upd(); }); f.append(l, i); grid.appendChild(f); };
+    if (d.kind === "gasto") fld("item", "O que foi comprado", "Ex.: compras da semana");
+    fld("cat", d.kind === "receita" ? "Origem" : "Categoria", d.kind === "receita" ? "Ex.: Salário" : "Ex.: Mercado", "cat-list");
+    box.appendChild(grid);
+    if (d.kind === "gasto") {
+      box.appendChild(chipGroup("Essencialidade", ESS, d.ess, v => { d.ess = v; draw(); }, "e-" + t.id));
+      box.appendChild(chipGroup("Frequência", FREQ, d.freq, v => { d.freq = v; draw(); }, "fq-" + t.id));
+      box.appendChild(chipGroup("Natureza", NAT, d.nat, v => { d.nat = v; draw(); }, "n-" + t.id));
+    }
+    const same = fin.tx.filter(x => x.id !== t.id && x.status !== "done" && x.dir === t.dir && ruleKey(x.desc) === ruleKey(t.desc));
+    let cb = null;
+    if (same.length) { const lab = el("label", "theory"); cb = el("input"); cb.type = "checkbox"; cb.id = "same-" + t.id; lab.htmlFor = cb.id; lab.append(cb, el("span", null, "Aplicar a mesma classificação aos outros " + same.length + " pendente(s) de \"" + t.desc + "\"")); box.appendChild(lab); }
+    const btns = el("div", "btns");
+    const sv = el("button", "btn", t.status === "done" ? "Salvar alterações" : "Salvar classificação"); sv.type = "button"; sv.id = "save-" + t.id;
+    const hint = el("p", "note muted"); hint.id = "hint-" + t.id;
+    function upd() { const ok = isComplete(d); sv.disabled = !ok; hint.textContent = ok ? "" : (d.kind === "gasto" ? "Preencha o que foi comprado, a categoria e as três classificações." : "Preencha a " + (d.kind === "receita" ? "origem." : "categoria.")); }
+    sv.addEventListener("click", () => {
+      if (!isComplete(d)) return;
+      const fields = { kind: d.kind, cat: (d.cat || "").trim(), item: (d.item || "").trim() };
+      if (d.kind === "gasto") Object.assign(fields, { ess: d.ess, freq: d.freq, nat: d.nat }); else Object.assign(fields, { ess: null, freq: null, nat: null });
+      Object.assign(t, fields, { status: "done" }); learnRule(t);
+      if (cb && cb.checked) same.forEach(x => { Object.assign(x, fields, { status: "done" }); learnRule(x); });
+      finUI.open = null; saveFin(); renderFin();
+    });
+    btns.appendChild(sv);
+    if (t.status === "done") {
+      const back = el("button", "btn", "Voltar para pendentes"); back.type = "button"; back.id = "back-" + t.id;
+      back.addEventListener("click", () => { t.status = "pending"; finUI.open = null; saveFin(); renderFin(); });
+      btns.appendChild(back);
+    }
+    const del = el("button", "btn danger", finUI.confirm === t.id ? "Confirmar exclusão" : "Excluir"); del.type = "button"; del.id = "del-" + t.id;
+    del.addEventListener("click", () => { if (finUI.confirm !== t.id) { finUI.confirm = t.id; draw(); return; } fin.tx = fin.tx.filter(x => x.id !== t.id); finUI.open = null; finUI.confirm = null; saveFin(); renderFin(); });
+    btns.appendChild(del);
+    box.append(btns, hint); upd();
+  };
+  draw();
+  return box;
+}
+function catDatalist() {
+  let dl = document.getElementById("cat-list");
+  if (!dl) { dl = el("datalist"); dl.id = "cat-list"; document.body.appendChild(dl); }
+  dl.innerHTML = "";
+  [...new Set(fin.tx.filter(t => t.cat).map(t => t.cat))].sort().forEach(c => { const o = el("option"); o.value = c; dl.appendChild(o); });
+}
+
+/* ---------- aba Classificados ---------- */
+function renderClassificados(main) {
+  const done = fin.tx.filter(t => t.status === "done");
+  head2(main, "Classificados", done.length + " lançamento(s). Toque em um para corrigir a classificação.");
+  const f = el("div", "datebar");
+  const ml = el("label", null, "Mês"); ml.htmlFor = "cl-month";
+  const ms = el("select", "sel"); ms.id = "cl-month"; ms.style.width = "auto";
+  [["", "Todos"]].concat([...new Set(done.map(t => monthKey(t.date)))].sort().reverse().map(k => [k, monthLabel(k)])).forEach(([v, t]) => { const o = el("option", null, t); o.value = v; if (finUI.cmonth === v) o.selected = true; ms.appendChild(o); });
+  ms.addEventListener("change", () => { finUI.cmonth = ms.value; renderFin(); });
+  const q = el("input"); q.id = "cl-q"; q.placeholder = "Buscar estabelecimento, item ou categoria"; q.value = finUI.q; q.className = "search";
+  q.addEventListener("change", () => { finUI.q = q.value; renderFin(); });
+  f.append(ml, ms, q); main.appendChild(f);
+  const nq = normTxt(finUI.q);
+  const list = done.filter(t => (!finUI.cmonth || monthKey(t.date) === finUI.cmonth) && (!nq || normTxt(t.desc + " " + (t.item || "") + " " + t.cat).indexOf(nq) > -1)).sort((a, b) => a.date < b.date ? 1 : -1);
+  if (!list.length) { main.appendChild(el("p", "note muted", "Nenhum lançamento encontrado.")); return; }
+  const tot = list.reduce((s, t) => s + (t.dir === "out" && t.kind === "gasto" ? t.amount : 0), 0);
+  main.appendChild(el("p", "note muted", list.length + " lançamento(s) · " + brl(tot) + " em gastos"));
+  const box = el("div", "txlist"); list.slice(0, 300).forEach(t => box.appendChild(txRow(t, false))); main.appendChild(box);
+}
+
+/* ---------- aba Relatório ---------- */
+function renderRelatorio(main) {
+  const months = finMonths();
+  const k = finUI.month && months.includes(finUI.month) ? finUI.month : (monthAgg(monthKey(todayISO())).n ? monthKey(todayISO()) : months.filter(m => monthAgg(m).n).pop() || monthKey(todayISO()));
+  finUI.month = k;
+  const a = monthAgg(k), p = monthAgg(addMonths(k, -1)), est = estimateNext(k);
+  head2(main, "Relatório", "Para onde foi o dinheiro e onde dá para otimizar.");
+  const f = el("div", "datebar"); const ml = el("label", null, "Mês"); ml.htmlFor = "rep-month";
+  const ms = el("select", "sel"); ms.id = "rep-month"; ms.style.width = "auto";
+  months.slice().reverse().forEach(m => { const o = el("option", null, monthLabel(m)); o.value = m; if (m === k) o.selected = true; ms.appendChild(o); });
+  ms.addEventListener("change", () => { finUI.month = ms.value; renderFin(); });
+  f.append(ml, ms, el("span", "hint", est.partial ? "Mês em andamento: " + est.elapsed + " de " + est.dim + " dias" : "Mês fechado"));
+  main.appendChild(f);
+  if (a.pending) main.appendChild(el("p", "banner", a.pending + " lançamento(s) deste mês ainda estão pendentes e não entram nos números abaixo."));
+  if (!a.n) { main.appendChild(el("p", "note muted", "Sem lançamentos classificados neste mês.")); return; }
+
+  const delta = (cur, prev, goodUp) => { if (!prev) return { t: "sem base no mês anterior", c: "" }; const d = (cur - prev) / Math.abs(prev); return { t: (d > 0 ? "▲ " : d < 0 ? "▼ " : "") + pctf(Math.abs(d)) + " vs " + monthShort(addMonths(k, -1)), c: (goodUp ? d >= 0 : d <= 0) ? "up" : "down" }; };
+  const tiles = el("div", "tiles fin-tiles");
+  const tile = (label, num, sub, mod, dl) => { const t = el("div", "tile" + (mod ? " " + mod : "")); t.append(el("span", "tile-label", label), el("span", "tile-num money", num)); if (dl) t.appendChild(el("span", "tile-sub " + dl.c, dl.t)); if (sub) t.appendChild(el("span", "tile-sub", sub)); return t; };
+  const sup = (a.byEss.superfluo || 0) + (a.byEss.luxo || 0);
+  tiles.append(
+    tile("Recebido", brl(a.recebido), "", "", delta(a.recebido, p.recebido, true)),
+    tile("Gastos", brl(a.gastos), est.partial ? "No ritmo atual: " + brl(a.gastos * est.dim / est.elapsed) : "", "", delta(a.gastos, p.gastos, false)),
+    tile("Sobra", brl(a.saldo), a.recebido ? "Taxa de poupança " + pctf(a.saldo / a.recebido) : "", a.saldo >= 0 ? "good" : "bad"),
+    tile("Supérfluo + luxo", brl(sup), a.gastos ? pctf(sup / a.gastos) + " dos gastos" : "", sup / (a.gastos || 1) > 0.3 ? "warn" : ""));
+  main.appendChild(tiles);
+
+  // destaques e otimização
+  const ins = el("section", "guide"); ins.appendChild(el("h3", null, "Como otimizar"));
+  const ul = el("ul", "insights");
+  insights(k, a, p, est).forEach(s => { const li = el("li"); li.textContent = s; ul.appendChild(li); });
+  ins.appendChild(ul); main.appendChild(ins);
+
+  // para onde foi
+  const w = el("section", "guide"); w.appendChild(el("h3", null, "Para onde foi o dinheiro"));
+  const cats = Object.keys(a.byCat).map(c => ({ c, v: a.byCat[c], n: a.catCount[c], pv: p.byCat[c] || 0 })).sort((x, y) => y.v - x.v);
+  w.appendChild(hbars(cats.slice(0, 12).map(x => ({ label: x.c, value: x.v, note: x.n + "×" + (x.pv ? " · " + (x.v >= x.pv ? "+" : "−") + brl(Math.abs(x.v - x.pv)) : "") })), a.gastos));
+  if (cats.length > 12) w.appendChild(el("p", "note muted", "+ " + (cats.length - 12) + " categorias menores: " + brl(cats.slice(12).reduce((s, x) => s + x.v, 0))));
+  main.appendChild(w);
+
+  // classificações
+  const cl = el("section", "guide"); cl.appendChild(el("h3", null, "Perfil dos gastos"));
+  cl.appendChild(stack("Essencialidade", ESS.map(([v, t]) => ({ label: t, value: a.byEss[v] || 0, cls: "ess-" + v }))));
+  cl.appendChild(stack("Natureza", NAT.map(([v, t], i) => ({ label: t, value: a.byNat[v] || 0, cls: "s" + i }))));
+  cl.appendChild(stack("Frequência", FREQ.map(([v, t], i) => ({ label: t, value: a.byFreq[v] || 0, cls: "s" + i }))));
+  main.appendChild(cl);
+
+  // evolução + ritmo
+  const ev = el("section", "guide"); ev.appendChild(el("h3", null, "Evolução"));
+  const hist = []; for (let i = 5; i >= 0; i--) { const m = addMonths(k, -i); const g = monthAgg(m); if (g.n || i === 0) hist.push(g); }
+  ev.appendChild(el("p", "chart-t", "Recebido x gastos por mês (ponto = sobra)"));
+  ev.appendChild(chartBox(evoSVG(hist)));
+  ev.appendChild(legend([["leg-in", "Recebido"], ["leg-out", "Gastos"], ["leg-dot", "Sobra"]]));
+  ev.appendChild(el("p", "chart-t", "Gasto acumulado no mês, dia a dia"));
+  ev.appendChild(chartBox(cumSVG(a, p, k)));
+  ev.appendChild(legend([["leg-line", monthShort(k)], ["leg-dash", monthShort(addMonths(k, -1))]]));
+  main.appendChild(ev);
+
+  // estimativa
+  const es = el("section", "guide"); es.appendChild(el("h3", null, "Estimativa para " + monthLabel(addMonths(k, 1))));
+  const et = el("div", "tiles tiles-3");
+  et.append(tile("Gastos", brl(est.gastos)), tile("Recebimentos", brl(est.recebido)), tile("Sobra prevista", brl(est.saldo), "", est.saldo >= 0 ? "good" : "bad"));
+  es.appendChild(et);
+  es.appendChild(el("p", "note muted", "Custos fixos repetem o último valor; variáveis usam a média dos últimos 3 meses" + (est.partial ? " (com o mês atual projetado pelo ritmo de gasto)" : "") + "; recebimentos usam a média dos meses fechados."));
+  main.appendChild(es);
+}
+function legend(items) { const l = el("div", "legend"); items.forEach(([c, t]) => { const i = el("span", "lg"); i.append(el("span", "sw " + c), document.createTextNode(t)); l.appendChild(i); }); return l; }
+function hbars(rows, total) {
+  const box = el("div", "hbars"); const max = Math.max(...rows.map(r => r.value), 1);
+  rows.forEach(r => { const row = el("div", "hb"); const top = el("div", "hb-top"); top.append(el("span", "hb-l", r.label), el("span", "hb-v", brl(r.value) + (total ? " · " + pctf(r.value / total) : ""))); const bar = el("div", "hb-bar"); const f = el("span"); f.style.width = (r.value / max * 100) + "%"; bar.appendChild(f); row.append(top, bar); if (r.note) row.appendChild(el("span", "hb-n", r.note)); box.appendChild(row); });
+  return box;
+}
+function stack(title, segs) {
+  const tot = segs.reduce((s, x) => s + x.value, 0); const w = el("div", "stk");
+  w.appendChild(el("span", "field-l", title));
+  const bar = el("div", "stk-bar"); segs.forEach(s => { if (!s.value) return; const sp = el("span", s.cls); sp.style.width = (s.value / tot * 100) + "%"; sp.title = s.label; bar.appendChild(sp); }); w.appendChild(bar);
+  const lg = el("div", "stk-lg"); segs.forEach(s => { const i = el("span", "lg"); i.append(el("span", "sw " + s.cls), document.createTextNode(s.label + " " + brl(s.value) + " (" + pctf(tot ? s.value / tot : 0) + ")")); lg.appendChild(i); }); w.appendChild(lg);
+  return w;
+}
+function evoSVG(hist) {
+  const vals = hist.flatMap(h => [h.recebido, h.gastos, Math.abs(h.saldo)]); const top = Math.max(100, ...vals) * 1.1;
+  const lo = Math.min(0, ...hist.map(h => h.saldo)) * 1.1;
+  const iw = CW - PL - PR - 8, ih = CH - PT - PB, n = hist.length, gw = iw / n, bw = Math.min(18, gw * 0.3);
+  const xs = i => PL + 8 + gw * (i + 0.5), ys = v => PT + ih * (1 - (v - lo) / (top - lo));
+  const kfmt = v => (Math.abs(v) >= 1000 ? (v / 1000).toFixed(1).replace(".", ",") + "k" : Math.round(v));
+  let g = "";
+  [lo, 0, top / 2, top].filter((v, i, a) => a.indexOf(v) === i).forEach(v => { g += '<line class="grid' + (v === 0 ? " zero" : "") + '" x1="' + PL + '" x2="' + (CW - PR) + '" y1="' + ys(v) + '" y2="' + ys(v) + '"/><text class="ax" x="' + (PL - 4) + '" y="' + (ys(v) + 4) + '" text-anchor="end">' + kfmt(v) + '</text>'; });
+  hist.forEach((h, i) => {
+    g += '<rect class="bar-in" x="' + (xs(i) - bw - 1) + '" y="' + ys(h.recebido) + '" width="' + bw + '" height="' + Math.max(0, ys(0) - ys(h.recebido)) + '" rx="2"/>';
+    g += '<rect class="bar-out" x="' + (xs(i) + 1) + '" y="' + ys(h.gastos) + '" width="' + bw + '" height="' + Math.max(0, ys(0) - ys(h.gastos)) + '" rx="2"/>';
+    g += '<text class="ax" x="' + xs(i) + '" y="' + (CH - 6) + '" text-anchor="middle">' + monthShort(h.k) + '</text>';
+  });
+  const pts = hist.map((h, i) => xs(i).toFixed(1) + "," + ys(h.saldo).toFixed(1));
+  if (pts.length > 1) g += '<polyline class="line" points="' + pts.join(" ") + '"/>';
+  hist.forEach((h, i) => { g += '<circle class="dot ' + (h.saldo >= 0 ? "pos" : "neg") + '" cx="' + xs(i) + '" cy="' + ys(h.saldo) + '" r="4"/>'; });
+  return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Recebido e gastos por mês">' + g + '</svg>';
+}
+function cumSVG(a, p, k) {
+  const dim = Math.max(daysInMonth(k), daysInMonth(addMonths(k, -1)));
+  const cur = monthKey(todayISO()) === k ? Number(todayISO().slice(8, 10)) : daysInMonth(k);
+  const ser = (agg, lim) => { let s = 0; const out = []; for (let d = 1; d <= lim; d++) { s += agg.daily[d] || 0; out.push(s); } return out; };
+  const A = ser(a, cur), B = p.n ? ser(p, daysInMonth(addMonths(k, -1))) : [];
+  const top = Math.max(100, ...A, ...B) * 1.08;
+  const iw = CW - PL - PR, ih = CH - PT - PB, xs = d => PL + iw * (d - 1) / (dim - 1), ys = v => PT + ih * (1 - v / top);
+  const kfmt = v => (v >= 1000 ? (v / 1000).toFixed(1).replace(".", ",") + "k" : Math.round(v));
+  let g = "";
+  [0, top / 2, top].forEach(v => { g += '<line class="grid" x1="' + PL + '" x2="' + (CW - PR) + '" y1="' + ys(v) + '" y2="' + ys(v) + '"/><text class="ax" x="' + (PL - 4) + '" y="' + (ys(v) + 4) + '" text-anchor="end">' + kfmt(v) + '</text>'; });
+  [1, 10, 20, dim].forEach(d => { g += '<text class="ax" x="' + xs(d) + '" y="' + (CH - 6) + '" text-anchor="middle">' + d + '</text>'; });
+  if (B.length) g += '<polyline class="line dash" points="' + B.map((v, i) => xs(i + 1).toFixed(1) + "," + ys(v).toFixed(1)).join(" ") + '"/>';
+  if (A.length) { g += '<polyline class="line" points="' + A.map((v, i) => xs(i + 1).toFixed(1) + "," + ys(v).toFixed(1)).join(" ") + '"/>'; g += '<circle class="dot last" cx="' + xs(A.length) + '" cy="' + ys(A[A.length - 1]) + '" r="4"/><text class="val" x="' + Math.min(xs(A.length), CW - PR - 30) + '" y="' + (ys(A[A.length - 1]) - 8) + '" text-anchor="middle">' + brl(A[A.length - 1]) + '</text>'; }
+  return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Gasto acumulado no mês">' + g + '</svg>';
+}
+function fv(monthly, months) { return monthly * ((Math.pow(1 + RATE_MES, months) - 1) / RATE_MES); }
+function insights(k, a, p, est) {
+  const out = []; const cats = Object.keys(a.byCat).sort((x, y) => a.byCat[y] - a.byCat[x]);
+  if (cats.length) out.push("Maior categoria: " + cats[0] + ", com " + brl(a.byCat[cats[0]]) + " (" + pctf(a.byCat[cats[0]] / a.gastos) + " dos gastos).");
+  if (p.n) {
+    const ch = Object.keys(Object.assign({}, a.byCat, p.byCat)).map(c => ({ c, d: (a.byCat[c] || 0) - (p.byCat[c] || 0) }));
+    const up = ch.filter(x => x.d > 0).sort((x, y) => y.d - x.d)[0], dn = ch.filter(x => x.d < 0).sort((x, y) => x.d - y.d)[0];
+    if (up) out.push("Maior aumento contra " + monthShort(addMonths(k, -1)) + ": " + up.c + " (+" + brl(up.d) + ").");
+    if (dn) out.push("Maior economia contra " + monthShort(addMonths(k, -1)) + ": " + dn.c + " (" + brl(dn.d) + ").");
+  }
+  const sup = (a.byEss.superfluo || 0) + (a.byEss.luxo || 0);
+  if (sup > 0) out.push("Supérfluo e luxo somam " + brl(sup) + ". Cortar metade libera " + brl(sup / 2) + " por mês; aplicado todo mês a 1% ao mês, isso vira cerca de " + brl(fv(sup / 2, 12)) + " em 12 meses.");
+  const small = Object.keys(a.byCat).filter(c => a.catCount[c] >= 6 && a.byCat[c] / a.catCount[c] < 40).sort((x, y) => a.byCat[y] - a.byCat[x]);
+  small.slice(0, 2).forEach(c => out.push("Gastos pequenos que somam: " + c + " teve " + a.catCount[c] + " compras de " + brl(a.byCat[c] / a.catCount[c]) + " em média, " + brl(a.byCat[c]) + " no mês."));
+  const subs = {}; fin.tx.forEach(t => { if (t.status === "done" && t.kind === "gasto" && monthKey(t.date) === k && t.freq === "recorrente" && (t.ess === "superfluo" || t.ess === "luxo")) subs[t.cat] = (subs[t.cat] || 0) + t.amount; });
+  const sk = Object.keys(subs); if (sk.length) out.push("Recorrentes que não são necessários (candidatos a cancelar ou renegociar): " + sk.map(c => c + " " + brl(subs[c])).join(", ") + ".");
+  if (a.byEss.substituivel) out.push("Gastos substituíveis somam " + brl(a.byEss.substituivel) + ". Trocar por opções mais baratas economiza mesmo sem abrir mão do item.");
+  if (a.saldo > 0) out.push("Sobra de " + brl(a.saldo) + " neste mês. Investindo esse valor todo mês a 1% ao mês, em 12 meses você teria cerca de " + brl(fv(a.saldo, 12)) + ".");
+  else if (a.recebido) out.push("Os gastos passaram o recebido em " + brl(-a.saldo) + ". Para voltar a sobrar, o primeiro corte está no supérfluo e no luxo.");
+  out.push("Previsão para " + monthLabel(addMonths(k, 1)) + ": " + brl(est.gastos) + " em gastos e " + brl(est.recebido) + " em recebimentos (sobra prevista de " + brl(est.saldo) + ").");
+  return out;
+}
+
+/* ---------- aba Investimentos ---------- */
+function renderInvest(main) {
+  head2(main, "Investimentos", "Carteira, preço médio, rendimento e o hábito de investir a sobra.");
+  const s = sobraInfo();
+  if (s) {
+    const h = el("section", "guide habit");
+    h.appendChild(el("h3", null, "Sobra de " + monthLabel(s.prev)));
+    if (s.sobra <= 0) h.appendChild(el("p", "note", "Não sobrou dinheiro em " + monthLabel(s.prev) + " (saldo de " + brl(s.sobra) + "). O relatório mostra onde cortar para isso mudar."));
+    else {
+      h.appendChild(el("p", "note", "Sobrou " + brl(s.sobra) + ". Investido em " + monthLabel(s.cur) + ": " + brl(s.invested) + (s.complete ? (s.flag === "skip" ? ". Você pulou este mês." : ". Meta cumprida.") : ". Faltam " + brl(s.sobra - s.invested) + ".")));
+      const b = el("div", "goalbar"); const f = el("span"); f.style.width = Math.min(100, s.invested / s.sobra * 100) + "%"; b.appendChild(f); h.appendChild(b);
+      h.appendChild(el("p", "note muted", "Conta como investido: compras registradas aqui neste mês ou lançamentos classificados como aporte."));
+      if (!s.complete) {
+        const bb = el("div", "btns");
+        const done = el("button", "btn", "Já investi"); done.type = "button"; done.id = "habit-done"; done.addEventListener("click", () => { fin.habit[s.cur] = "done"; saveFin(); renderFin(); });
+        const skip = el("button", "btn danger", "Pular este mês"); skip.type = "button"; skip.id = "habit-skip"; skip.addEventListener("click", () => { fin.habit[s.cur] = "skip"; saveFin(); renderFin(); });
+        bb.append(done, skip); h.appendChild(bb);
+      } else if (s.flag) { const u = el("button", "btn", "Desfazer"); u.type = "button"; u.id = "habit-undo"; u.addEventListener("click", () => { delete fin.habit[s.cur]; saveFin(); renderFin(); }); const bb = el("div", "btns"); bb.appendChild(u); h.appendChild(bb); }
+    }
+    main.appendChild(h);
+  }
+
+  const pos = positions().filter(p => p.qty > 0 || p.divs > 0 || p.realized);
+  const cost = pos.reduce((s, p) => s + p.cost, 0), val = pos.reduce((s, p) => s + (p.value != null ? p.value : p.cost), 0);
+  const divs = pos.reduce((s, p) => s + p.divs, 0), real = pos.reduce((s, p) => s + p.realized, 0);
+  const priced = pos.every(p => p.qty === 0 || p.price != null);
+  const sum = el("section", "guide"); sum.appendChild(el("h3", null, "Carteira"));
+  const tiles = el("div", "tiles fin-tiles");
+  const tile = (label, num, sub, mod) => { const t = el("div", "tile" + (mod ? " " + mod : "")); t.append(el("span", "tile-label", label), el("span", "tile-num money", num)); if (sub) t.appendChild(el("span", "tile-sub", sub)); return t; };
+  tiles.append(tile("Patrimônio", brl(val), priced ? "pela última cotação" : "sem cotação em parte dos ativos"),
+    tile("Investido", brl(cost), "custo pelo preço médio"),
+    tile("Rendimento", brl(val - cost), cost ? pctf((val - cost) / cost) + " de valorização" : "", val - cost >= 0 ? "good" : "bad"),
+    tile("Dividendos", brl(divs), "reinvestidos; do seu bolso: " + brl(Math.max(0, cost - divs))));
+  sum.appendChild(tiles);
+  if (cost) sum.appendChild(el("p", "note", "Retorno total (valorização + dividendos" + (real ? " + vendas" : "") + "): " + brl(val - cost + divs + real) + " (" + pctf((val - cost + divs + real) / cost) + ")."));
+  const qb = el("div", "btns"); const qbtn = el("button", "btn", "Atualizar cotações"); qbtn.type = "button"; qbtn.id = "quotes";
+  const qm = el("p", "note muted"); qm.id = "quote-msg"; qm.setAttribute("aria-live", "polite");
+  qbtn.addEventListener("click", () => refreshQuotes(qm)); qb.appendChild(qbtn); sum.append(qb, qm);
+  const tk = el("details", "tok"); tk.appendChild(el("summary", null, "Token da brapi (cotações automáticas)"));
+  tk.appendChild(el("p", "note muted", "Sem token, a brapi só libera PETR4, VALE3, MGLU3 e ITUB4. Crie um token gratuito em brapi.dev e cole aqui; ele fica salvo só neste celular."));
+  const ti = el("input"); ti.id = "brapi-token"; ti.placeholder = "Cole o token"; ti.value = fin.invest.token || ""; ti.className = "search";
+  ti.addEventListener("change", () => { fin.invest.token = ti.value.trim(); saveFin(); });
+  tk.appendChild(ti); sum.appendChild(tk);
+  main.appendChild(sum);
+
+  if (pos.length) {
+    const ps = el("div", "pos-list");
+    pos.forEach(p => {
+      const c = el("section", "card pos"); c.id = "pos-" + p.ticker;
+      const top = el("div", "meta"); top.append(el("span", "pos-t", p.ticker), el("span", "last", fmtNum(p.qty) + " ações · PM " + brl(p.pm)));
+      if (p.gainPct != null) top.appendChild(el("span", "st " + (p.gain >= 0 ? "ok" : "pend"), (p.gain >= 0 ? "+" : "") + pctf(p.gainPct)));
+      c.appendChild(top);
+      const g = el("div", "pos-grid");
+      const cell = (l, v) => { const d = el("div"); d.append(el("span", "tile-label", l), el("span", "pos-v", v)); g.appendChild(d); };
+      cell("Investido", brl(p.cost)); cell("Valor atual", p.value != null ? brl(p.value) : "—");
+      cell("Resultado", p.gain != null ? brl(p.gain) : "—"); cell("Dividendos", brl(p.divs));
+      c.appendChild(g);
+      const pr = el("div", "count-row"); const pl = el("label", "field-l", "Cotação (R$)" + (p.quoteAt ? " · " + fmtDate(p.quoteAt.slice(0, 10)).slice(0, 5) : "")); pl.htmlFor = "px-" + p.ticker;
+      const pi = el("input", "count-in wide"); pi.id = "px-" + p.ticker; pi.inputMode = "decimal"; pi.value = p.price != null ? fmtNum(p.price) : ""; pi.placeholder = "0,00";
+      pi.addEventListener("change", () => { const v = parseMoney(pi.value); if (v > 0) fin.invest.quotes[p.ticker] = { price: v, at: new Date().toISOString(), src: "manual" }; else delete fin.invest.quotes[p.ticker]; saveFin(); renderFin(); });
+      pr.append(pl, pi); c.appendChild(pr);
+      ps.appendChild(c);
+    });
+    main.appendChild(ps);
+    if (val > 0) { const al = el("section", "guide"); al.appendChild(el("h3", null, "Alocação")); al.appendChild(hbars(pos.filter(p => p.qty > 0).map(p => ({ label: p.ticker, value: p.value != null ? p.value : p.cost })), val)); main.appendChild(al); }
+  }
+
+  // nova operação
+  const op = el("section", "guide"); op.appendChild(el("h3", null, "Registrar operação"));
+  const st = finUI.opType || "compra";
+  op.appendChild(chipGroup("Tipo", [["compra", "Compra"], ["venda", "Venda"], ["dividendo", "Dividendos reinvestidos"]], st, v => { finUI.opType = v; renderFin(); }, "op"));
+  const form = el("form", "inputs two"); form.id = "op-form";
+  const mk = (id, label, ph, mode, type) => { const f = el("div", "field"); const l = el("label", null, label); l.htmlFor = id; const i = el("input"); i.id = id; i.placeholder = ph || ""; if (mode) i.inputMode = mode; if (type) i.type = type; f.append(l, i); form.appendChild(f); return i; };
+  const tI = mk("op-ticker", "Código da ação", "Ex.: PETR4"); tI.setAttribute("list", "tick-list"); tI.autocapitalize = "characters";
+  const dI = mk("op-date", "Data", "", null, "date"); dI.value = todayISO();
+  let qI, pI, vI;
+  if (st === "dividendo") vI = mk("op-value", "Valor reinvestido no ciclo (R$)", "0,00", "decimal");
+  else { qI = mk("op-qty", "Quantidade", "0", "decimal"); pI = mk("op-price", "Preço por ação (R$)", "0,00", "decimal"); }
+  const dl = el("datalist"); dl.id = "tick-list"; positions().forEach(p => { const o = el("option"); o.value = p.ticker; dl.appendChild(o); }); op.appendChild(dl);
+  const om = el("p", "note"); om.setAttribute("aria-live", "polite"); om.id = "op-msg";
+  const sb = el("button", "btn", "Registrar"); sb.type = "submit"; sb.id = "op-save"; sb.setAttribute("form", "op-form");
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    const tick = tI.value.trim().toUpperCase().replace(/\s/g, "");
+    if (!/^[A-Z0-9]{4,7}$/.test(tick)) { om.textContent = "Digite um código válido, como PETR4 ou BOVA11."; return; }
+    if (!dI.value) { om.textContent = "Escolha a data."; return; }
+    const o = { id: uid(), date: dI.value, ticker: tick, type: st };
+    if (st === "dividendo") { o.value = parseMoney(vI.value); if (!(o.value > 0)) { om.textContent = "Informe o valor dos dividendos."; return; } }
+    else {
+      o.qty = parseMoney(qI.value); o.price = parseMoney(pI.value);
+      if (!(o.qty > 0) || !(o.price > 0)) { om.textContent = "Informe quantidade e preço."; return; }
+      if (st === "venda") { const p = positions().find(x => x.ticker === tick); if (!p || p.qty < o.qty) { om.textContent = "Você não tem essa quantidade de " + tick + " na carteira."; return; } }
+    }
+    fin.invest.ops.push(o); saveFin(); renderFin();
+  });
+  op.append(form, (() => { const b = el("div", "btns"); b.appendChild(sb); return b; })(), om);
+  main.appendChild(op);
+
+  if (fin.invest.ops.length) {
+    const hs = el("section", "guide"); hs.appendChild(el("h3", null, "Histórico de operações"));
+    const ul = el("div", "ops");
+    fin.invest.ops.slice().sort((a, b) => a.date < b.date ? 1 : -1).forEach(o => {
+      const r = el("div", "op-row");
+      const txt = o.type === "dividendo" ? "Dividendos reinvestidos · " + brl(o.value) : (o.type === "compra" ? "Compra" : "Venda") + " · " + fmtNum(o.qty) + " × " + brl(o.price) + " = " + brl(o.qty * o.price);
+      r.append(el("span", "last", fmtDate(o.date)), el("span", "pos-t sm", o.ticker), el("span", null, txt));
+      const x = el("button", "step wide", finUI.confirm === o.id ? "Confirmar" : "Excluir"); x.type = "button"; x.id = "opdel-" + o.id;
+      x.addEventListener("click", () => { if (finUI.confirm !== o.id) { finUI.confirm = o.id; renderFin(); return; } fin.invest.ops = fin.invest.ops.filter(y => y.id !== o.id); finUI.confirm = null; saveFin(); renderFin(); });
+      r.appendChild(x); ul.appendChild(r);
+    });
+    hs.appendChild(ul); main.appendChild(hs);
+  }
+}
+
 /* ---------- Tela inicial (módulos) ---------- */
 const WEEKDAYS = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
 const ICONS = {
@@ -1358,7 +2139,7 @@ const MODULES = [
   { id: "inteligencia", name: "Inteligência", ready: true, desc: "Estudos, cronômetros e metas" },
   { id: "estamina", name: "Estamina", ready: false },
   { id: "forca", name: "Força", ready: true, desc: "Treinos, cargas e evolução" },
-  { id: "financas", name: "Finanças", ready: false }
+  { id: "financas", name: "Finanças", ready: true, desc: "Gastos, relatório e investimentos" }
 ];
 const expanded = new Set();
 
@@ -1377,8 +2158,8 @@ function forcaTasks() {
     go: () => enterForca(w.id) }] };
 }
 
-function moduleTasks(id) { return id === "forca" ? forcaTasks() : id === "inteligencia" ? intelTasks() : { tasks: [] }; }
-function enterModule(id, tab) { if (id === "forca") enterForca(tab); else if (id === "inteligencia") enterIntel(tab); }
+function moduleTasks(id) { return id === "forca" ? forcaTasks() : id === "inteligencia" ? intelTasks() : id === "financas" ? finTasks() : { tasks: [] }; }
+function enterModule(id, tab) { if (id === "forca") enterForca(tab); else if (id === "inteligencia") enterIntel(tab); else if (id === "financas") enterFin(tab); }
 
 function moduleStatus(m) {
   if (!m.ready) return { cls: "", text: "Em breve" };
@@ -1482,9 +2263,11 @@ window.addEventListener("hashchange", () => {
   const h = location.hash.replace("#", "");
   if (h === "inicio" || h === "") { if (state.view !== "home") renderHome(); return; }
   if (INTEL_TABS.some(t => t.id === h)) { if (state.view !== "intel" || h !== state.itab) enterIntel(h); return; }
+  if (FIN_TABS.some(t => t.id === h)) { if (state.view !== "fin" || h !== state.ftab) enterFin(h); return; }
   if (profileId && TABS.some(t => t.id === h) && (state.view !== "forca" || h !== state.tab)) enterForca(h);
 });
 loadIntel();
+loadFin();
 const savedProfile = readProfile();
 if (savedProfile) loadProfile(savedProfile);
 history.replaceState(null, "", "#inicio");

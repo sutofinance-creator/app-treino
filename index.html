@@ -1941,7 +1941,10 @@ function suggestFor(t) {
     const first = k.split(" ")[0];
     if (first && first.length >= 4) { const hit = Object.keys(fin.rules).find(x => x.split(" ")[0] === first && fin.rules[x].dir === t.dir); if (hit) r = fin.rules[hit]; }
   }
-  return r && r.dir === t.dir ? r : null;
+  if (r && r.dir === t.dir) return r;
+  // pagamento da fatura: é transferência (as compras do cartão já entram uma a uma), para não contar o gasto duas vezes
+  if (/pagamento (de |da )?fatura|pagamento recebido|pgto\.? fatura|pag\.? fatura/i.test((t.memo || "") + " " + t.desc)) return { cat: "Fatura do cartão", item: "Fatura do cartão", kind: "transferencia", dir: t.dir };
+  return null;
 }
 function isComplete(t) {
   if (!t.cat || !t.kind) return false;
@@ -2157,17 +2160,20 @@ async function ofRequest(path) {
 async function syncOF() {
   if (!ofReady() || finSyncing) return null;
   finSyncing = true;
-  const from = fin.of.lastTo ? addDaysISO(fin.of.lastTo, -7) : (fin.of.from || ofDefaultFrom());
+  // v2: o servidor passou a trazer as compras da fatura aberta do cartão; na primeira sincronização depois disso, busca o período todo de novo
+  const full = (fin.of.v || 1) < 2;
+  const from = fin.of.lastTo && !full ? addDaysISO(fin.of.lastTo, -7) : (fin.of.from || ofDefaultFrom());
   try {
     const data = await ofRequest("/transactions?from=" + from);
     const list = (data.transactions || []).filter(t => t.date && typeof t.amount === "number" && t.amount !== 0).map(t => ({
       id: uid(), extId: "pluggy:" + t.id, date: t.date, desc: cleanDesc(t.description), memo: t.description,
-      amount: Math.abs(t.amount), dir: t.type === "CREDIT" ? "in" : "out",
+      amount: Math.abs(t.amount), dir: t.direction || (t.accountType === "CREDIT" ? (t.amount > 0 ? "out" : "in") : (t.type === "CREDIT" ? "in" : "out")),
       bank: t.accountType === "CREDIT" ? "Cartão " + (t.accountName || "") : (t.accountName || ""),
       method: t.accountType === "CREDIT" ? "Cartão de Crédito" : (pmLabel(t.paymentMethod) || methodFrom(t.description)),
       source: "openfinance", status: "pending" }));
     const r = mergeTx(list);
     Object.assign(fin.of, { last: new Date().toISOString(), lastTo: data.to || todayISO(), err: "", lastAdded: r.added });
+    if (full && (data.transactions || []).some(t => t.direction)) fin.of.v = 2;
     saveFin();
     return r;
   } catch (e) {

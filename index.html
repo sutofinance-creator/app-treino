@@ -1178,6 +1178,7 @@ function intelTasks() {
 
 /* ---------- Inteligência: telas ---------- */
 function enterIntel(tab, focusSid) {
+  if (!modAllowed("inteligencia")) { goHome(); return; }
   state.view = "intel"; document.body.dataset.view = "intel";
   document.getElementById("crumb").textContent = "/ Inteligência";
   state.idate = todayISO();
@@ -1639,6 +1640,7 @@ function staminaTasks() {
 
 /* ---------- telas ---------- */
 function enterStamina(tab, focus) {
+  if (!modAllowed("estamina")) { goHome(); return; }
   state.view = "est"; document.body.dataset.view = "est";
   document.getElementById("crumb").textContent = "/ Estamina";
   state.sdate = todayISO();
@@ -2727,12 +2729,12 @@ function renderHome() {
   main.appendChild(head);
   if (!loggedIn()) {
     const bn = el("section", "guide login-cta");
-    bn.append(el("h3", null, "Leve seus dados para qualquer aparelho"), el("p", "note", "Entre na sua conta para salvar treinos, cardio, estudos e finanças na nuvem e abrir tudo no celular ou no computador."));
+    bn.append(el("h3", null, "Leve seus dados para qualquer aparelho"), el("p", "note", "Entre na sua conta para salvar seus dados na nuvem e abrir tudo no celular ou no computador."));
     const bb = el("div", "btns"); const b = el("button", "btn", "Entrar ou criar conta"); b.type = "button"; b.id = "cta-login"; b.addEventListener("click", () => enterConta()); bb.appendChild(b); bn.appendChild(bb);
     main.appendChild(bn);
   }
   const grid = el("div", "mods");
-  MODULES.forEach(m => grid.appendChild(buildModule(m)));
+  MODULES.filter(m => modAllowed(m.id)).forEach(m => grid.appendChild(buildModule(m)));
   main.appendChild(grid);
 }
 
@@ -2823,6 +2825,20 @@ function loadCloud() {
 }
 function saveCloud() { try { if (cloud) _lsSet.call(localStorage, CLOUD_KEY, JSON.stringify(cloud)); else localStorage.removeItem(CLOUD_KEY); } catch (e) {} }
 function loggedIn() { return !!(cloud && cloud.token); }
+// Quem não é o dono (ou está sem conta) vê só Força e Finanças. Quem decide é o servidor, na resposta do login e da sincronização.
+const BASIC_MODS = ["forca", "financas"];
+function allowedModules() { return loggedIn() && Array.isArray(cloud.modules) ? cloud.modules : BASIC_MODS; }
+function modAllowed(id) { return allowedModules().includes(id); }
+function setModules(list) {
+  if (!loggedIn() || !Array.isArray(list)) return;
+  const before = JSON.stringify(allowedModules());
+  cloud.modules = list.filter(x => MODULES.some(m => m.id === x)); saveCloud();
+  if (JSON.stringify(allowedModules()) !== before) {
+    if ((state.view === "intel" && !modAllowed("inteligencia")) || (state.view === "est" && !modAllowed("estamina"))) goHome();
+    else if (state.view === "home") renderHome();
+    else if (state.view === "conta") renderConta();
+  }
+}
 function cloudServer() { return String((cloud && cloud.server) || DEFAULT_SERVER).trim().replace(/\/+$/, ""); }
 Storage.prototype.setItem = function (k, v) {
   _lsSet.call(this, k, v);
@@ -2865,6 +2881,7 @@ async function cloudPull() {
   if (Object.keys(cloud.dirty).length) await cloudPush();
   try {
     const r = await cloudFetch("GET", "/sync?since=" + (cloud.last || 0));
+    setModules(r.modules);
     const items = (r.items || []).filter(it => it.rev > (cloud.revs[it.key] || 0) && !cloud.dirty[it.key]);
     if (items.length) { applyRemote(items); cloudStatus("Sincronizado", "ok"); return true; }
     cloudStatus("Sincronizado", "ok"); return false;
@@ -2890,6 +2907,7 @@ function rerenderView() {
   if (v === "home") renderHome();
   else if (v === "conta") renderConta();
   else if (v === "forca") { if (!profileId) renderChooser(); else if (!TABS.some(t => t.id === state.tab)) enterForca(); else { renderTabs(); renderMain(); } }
+  else if ((v === "intel" && !modAllowed("inteligencia")) || (v === "est" && !modAllowed("estamina"))) goHome();
   else if (v === "intel") { if (!intel) renderIntelSetup(); else { renderTabs(); renderIntel(); } }
   else if (v === "fin") { renderTabs(); renderFin(); }
   else if (v === "est") { renderTabs(); renderStamina(); }
@@ -2914,7 +2932,7 @@ async function passKey(user, pass) {
 async function doAuth(mode, server, user, pass, code) {
   const key = await passKey(user, pass);
   const data = await cloudFetch("POST", "/auth/" + mode, { user, key, code }, server, true);
-  cloud = { server, user: data.user, token: data.token, revs: {}, dirty: {}, last: 0 };
+  cloud = { server, user: data.user, token: data.token, revs: {}, dirty: {}, last: 0, modules: Array.isArray(data.modules) ? data.modules : null };
   saveCloud(); updateAcct();
   const remote = await cloudFetch("GET", "/sync?since=0");
   const items = remote.items || [];
@@ -3005,7 +3023,7 @@ function enterConta() {
 }
 function renderConta() {
   const main = document.getElementById("main"); main.innerHTML = "";
-  head2(main, "Conta", "Com a conta, seus treinos, cardio, estudos e finanças ficam salvos na nuvem e aparecem em qualquer aparelho em que você entrar.");
+  head2(main, "Conta", "Com a conta, seus dados ficam salvos na nuvem e aparecem em qualquer aparelho em que você entrar.");
   const flashBox = el("p", "note"); flashAuto(flashBox, cloudUI.msg); if (cloudUI.kind) flash(flashBox, cloudUI.msg, cloudUI.kind);
   if (cloudUI.pending && loggedIn()) {
     const s = el("section", "guide");
@@ -3026,6 +3044,7 @@ function renderConta() {
   if (loggedIn()) {
     const s = el("section", "guide");
     s.append(el("h3", null, "Conectado como " + cloud.user));
+    s.appendChild(el("p", "note muted", "Acesso: " + (modAllowed("inteligencia") ? "todos os módulos." : "módulos Força e Finanças.")));
     const st = el("p", "note"); st.id = "cloud-state";
     if (cloud.err) flash(st, cloud.err, "err"); else st.textContent = Object.keys(cloud.dirty).length ? "Há alterações esperando para subir para a nuvem." : "Tudo sincronizado. As alterações sobem sozinhas alguns segundos depois de feitas.";
     s.appendChild(st);

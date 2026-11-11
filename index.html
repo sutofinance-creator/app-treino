@@ -353,6 +353,10 @@ body[data-view="conta"] header.top { padding-bottom: 8px; }
 .breath.out .breath-dot { transform: scale(.5); }
 .breath-t { position: relative; font: 700 20px var(--font-display); letter-spacing: .14em; text-transform: uppercase; }
 @media (prefers-reduced-motion: reduce) { .breath-dot { transition: none; } }
+
+/* ---------- Conexão com o banco ---------- */
+ol.steps { margin: 8px 0 4px; padding-left: 20px; display: grid; gap: 6px; font-size: 15px; }
+ol.steps a { color: var(--accent); }
 </style>
 </head>
 <body data-view="home">
@@ -767,7 +771,7 @@ function flashAuto(n, text) {
   let k = "info";
   if (/^(Não|Erro|Falha|Arquivo inválido|Gere |Cole |Preencha|Digite|Informe|Escolha a data|Você não tem|Dê um nome|O arquivo não tinha|Nenhuma ação)/.test(t)) k = "err";
   else if (/^0 /.test(t)) k = "info";
-  else if (/^(Conectado|Backup importado|Token copiado|\d+ lançamento|\d+ cotação|Lançamento adicionado)/.test(t)) k = "ok";
+  else if (/^(Conectado|Backup importado|Token copiado|\d+ lançamento|\d+ cotação|Lançamento adicionado|Banco conectado|Conexão removida)/.test(t)) k = "ok";
   flash(n, t, k);
 }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -2147,13 +2151,19 @@ async function refreshQuotes(msgEl) {
 
 /* ---------- Open Finance (via Cloudflare Worker + MeuPluggy) ---------- */
 let finSyncing = false;
-function ofReady() { return !!(fin.of && fin.of.url && fin.of.token); }
+// Com conta: a conexão é feita pelo servidor da conta (cada pessoa liga o próprio Meu Pluggy). Sem conta: modo antigo, com endereço e token.
+function ofLegacy() { return !!(fin.of && fin.of.url && fin.of.token); }
+function ofReady() { return loggedIn() ? fin.of.linked !== 0 : ofLegacy(); }
 function ofBase() { return String(fin.of.url || "").trim().replace(/\/+$/, ""); }
 function addDaysISO(iso, n) { const [y, m, d] = iso.split("-").map(Number); return ymd(new Date(y, m - 1, d + n)); }
 function ofDefaultFrom() { const ds = fin.tx.map(t => t.date).sort(); if (ds.length) return ds[ds.length - 1]; const d = new Date(); return ymd(new Date(d.getFullYear(), d.getMonth() - 1, 1)); }
 function pmLabel(p) { return ({ PIX: "Pix", BOLETO: "Boleto", TED: "Transferência", DOC: "Transferência", TEF: "Transferência", DEBITO: "Débito", DEBIT: "Débito" })[String(p || "").toUpperCase()] || ""; }
 function newToken() { const a = new Uint8Array(24); crypto.getRandomValues(a); return Array.from(a, b => b.toString(16).padStart(2, "0")).join(""); }
 async function ofRequest(path) {
+  if (loggedIn()) {
+    try { return await cloudFetch("GET", "/of" + path); }
+    catch (e) { if (!(ofLegacy() && (e.status === 401 || e.status === 404))) throw e; }
+  }
   const res = await fetch(ofBase() + path, { headers: { Authorization: "Bearer " + fin.of.token } });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || ("o servidor respondeu " + res.status));
@@ -2175,6 +2185,7 @@ async function syncOF() {
       source: "openfinance", status: "pending" }));
     const r = mergeTx(list);
     Object.assign(fin.of, { last: new Date().toISOString(), lastTo: data.to || todayISO(), err: "", lastAdded: r.added });
+    if (typeof data.items === "number") fin.of.linked = data.items;
     if (full && (data.transactions || []).some(t => t.direction)) fin.of.v = 2;
     saveFin();
     return r;
@@ -2184,15 +2195,119 @@ async function syncOF() {
 }
 function maybeAutoSync() {
   if (!ofReady() || finSyncing) return;
+  if (loggedIn() && fin.of.linked == null && !ofLegacy()) return;
   const last = fin.of.last ? Date.parse(fin.of.last) : 0;
   if (Date.now() - last < 3 * 3600 * 1000) return;
   syncOF().then(r => { if (r && r.added) { if (state.view === "home") renderHome(); else if (state.view === "fin") renderFin(); } }).catch(() => { if (state.view === "fin") renderFin(); });
 }
 function fmtStamp(iso) { const d = new Date(iso); return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + " às " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
 
+let ofBanks = null, ofBanksLoading = false, ofStatusErr = "";
+async function refreshBanks() {
+  if (!loggedIn() || ofBanksLoading) return;
+  ofBanksLoading = true;
+  try { const d = await cloudFetch("GET", "/of/status"); ofBanks = d.items || []; ofStatusErr = ""; if (fin.of.linked !== ofBanks.length) { fin.of.linked = ofBanks.length; saveFin(); } }
+  catch (e) { ofStatusErr = e.status === 401 || e.status === 404 ? "O servidor ainda não tem a conexão por conta: falta atualizar o Worker." : "Não consegui ver suas conexões: " + e.message; }
+  finally { ofBanksLoading = false; }
+  if (state.view === "fin") renderFin();
+}
+function loadPluggy() {
+  return new Promise((res, rej) => {
+    if (window.PluggyConnect) return res();
+    const sc = document.createElement("script"); sc.src = "https://cdn.pluggy.ai/pluggy-connect/latest/pluggy-connect.js";
+    sc.onload = () => res(); sc.onerror = () => rej(new Error("não consegui abrir a tela da Pluggy. Confira a internet."));
+    document.head.appendChild(sc);
+  });
+}
+async function connectBank(msg, btn) {
+  btn.disabled = true; flash(msg, "Abrindo a conexão…", "info");
+  try {
+    const tk = await cloudFetch("POST", "/of/connect", {});
+    await loadPluggy();
+    const opts = { connectToken: tk.accessToken, includeSandbox: false,
+      onSuccess: async data => {
+        const id = data && data.item && data.item.id;
+        if (!id) { flash(msg, "A Pluggy não devolveu a conexão. Tente de novo.", "err"); return; }
+        try {
+          await cloudFetch("POST", "/of/items", { itemId: id });
+          fin.of.linked = Math.max(1, (fin.of.linked || 0) + 1); fin.of.v = 2; if (!fin.of.from) fin.of.from = ofDefaultFrom(); saveFin();
+          finUI.msg = "Banco conectado. Buscando os lançamentos…"; renderFin();
+          await refreshBanks();
+          syncOF().then(r => { finUI.msg = r ? "Banco conectado. " + r.added + " lançamento(s) novo(s)." : ""; renderFin(); }).catch(() => renderFin());
+        } catch (e) { flash(msg, "Não consegui salvar a conexão: " + e.message, "err"); }
+      },
+      onError: err => { flash(msg, "A conexão não foi concluída: " + ((err && (err.message || (err.data && err.data.message))) || "tente de novo") + ".", "err"); },
+      onClose: () => { btn.disabled = false; } };
+    if (tk.connectorId) opts.selectedConnectorId = tk.connectorId;
+    new window.PluggyConnect(opts).init();
+    flashAuto(msg, "");
+  } catch (e) { btn.disabled = false; flash(msg, "Não deu certo: " + e.message, "err"); }
+}
+function ofAccountSection(s) {
+  if (ofBanks === null && !ofBanksLoading && !ofStatusErr) refreshBanks();
+  if (fin.of.err) { const e = el("p", "note"); flash(e, fin.of.err, "err"); s.appendChild(e); }
+  if (ofStatusErr) { const e = el("p", "note"); flash(e, ofStatusErr, "err"); s.appendChild(e); }
+  const banks = ofBanks || [];
+  if (ofBanks === null && !ofStatusErr) s.appendChild(el("p", "note muted", "Carregando suas conexões…"));
+  const ST = { UPDATED: ["Atualizado", "ok"], UPDATING: ["Atualizando", ""], OUTDATED: ["Precisa reconectar", "pend"], LOGIN_ERROR: ["Precisa reconectar", "pend"], WAITING_USER_INPUT: ["Aguardando você", "pend"] };
+  banks.forEach(b => {
+    const row = el("div", "subj-sum"); row.id = "bank-" + b.id;
+    const top = el("div", "meta"); const st = ST[b.status] || [b.status ? b.status.toLowerCase() : "", ""];
+    top.append(el("span", "presc", b.connector || "Banco")); if (st[0]) top.appendChild(el("span", "st " + st[1], st[0]));
+    row.appendChild(top);
+    row.appendChild(el("p", "ex-note", (b.accounts || []).map(a => a.name + (a.type === "CREDIT" ? " (cartão)" : "")).join(" · ") || "Nenhuma conta encontrada ainda."));
+    if (b.removable) {
+      const rm = el("button", "btn danger", finUI.confirm === "bank-" + b.id ? "Confirmar remoção" : "Remover"); rm.type = "button"; rm.id = "bank-rm-" + b.id;
+      rm.addEventListener("click", async () => {
+        if (finUI.confirm !== "bank-" + b.id) { finUI.confirm = "bank-" + b.id; renderFin(); return; }
+        finUI.confirm = null; rm.disabled = true;
+        try { await cloudFetch("DELETE", "/of/items?id=" + encodeURIComponent(b.id)); finUI.msg = "Conexão removida. Os lançamentos já importados continuam aqui."; ofBanks = null; await refreshBanks(); }
+        catch (e) { finUI.msg = "Não consegui remover: " + e.message; renderFin(); }
+      });
+      const rb = el("div", "btns"); rb.appendChild(rm); row.appendChild(rb);
+    }
+    s.appendChild(row);
+  });
+  if (banks.length) {
+    s.appendChild(el("p", "note", fin.of.last ? "Última sincronização: " + fmtStamp(fin.of.last) + (fin.of.lastAdded != null ? " · " + fin.of.lastAdded + " novo(s)" : "") + ". O banco atualiza os dados uma vez por dia." : "Toque em Sincronizar para buscar os lançamentos."));
+  }
+  const b = el("div", "btns");
+  if (banks.length) {
+    const go = el("button", "btn", finSyncing ? "Sincronizando…" : "Sincronizar agora"); go.type = "button"; go.id = "of-sync"; go.disabled = finSyncing;
+    go.addEventListener("click", () => { go.disabled = true; go.textContent = "Sincronizando…"; syncOF().then(r => { finUI.msg = r ? r.added + " lançamento(s) novo(s) do banco." : ""; renderFin(); }).catch(() => renderFin()); });
+    b.appendChild(go);
+  }
+  const cn = el("button", "btn", banks.length ? "Conectar outro banco" : "Conectar banco"); cn.type = "button"; cn.id = "of-connect";
+  const msg = el("p", "note"); msg.id = "of-msg"; msg.setAttribute("aria-live", "polite");
+  cn.addEventListener("click", () => connectBank(msg, cn));
+  b.appendChild(cn); s.append(b, msg);
+  const how = el("details", "tok"); how.open = !banks.length;
+  how.appendChild(el("summary", null, "Como conectar"));
+  const ol = el("ol", "steps");
+  const li1 = el("li"); li1.append("Crie sua conta grátis no ", (() => { const a = el("a", null, "Meu Pluggy ↗"); a.href = "https://meu.pluggy.ai"; a.target = "_blank"; a.rel = "noopener"; return a; })(), " e conecte seu banco lá. O próprio banco pede a sua autorização pelo Open Finance.");
+  ol.append(li1, el("li", null, "Volte aqui, toque em Conectar banco e entre com a sua conta do Meu Pluggy."), el("li", null, "Pronto: os lançamentos chegam sozinhos, uma vez por dia. Tem mais de um banco no Meu Pluggy? Repita o passo 2 para cada um."));
+  how.appendChild(ol);
+  how.appendChild(el("p", "note muted", "Seus dados bancários ficam só na sua conta do STEK. Você pode remover a conexão aqui ou cancelar a autorização no Meu Pluggy quando quiser."));
+  s.appendChild(how);
+  const adv = el("details", "tok");
+  adv.appendChild(el("summary", null, "Data de início"));
+  const f2 = el("div", "field"); const l2 = el("label", null, "Buscar lançamentos a partir de"); l2.htmlFor = "of-from";
+  const fr = el("input"); fr.id = "of-from"; fr.type = "date"; fr.value = fin.of.from || ofDefaultFrom();
+  fr.addEventListener("change", () => { if (fr.value) { fin.of.from = fr.value; fin.of.v = 1; saveFin(); } });
+  f2.append(l2, fr); adv.appendChild(f2);
+  adv.appendChild(el("p", "note muted", "Na próxima sincronização o app busca de novo a partir dessa data, sem repetir lançamentos que já estão aqui."));
+  s.appendChild(adv);
+  return s;
+}
 function ofSection() {
   const s = el("section", "guide of");
   s.appendChild(el("h3", null, "Conexão com o banco"));
+  if (loggedIn()) return ofAccountSection(s);
+  if (!ofLegacy()) {
+    s.appendChild(el("p", "note muted", "Com a conexão, os lançamentos do seu banco e do cartão chegam aqui sozinhos, uma vez por dia. Para conectar, entre na sua conta."));
+    const b = el("div", "btns"); const go = el("button", "btn", "Entrar ou criar conta"); go.type = "button"; go.id = "of-login"; go.addEventListener("click", () => enterConta()); b.appendChild(go); s.appendChild(b);
+    return s;
+  }
   if (ofReady()) {
     const line = fin.of.err ? el("p", "note flash err", fin.of.err) : el("p", "note", fin.of.last ? "Open Finance ativo. Última sincronização: " + fmtStamp(fin.of.last) + (fin.of.lastAdded != null ? " · " + fin.of.lastAdded + " novo(s)" : "") + ". Os dados do banco são atualizados uma vez por dia." : "Open Finance configurado. Toque em Sincronizar para buscar os lançamentos.");
     line.id = "of-status"; s.appendChild(line);
@@ -2255,6 +2370,7 @@ function finTasks() {
 /* ---------- navegação ---------- */
 function enterFin(tab) {
   state.view = "fin"; document.body.dataset.view = "fin";
+  ofBanks = null; ofStatusErr = "";
   document.getElementById("crumb").textContent = "/ Finanças";
   state.ftab = FIN_TABS.some(t => t.id === tab) ? tab : ((!fin.tx.length || fin.tx.some(t => t.status !== "done")) ? "fin-pendentes" : "fin-relatorio");
   history.replaceState(null, "", "#" + state.ftab);

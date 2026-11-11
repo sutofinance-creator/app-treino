@@ -2475,8 +2475,16 @@ async function cloudStartup() {
   maybeAutoSync();
 }
 function localHasData() { return SYNC_KEYS.some(k => k !== "treino-perfil" && localStorage.getItem(k) != null); }
+async function passKey(user, pass) {
+  // A senha nunca sai do aparelho: mandamos só uma chave derivada dela (PBKDF2, 250 mil rodadas).
+  const enc = new TextEncoder();
+  const base = await crypto.subtle.importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: enc.encode("stek-login|" + user), iterations: 250000 }, base, 256);
+  return [...new Uint8Array(bits)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
 async function doAuth(mode, server, user, pass, code) {
-  const data = await cloudFetch("POST", "/auth/" + mode, { user, pass, code }, server, true);
+  const key = await passKey(user, pass);
+  const data = await cloudFetch("POST", "/auth/" + mode, { user, key, code }, server, true);
   cloud = { server, user: data.user, token: data.token, revs: {}, dirty: {}, last: 0 };
   saveCloud(); updateAcct();
   const remote = await cloudFetch("GET", "/sync?since=0");

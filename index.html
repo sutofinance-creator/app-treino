@@ -2619,7 +2619,7 @@ function renderConta() {
   s.appendChild(tabs);
   const form = el("form", "inputs one"); form.id = "auth-form";
   const fld = (id, label, type, ac, ph) => { const f = el("div", "field"); const l = el("label", null, label); l.htmlFor = id; const i = el("input"); i.id = id; i.type = type; i.autocomplete = ac; if (ph) i.placeholder = ph; f.append(l, i); form.appendChild(f); return i; };
-  const u = fld("acc-user", "Usuário", "text", "username", "ex.: akio"); u.autocapitalize = "none";
+  const u = fld("acc-user", "Usuário (sem espaços)", "text", "username", "ex.: akio.suto"); u.autocapitalize = "none"; u.spellcheck = false;
   const p1 = fld("acc-pass", "Senha", "password", cloudUI.mode === "login" ? "current-password" : "new-password", cloudUI.mode === "login" ? "" : "pelo menos 8 caracteres");
   let p2, code;
   if (cloudUI.mode === "register") { p2 = fld("acc-pass2", "Confirme a senha", "password", "new-password"); code = fld("acc-code", "Código de convite", "text", "off", "peça ao dono do app"); }
@@ -2634,6 +2634,12 @@ function renderConta() {
     e.preventDefault();
     const user = u.value.trim().toLowerCase(), pass = p1.value, server = sv.value.trim().replace(/\/+$/, "");
     if (!user || !pass) { flash(flashBox, "Preencha usuário e senha.", "err"); return; }
+    if (!/^[a-z0-9._-]{3,30}$/.test(user)) {
+      const sug = user.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ".").replace(/[^a-z0-9._-]/g, "").slice(0, 30);
+      flash(flashBox, "O usuário não pode ter espaços, acentos ou maiúsculas." + (sug.length >= 3 ? " Que tal " + sug + "? Já deixei preenchido." : " Use de 3 a 30 letras, números, ponto, hífen ou underline."), "err");
+      if (sug.length >= 3) u.value = sug;
+      return;
+    }
     if (cloudUI.mode === "register") {
       if (pass.length < 8) { flash(flashBox, "A senha precisa ter pelo menos 8 caracteres.", "err"); return; }
       if (pass !== p2.value) { flash(flashBox, "As senhas não conferem.", "err"); return; }

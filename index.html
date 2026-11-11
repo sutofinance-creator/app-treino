@@ -316,6 +316,7 @@ details.imp[open] { gap: 10px; }
 .count-in.wide { width: 120px; }
 .ops { display: grid; gap: 8px; }
 .err-t { color: var(--bad); }
+.inputs.one { grid-template-columns: 1fr; }
 .of h3 { margin-bottom: 2px; }
 .op-row { display: grid; grid-template-columns: auto auto 1fr auto; gap: 10px; align-items: center; font-size: 14px; padding-bottom: 8px; border-bottom: 1px dashed var(--line); }
 @media (max-width: 460px) { .op-row { grid-template-columns: auto 1fr auto; } .op-row > span:nth-child(3) { grid-column: 1 / -1; grid-row: 2; } }
@@ -1749,7 +1750,7 @@ function ofSection() {
   } else s.appendChild(el("p", "note muted", "Ainda não configurada. Com ela, os lançamentos do Nubank chegam aqui sozinhos, uma vez por dia."));
   const cfg = el("details", "tok"); cfg.open = !!finUI.ofOpen; cfg.addEventListener("toggle", () => { finUI.ofOpen = cfg.open; });
   cfg.appendChild(el("summary", null, ofReady() ? "Ajustes da conexão" : "Configurar conexão"));
-  const grid = el("div", "inputs two");
+  const grid = el("div", "inputs one");
   const f1 = el("div", "field"); const l1 = el("label", null, "Endereço do servidor (Worker)"); l1.htmlFor = "of-url";
   const u = el("input"); u.id = "of-url"; u.placeholder = "https://stek-pluggy.SEU-USUARIO.workers.dev"; u.value = fin.of.url || ""; u.inputMode = "url"; f1.append(l1, u);
   const f2 = el("div", "field"); const l2 = el("label", null, "Buscar lançamentos a partir de"); l2.htmlFor = "of-from";

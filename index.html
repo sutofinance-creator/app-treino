@@ -327,11 +327,18 @@ details.imp[open] { gap: 10px; }
 .of h3 { margin-bottom: 2px; }
 .op-row { display: grid; grid-template-columns: auto auto 1fr auto; gap: 10px; align-items: center; font-size: 14px; padding-bottom: 8px; border-bottom: 1px dashed var(--line); }
 @media (max-width: 460px) { .op-row { grid-template-columns: auto 1fr auto; } .op-row > span:nth-child(3) { grid-column: 1 / -1; grid-row: 2; } }
+
+.brand-r { display: flex; align-items: center; gap: 10px; }
+.acct { min-width: 34px; height: 34px; padding: 0 10px; font: 700 14px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent); cursor: pointer; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+.acct.on { color: var(--bg); background: var(--accent); box-shadow: 0 0 12px rgba(166, 107, 255, .6); }
+body[data-view="conta"] nav.tabs { display: none; }
+body[data-view="conta"] header.top { padding-bottom: 8px; }
+.login-cta { border-color: var(--accent); }
 </style>
 </head>
 <body data-view="home">
 <header class="top">
-  <div class="brand"><h1><button type="button" class="home-btn" id="home-btn" aria-label="Voltar ao início"><img src="logo-s.png" alt="" width="32" height="32">STEK</button><span class="crumb" id="crumb"></span></h1><span id="status" aria-live="polite"></span></div>
+  <div class="brand"><h1><button type="button" class="home-btn" id="home-btn" aria-label="Voltar ao início"><img src="logo-s.png" alt="" width="32" height="32">STEK</button><span class="crumb" id="crumb"></span></h1><span class="brand-r"><span id="status" aria-live="polite"></span><button type="button" class="acct" id="acct-btn">Entrar</button></span></div>
   <div class="lvl" aria-live="polite"><span class="lvl-badge" id="lvl-badge">NÍVEL 1</span><div class="lvl-bar"><div class="lvl-fill" id="lvl-fill" style="width:0%"></div></div><span class="lvl-xp" id="lvl-xp">0/5</span></div>
   <nav class="tabs" id="tabs" role="tablist" aria-label="Treinos do módulo Força"></nav>
 </header>
@@ -2291,6 +2298,12 @@ function renderHome() {
   const head = el("div", "wk-head");
   head.append(el("h2", null, "Início"), el("p", null, WEEKDAYS[now.getDay()].replace(/^./, c => c.toUpperCase()) + ", " + now.getDate() + " de " + MONTHS[now.getMonth()] + ". Toque num módulo para entrar ou na seta para ver as pendências."));
   main.appendChild(head);
+  if (!loggedIn()) {
+    const bn = el("section", "guide login-cta");
+    bn.append(el("h3", null, "Leve seus dados para qualquer aparelho"), el("p", "note", "Entre na sua conta para salvar treinos, estudos e finanças na nuvem e abrir tudo no celular ou no computador."));
+    const bb = el("div", "btns"); const b = el("button", "btn", "Entrar ou criar conta"); b.type = "button"; b.id = "cta-login"; b.addEventListener("click", () => enterConta()); bb.appendChild(b); bn.appendChild(bb);
+    main.appendChild(bn);
+  }
   const grid = el("div", "mods");
   MODULES.forEach(m => grid.appendChild(buildModule(m)));
   main.appendChild(grid);
@@ -2369,21 +2382,228 @@ function loadProfile(id) {
 
 function startProfile(id) { loadProfile(id); enterForca(); }
 
+/* ======================= Conta e nuvem ======================= */
+const CLOUD_KEY = "stek-cloud";
+const SYNC_KEYS = ["treino-perfil", "treino-logs-v1", "treino-logs-irma-v1", "treino-settings-v1", "treino-settings-irma-v1", "stek-intel-v1", "stek-fin-v1"];
+const DEFAULT_SERVER = "https://stek-pluggy.nataniel-akio.workers.dev";
+const _lsSet = Storage.prototype.setItem;
+let cloud = null, cloudApplying = false, cloudTimer = null, cloudBusy = false;
+const cloudUI = { mode: "login", msg: "", kind: "", pending: null, confirm: null };
+function loadCloud() {
+  try { cloud = JSON.parse(localStorage.getItem(CLOUD_KEY)) || null; } catch (e) { cloud = null; }
+  if (cloud) { cloud.revs = cloud.revs || {}; cloud.dirty = cloud.dirty || {}; cloud.last = cloud.last || 0; }
+}
+function saveCloud() { try { if (cloud) _lsSet.call(localStorage, CLOUD_KEY, JSON.stringify(cloud)); else localStorage.removeItem(CLOUD_KEY); } catch (e) {} }
+function loggedIn() { return !!(cloud && cloud.token); }
+function cloudServer() { return String((cloud && cloud.server) || DEFAULT_SERVER).trim().replace(/\/+$/, ""); }
+Storage.prototype.setItem = function (k, v) {
+  _lsSet.call(this, k, v);
+  if (this === window.localStorage && !cloudApplying && SYNC_KEYS.includes(k) && loggedIn()) { cloud.dirty[k] = Date.now(); saveCloud(); schedulePush(); }
+};
+async function cloudFetch(method, path, body, server, noAuth) {
+  const res = await fetch((server || cloudServer()) + path, { method, headers: Object.assign({ "Content-Type": "application/json" }, noAuth || !loggedIn() ? {} : { Authorization: "Bearer " + cloud.token }), body: body ? JSON.stringify(body) : undefined });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(data.error || ("o servidor respondeu " + res.status)); e.status = res.status; throw e; }
+  return data;
+}
+function schedulePush() { clearTimeout(cloudTimer); cloudTimer = setTimeout(() => cloudPush(), 1500); }
+function cloudStatus(text, kind) { if (cloud) { cloud.err = kind === "err" ? text : ""; saveCloud(); } setStatus(text, kind); }
+async function cloudPush(force) {
+  if (!loggedIn()) return;
+  if (cloudBusy) { schedulePush(); return; }
+  const keys = Object.keys(cloud.dirty).filter(k => localStorage.getItem(k) != null);
+  Object.keys(cloud.dirty).forEach(k => { if (localStorage.getItem(k) == null) delete cloud.dirty[k]; });
+  if (!keys.length) return;
+  cloudBusy = true;
+  const stamps = {}; keys.forEach(k => { stamps[k] = cloud.dirty[k]; });
+  try {
+    const r = await cloudFetch("PUT", "/sync", { items: keys.map(k => ({ key: k, value: localStorage.getItem(k), base: cloud.revs[k] || 0, force: !!force })) });
+    (r.saved || []).forEach(s => { cloud.revs[s.key] = s.rev; cloud.last = Math.max(cloud.last, s.rev); if (cloud.dirty[s.key] === stamps[s.key]) delete cloud.dirty[s.key]; });
+    if ((r.conflicts || []).length) {
+      r.conflicts.forEach(c => { delete cloud.dirty[c.key]; });
+      applyRemote(r.conflicts);
+      cloudUI.msg = "Esses dados foram alterados em outro aparelho e a versão mais nova foi carregada. Se a sua última alteração não aparecer, refaça."; cloudUI.kind = "err";
+    }
+    saveCloud(); cloudStatus("Sincronizado", "ok");
+  } catch (e) {
+    if (e.status === 401) cloudExpired(); else cloudStatus("Sem conexão com a nuvem", "err");
+  } finally {
+    cloudBusy = false;
+    if (loggedIn() && Object.keys(cloud.dirty).length && !cloud.err) schedulePush();
+  }
+}
+async function cloudPull() {
+  if (!loggedIn()) return false;
+  if (Object.keys(cloud.dirty).length) await cloudPush();
+  try {
+    const r = await cloudFetch("GET", "/sync?since=" + (cloud.last || 0));
+    const items = (r.items || []).filter(it => it.rev > (cloud.revs[it.key] || 0) && !cloud.dirty[it.key]);
+    if (items.length) { applyRemote(items); cloudStatus("Sincronizado", "ok"); return true; }
+    cloudStatus("Sincronizado", "ok"); return false;
+  } catch (e) {
+    if (e.status === 401) cloudExpired(); else cloudStatus("Sem conexão com a nuvem", "err");
+    return false;
+  }
+}
+function applyRemote(items) {
+  cloudApplying = true;
+  try { items.forEach(it => { localStorage.setItem(it.key, it.value); cloud.revs[it.key] = it.rev; cloud.last = Math.max(cloud.last, it.rev); }); }
+  finally { cloudApplying = false; }
+  saveCloud(); reloadAllState();
+}
+function reloadAllState() {
+  loadIntel(); loadFin();
+  const p = readProfile();
+  if (p) { if (p !== profileId) useProfile(p); state.logs = {}; loadLogs(); loadSettings(); }
+  updateLevel(); rerenderView();
+}
+function rerenderView() {
+  const v = state.view;
+  if (v === "home") renderHome();
+  else if (v === "conta") renderConta();
+  else if (v === "forca") { if (!profileId) renderChooser(); else if (!TABS.some(t => t.id === state.tab)) enterForca(); else { renderTabs(); renderMain(); } }
+  else if (v === "intel") { if (!intel) renderIntelSetup(); else { renderTabs(); renderIntel(); } }
+  else if (v === "fin") { renderTabs(); renderFin(); }
+}
+function cloudExpired() {
+  if (cloud) { cloud.token = ""; saveCloud(); }
+  cloudUI.mode = "login"; cloudUI.msg = "Sua sessão expirou. Entre de novo com seu usuário e senha."; cloudUI.kind = "err";
+  setStatus("Entre na sua conta", "err"); updateAcct();
+}
+async function cloudStartup() {
+  if (loggedIn()) { await cloudPull(); }
+  maybeAutoSync();
+}
+function localHasData() { return SYNC_KEYS.some(k => k !== "treino-perfil" && localStorage.getItem(k) != null); }
+async function doAuth(mode, server, user, pass, code) {
+  const data = await cloudFetch("POST", "/auth/" + mode, { user, pass, code }, server, true);
+  cloud = { server, user: data.user, token: data.token, revs: {}, dirty: {}, last: 0 };
+  saveCloud(); updateAcct();
+  const remote = await cloudFetch("GET", "/sync?since=0");
+  const items = remote.items || [];
+  if (!items.length) {
+    SYNC_KEYS.forEach(k => { if (localStorage.getItem(k) != null) cloud.dirty[k] = Date.now(); });
+    saveCloud(); await cloudPush();
+    return localHasData() ? "Conta conectada. Os dados deste aparelho foram enviados para a nuvem." : "Conta conectada. Tudo o que você registrar agora fica salvo na nuvem.";
+  }
+  if (!localHasData()) { applyRemote(items); return "Conta conectada. Seus dados da nuvem foram carregados neste aparelho."; }
+  cloudUI.pending = items; return null;
+}
+function updateAcct() {
+  const b = document.getElementById("acct-btn"); if (!b) return;
+  b.textContent = loggedIn() ? cloud.user.slice(0, 1).toUpperCase() : "Entrar";
+  b.classList.toggle("on", loggedIn());
+  b.setAttribute("aria-label", loggedIn() ? "Conta: " + cloud.user : "Entrar na sua conta");
+}
+function enterConta() {
+  state.view = "conta"; document.body.dataset.view = "conta";
+  document.getElementById("crumb").textContent = "/ Conta";
+  history.replaceState(null, "", "#conta");
+  renderTabs(); renderConta(); window.scrollTo(0, 0);
+}
+function renderConta() {
+  const main = document.getElementById("main"); main.innerHTML = "";
+  head2(main, "Conta", "Com a conta, seus treinos, estudos e finanças ficam salvos na nuvem e aparecem em qualquer aparelho em que você entrar.");
+  const flashBox = el("p", "note"); flashAuto(flashBox, cloudUI.msg); if (cloudUI.kind) flash(flashBox, cloudUI.msg, cloudUI.kind);
+  if (cloudUI.pending && loggedIn()) {
+    const s = el("section", "guide");
+    s.append(el("h3", null, "Qual versão usar?"), el("p", "note", "Este aparelho e a sua conta na nuvem já têm dados. Escolha qual versão fica valendo. A outra será substituída."));
+    const b = el("div", "btns");
+    const useCloud = el("button", "btn", "Usar os dados da nuvem"); useCloud.type = "button"; useCloud.id = "use-cloud";
+    useCloud.addEventListener("click", () => { const items = cloudUI.pending; cloudUI.pending = null; applyRemote(items); SYNC_KEYS.forEach(k => { if (!items.some(i => i.key === k) && localStorage.getItem(k) != null) cloud.dirty[k] = Date.now(); }); saveCloud(); cloudPush(); cloudUI.msg = "Pronto. Os dados da nuvem foram carregados neste aparelho."; cloudUI.kind = "ok"; renderConta(); });
+    const useLocal = el("button", "btn danger", "Enviar os dados deste aparelho"); useLocal.type = "button"; useLocal.id = "use-local";
+    useLocal.addEventListener("click", async () => { const items = cloudUI.pending; cloudUI.pending = null; items.forEach(i => { cloud.revs[i.key] = i.rev; }); SYNC_KEYS.forEach(k => { if (localStorage.getItem(k) != null) cloud.dirty[k] = Date.now(); }); saveCloud(); await cloudPush(true); cloudUI.msg = "Pronto. A nuvem agora tem os dados deste aparelho."; cloudUI.kind = "ok"; renderConta(); });
+    b.append(useCloud, useLocal); s.appendChild(b);
+    s.appendChild(el("p", "note muted", "Na dúvida, use os dados da nuvem: são os do aparelho em que você criou a conta."));
+    main.appendChild(s); main.appendChild(flashBox); return;
+  }
+  if (loggedIn()) {
+    const s = el("section", "guide");
+    s.append(el("h3", null, "Conectado como " + cloud.user));
+    const st = el("p", "note"); st.id = "cloud-state";
+    if (cloud.err) flash(st, cloud.err, "err"); else st.textContent = Object.keys(cloud.dirty).length ? "Há alterações esperando para subir para a nuvem." : "Tudo sincronizado. As alterações sobem sozinhas alguns segundos depois de feitas.";
+    s.appendChild(st);
+    const b = el("div", "btns");
+    const sy = el("button", "btn", "Sincronizar agora"); sy.type = "button"; sy.id = "cloud-sync";
+    sy.addEventListener("click", async () => { sy.disabled = true; sy.textContent = "Sincronizando…"; await cloudPush(); const ch = await cloudPull(); cloudUI.msg = cloud && !cloud.err ? (ch ? "Dados atualizados com a nuvem." : "Tudo em dia com a nuvem.") : ""; cloudUI.kind = "ok"; if (state.view === "conta") renderConta(); });
+    b.appendChild(sy); s.appendChild(b);
+    s.appendChild(el("p", "note muted", "Servidor: " + cloudServer()));
+    const out = el("div", "btns");
+    const lo = el("button", "btn", "Sair"); lo.type = "button"; lo.id = "logout";
+    const wipe = el("button", "btn danger", cloudUI.confirm === "wipe" ? "Confirmar: sair e apagar" : "Sair e apagar dados deste aparelho"); wipe.type = "button"; wipe.id = "logout-wipe";
+    const doLogout = async (erase) => {
+      try { await cloudPush(); await cloudFetch("POST", "/auth/logout"); } catch (e) {}
+      cloud = null; saveCloud(); cloudUI.msg = ""; cloudUI.kind = ""; cloudUI.confirm = null;
+      if (erase) { SYNC_KEYS.concat(["stek-cloud"]).forEach(k => { try { localStorage.removeItem(k); } catch (e) {} }); location.hash = "#inicio"; location.reload(); return; }
+      updateAcct(); cloudUI.msg = "Você saiu. Os dados continuam neste aparelho, mas não sincronizam mais."; cloudUI.kind = "ok"; renderConta();
+    };
+    lo.addEventListener("click", () => doLogout(false));
+    wipe.addEventListener("click", () => { if (cloudUI.confirm !== "wipe") { cloudUI.confirm = "wipe"; renderConta(); return; } doLogout(true); });
+    out.append(lo, wipe); s.appendChild(out);
+    s.appendChild(el("p", "note muted", "Use \"Sair e apagar\" em um aparelho que não é seu. Seus dados continuam salvos na nuvem."));
+    main.append(s, flashBox); return;
+  }
+  const s = el("section", "guide");
+  const tabs = el("div", "chips");
+  [["login", "Entrar"], ["register", "Criar conta"]].forEach(([m, t]) => { const c = el("button", "gchip", t); c.type = "button"; c.id = "mode-" + m; c.setAttribute("aria-pressed", String(cloudUI.mode === m)); c.addEventListener("click", () => { cloudUI.mode = m; cloudUI.msg = ""; renderConta(); }); tabs.appendChild(c); });
+  s.appendChild(tabs);
+  const form = el("form", "inputs one"); form.id = "auth-form";
+  const fld = (id, label, type, ac, ph) => { const f = el("div", "field"); const l = el("label", null, label); l.htmlFor = id; const i = el("input"); i.id = id; i.type = type; i.autocomplete = ac; if (ph) i.placeholder = ph; f.append(l, i); form.appendChild(f); return i; };
+  const u = fld("acc-user", "Usuário", "text", "username", "ex.: akio"); u.autocapitalize = "none";
+  const p1 = fld("acc-pass", "Senha", "password", cloudUI.mode === "login" ? "current-password" : "new-password", cloudUI.mode === "login" ? "" : "pelo menos 8 caracteres");
+  let p2, code;
+  if (cloudUI.mode === "register") { p2 = fld("acc-pass2", "Confirme a senha", "password", "new-password"); code = fld("acc-code", "Código de convite", "text", "off", "peça ao dono do app"); }
+  s.appendChild(form);
+  const adv = el("details", "tok"); adv.appendChild(el("summary", null, "Servidor"));
+  const sv = el("input"); sv.id = "acc-server"; sv.className = "search"; sv.value = (cloud && cloud.server) || DEFAULT_SERVER; sv.inputMode = "url";
+  adv.appendChild(sv); s.appendChild(adv);
+  const go = el("button", "btn", cloudUI.mode === "login" ? "Entrar" : "Criar conta"); go.type = "submit"; go.id = "auth-go"; go.setAttribute("form", "auth-form");
+  const bb = el("div", "btns"); bb.appendChild(go); s.appendChild(bb);
+  s.appendChild(flashBox);
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const user = u.value.trim().toLowerCase(), pass = p1.value, server = sv.value.trim().replace(/\/+$/, "");
+    if (!user || !pass) { flash(flashBox, "Preencha usuário e senha.", "err"); return; }
+    if (cloudUI.mode === "register") {
+      if (pass.length < 8) { flash(flashBox, "A senha precisa ter pelo menos 8 caracteres.", "err"); return; }
+      if (pass !== p2.value) { flash(flashBox, "As senhas não conferem.", "err"); return; }
+      if (!code.value.trim()) { flash(flashBox, "Informe o código de convite.", "err"); return; }
+    }
+    if (!/^(https:\/\/|http:\/\/localhost)/.test(server)) { flash(flashBox, "O servidor precisa começar com https://", "err"); return; }
+    go.disabled = true; flash(flashBox, cloudUI.mode === "login" ? "Entrando…" : "Criando a conta…", "info");
+    try {
+      const msg = await doAuth(cloudUI.mode, server, user, pass, code ? code.value.trim() : "");
+      cloudUI.msg = msg || ""; cloudUI.kind = msg ? "ok" : "";
+      renderConta(); maybeAutoSync();
+    } catch (err) {
+      if (cloud && !cloud.token) cloud = null;
+      if (cloud && cloudUI.mode && !cloudUI.pending && err.status) { /* login feito, mas a sincronização falhou */ }
+      go.disabled = false; flash(flashBox, "Não deu certo: " + err.message, "err");
+    }
+  });
+  main.appendChild(s);
+}
+
 document.getElementById("home-btn").addEventListener("click", goHome);
+document.getElementById("acct-btn").addEventListener("click", () => enterConta());
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && loggedIn()) cloudPull(); });
 window.addEventListener("hashchange", () => {
   const h = location.hash.replace("#", "");
   if (h === "inicio" || h === "") { if (state.view !== "home") renderHome(); return; }
+  if (h === "conta") { if (state.view !== "conta") enterConta(); return; }
   if (INTEL_TABS.some(t => t.id === h)) { if (state.view !== "intel" || h !== state.itab) enterIntel(h); return; }
   if (FIN_TABS.some(t => t.id === h)) { if (state.view !== "fin" || h !== state.ftab) enterFin(h); return; }
   if (profileId && TABS.some(t => t.id === h) && (state.view !== "forca" || h !== state.tab)) enterForca(h);
 });
+loadCloud();
 loadIntel();
 loadFin();
 const savedProfile = readProfile();
 if (savedProfile) loadProfile(savedProfile);
 history.replaceState(null, "", "#inicio");
 renderHome();
-maybeAutoSync();
+updateAcct();
+cloudStartup();
 if ("serviceWorker" in navigator) { window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); }); }
 </script>
 </body>

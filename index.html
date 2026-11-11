@@ -315,6 +315,8 @@ details.imp[open] { gap: 10px; }
 .pos-v { font: 700 18px var(--font-display); letter-spacing: .03em; font-variant-numeric: tabular-nums; }
 .count-in.wide { width: 120px; }
 .ops { display: grid; gap: 8px; }
+.err-t { color: var(--bad); }
+.of h3 { margin-bottom: 2px; }
 .op-row { display: grid; grid-template-columns: auto auto 1fr auto; gap: 10px; align-items: center; font-size: 14px; padding-bottom: 8px; border-bottom: 1px dashed var(--line); }
 @media (max-width: 460px) { .op-row { grid-template-columns: auto 1fr auto; } .op-row > span:nth-child(3) { grid-column: 1 / -1; grid-row: 2; } }
 </style>
@@ -670,6 +672,7 @@ function importBackup(file, msg) {
         Object.assign(fin.invest.quotes, (data.fin.invest && data.fin.invest.quotes) || {});
         if (!fin.invest.token && data.fin.invest && data.fin.invest.token) fin.invest.token = data.fin.invest.token;
         Object.assign(fin.habit, data.fin.habit || {});
+        if (!ofReady() && data.fin.of && data.fin.of.url) fin.of = Object.assign({}, data.fin.of, { last: null });
         saveFin();
       }
       if (nf) { msg.textContent = "Backup importado: " + n + " dia(s) de treino, " + ni + " dia(s) de estudo e " + nf + " lançamento(s) financeiro(s)."; return; }
@@ -1451,7 +1454,7 @@ const finUI = { open: null, month: null, cmonth: "", q: "", confirm: null, msg: 
 function loadFin() {
   try { const v = JSON.parse(localStorage.getItem(FIN_KEY)); fin = v && Array.isArray(v.tx) ? v : null; } catch (e) { fin = null; }
   if (!fin) fin = { version: 1, tx: [], rules: {}, invest: { ops: [], quotes: {}, token: "" }, habit: {} };
-  fin.rules = fin.rules || {}; fin.invest = fin.invest || { ops: [], quotes: {}, token: "" }; fin.invest.ops = fin.invest.ops || []; fin.invest.quotes = fin.invest.quotes || {}; fin.habit = fin.habit || {};
+  fin.of = fin.of || {}; fin.rules = fin.rules || {}; fin.invest = fin.invest || { ops: [], quotes: {}, token: "" }; fin.invest.ops = fin.invest.ops || []; fin.invest.quotes = fin.invest.quotes || {}; fin.habit = fin.habit || {};
 }
 function saveFin() {
   try { localStorage.setItem(FIN_KEY, JSON.stringify(fin)); setStatus("Salvo no celular", "ok"); }
@@ -1692,6 +1695,96 @@ async function refreshQuotes(msgEl) {
   }
 }
 
+/* ---------- Open Finance (via Cloudflare Worker + MeuPluggy) ---------- */
+let finSyncing = false;
+function ofReady() { return !!(fin.of && fin.of.url && fin.of.token); }
+function ofBase() { return String(fin.of.url || "").trim().replace(/\/+$/, ""); }
+function addDaysISO(iso, n) { const [y, m, d] = iso.split("-").map(Number); return ymd(new Date(y, m - 1, d + n)); }
+function ofDefaultFrom() { const ds = fin.tx.map(t => t.date).sort(); if (ds.length) return ds[ds.length - 1]; const d = new Date(); return ymd(new Date(d.getFullYear(), d.getMonth() - 1, 1)); }
+function pmLabel(p) { return ({ PIX: "Pix", BOLETO: "Boleto", TED: "Transferência", DOC: "Transferência", TEF: "Transferência", DEBITO: "Débito", DEBIT: "Débito" })[String(p || "").toUpperCase()] || ""; }
+function newToken() { const a = new Uint8Array(24); crypto.getRandomValues(a); return Array.from(a, b => b.toString(16).padStart(2, "0")).join(""); }
+async function ofRequest(path) {
+  const res = await fetch(ofBase() + path, { headers: { Authorization: "Bearer " + fin.of.token } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ("o servidor respondeu " + res.status));
+  return data;
+}
+async function syncOF() {
+  if (!ofReady() || finSyncing) return null;
+  finSyncing = true;
+  const from = fin.of.lastTo ? addDaysISO(fin.of.lastTo, -7) : (fin.of.from || ofDefaultFrom());
+  try {
+    const data = await ofRequest("/transactions?from=" + from);
+    const list = (data.transactions || []).filter(t => t.date && typeof t.amount === "number" && t.amount !== 0).map(t => ({
+      id: uid(), extId: "pluggy:" + t.id, date: t.date, desc: cleanDesc(t.description), memo: t.description,
+      amount: Math.abs(t.amount), dir: t.type === "CREDIT" ? "in" : "out",
+      bank: t.accountType === "CREDIT" ? "Cartão " + (t.accountName || "") : (t.accountName || ""),
+      method: t.accountType === "CREDIT" ? "Cartão de Crédito" : (pmLabel(t.paymentMethod) || methodFrom(t.description)),
+      source: "openfinance", status: "pending" }));
+    const r = mergeTx(list);
+    Object.assign(fin.of, { last: new Date().toISOString(), lastTo: data.to || todayISO(), err: "", lastAdded: r.added });
+    saveFin();
+    return r;
+  } catch (e) {
+    fin.of.err = "Falha na sincronização: " + e.message; saveFin(); throw e;
+  } finally { finSyncing = false; }
+}
+function maybeAutoSync() {
+  if (!ofReady() || finSyncing) return;
+  const last = fin.of.last ? Date.parse(fin.of.last) : 0;
+  if (Date.now() - last < 3 * 3600 * 1000) return;
+  syncOF().then(r => { if (r && r.added) { if (state.view === "home") renderHome(); else if (state.view === "fin") renderFin(); } }).catch(() => { if (state.view === "fin") renderFin(); });
+}
+function fmtStamp(iso) { const d = new Date(iso); return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + " às " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
+
+function ofSection() {
+  const s = el("section", "guide of");
+  s.appendChild(el("h3", null, "Conexão com o banco"));
+  if (ofReady()) {
+    const line = fin.of.err ? el("p", "note err-t", fin.of.err) : el("p", "note", fin.of.last ? "Open Finance ativo. Última sincronização: " + fmtStamp(fin.of.last) + (fin.of.lastAdded != null ? " · " + fin.of.lastAdded + " novo(s)" : "") + ". Os dados do banco são atualizados uma vez por dia." : "Open Finance configurado. Toque em Sincronizar para buscar os lançamentos.");
+    line.id = "of-status"; s.appendChild(line);
+    const b = el("div", "btns"); const go = el("button", "btn", finSyncing ? "Sincronizando…" : "Sincronizar agora"); go.type = "button"; go.id = "of-sync"; go.disabled = finSyncing;
+    go.addEventListener("click", () => { go.disabled = true; go.textContent = "Sincronizando…"; syncOF().then(r => { finUI.msg = r ? r.added + " lançamento(s) novo(s) do banco." : ""; renderFin(); }).catch(() => renderFin()); });
+    b.appendChild(go); s.appendChild(b);
+  } else s.appendChild(el("p", "note muted", "Ainda não configurada. Com ela, os lançamentos do Nubank chegam aqui sozinhos, uma vez por dia."));
+  const cfg = el("details", "tok"); cfg.open = !!finUI.ofOpen; cfg.addEventListener("toggle", () => { finUI.ofOpen = cfg.open; });
+  cfg.appendChild(el("summary", null, ofReady() ? "Ajustes da conexão" : "Configurar conexão"));
+  const grid = el("div", "inputs two");
+  const f1 = el("div", "field"); const l1 = el("label", null, "Endereço do servidor (Worker)"); l1.htmlFor = "of-url";
+  const u = el("input"); u.id = "of-url"; u.placeholder = "https://stek-pluggy.SEU-USUARIO.workers.dev"; u.value = fin.of.url || ""; u.inputMode = "url"; f1.append(l1, u);
+  const f2 = el("div", "field"); const l2 = el("label", null, "Buscar lançamentos a partir de"); l2.htmlFor = "of-from";
+  const fr = el("input"); fr.id = "of-from"; fr.type = "date"; fr.value = fin.of.from || ofDefaultFrom(); f2.append(l2, fr);
+  grid.append(f1, f2); cfg.appendChild(grid);
+  cfg.appendChild(el("p", "note muted", "A data de início vale só para a primeira sincronização. Antes dela, use a data do último lançamento que você já importou, para não repetir lançamentos."));
+  const tf = el("div", "field"); const tl = el("label", null, "Token do app (cole este mesmo valor no Worker, como APP_TOKEN)"); tl.htmlFor = "of-token";
+  const ti = el("input"); ti.id = "of-token"; ti.className = "search"; ti.value = fin.of.token || ""; ti.placeholder = "Toque em Gerar token"; ti.autocomplete = "off"; tf.append(tl, ti); cfg.appendChild(tf);
+  const tb = el("div", "btns");
+  const gen = el("button", "btn", "Gerar token"); gen.type = "button"; gen.id = "of-gen"; gen.addEventListener("click", () => { ti.value = newToken(); });
+  const cp = el("button", "btn", "Copiar token"); cp.type = "button"; cp.id = "of-copy";
+  const msg = el("p", "note"); msg.id = "of-msg"; msg.setAttribute("aria-live", "polite");
+  cp.addEventListener("click", () => { if (!ti.value) { msg.textContent = "Gere um token primeiro."; return; } navigator.clipboard.writeText(ti.value).then(() => { msg.textContent = "Token copiado. Cole no Worker como APP_TOKEN."; }).catch(() => { ti.select(); msg.textContent = "Não consegui copiar sozinho: selecione o texto e copie."; }); });
+  const sv = el("button", "btn", "Salvar e testar"); sv.type = "button"; sv.id = "of-save";
+  sv.addEventListener("click", async () => {
+    const url = u.value.trim();
+    if (!/^https:\/\/[^\s]+$/.test(url)) { msg.textContent = "Cole o endereço do Worker, começando com https://"; return; }
+    if (ti.value.trim().length < 16) { msg.textContent = "Gere o token e salve o mesmo valor no Worker."; return; }
+    fin.of.url = url; fin.of.token = ti.value.trim(); if (!fin.of.lastTo) fin.of.from = fr.value || ofDefaultFrom(); saveFin();
+    msg.textContent = "Testando a conexão…";
+    try { const d = await ofRequest("/ping"); fin.of.err = ""; saveFin(); msg.textContent = "Conectado. Contas encontradas: " + ((d.accounts || []).map(a => a.name + (a.type === "CREDIT" ? " (cartão)" : "")).join(", ") || "nenhuma") + ". Agora toque em Sincronizar agora."; finUI.ofOpen = true; }
+    catch (e) { msg.textContent = "Não conectou: " + e.message; }
+    const st = document.getElementById("of-sync"); if (!st) renderFinKeepMsg(msg.textContent);
+  });
+  tb.append(gen, cp, sv); cfg.append(tb, msg);
+  if (ofReady()) {
+    const off = el("button", "btn danger", finUI.confirm === "of-off" ? "Confirmar desconexão" : "Desconectar"); off.type = "button"; off.id = "of-off";
+    off.addEventListener("click", () => { if (finUI.confirm !== "of-off") { finUI.confirm = "of-off"; renderFin(); return; } fin.of = {}; finUI.confirm = null; saveFin(); renderFin(); });
+    const ob = el("div", "btns"); ob.appendChild(off); cfg.appendChild(ob);
+  }
+  s.appendChild(cfg);
+  return s;
+}
+function renderFinKeepMsg(text) { finUI.ofOpen = true; renderFin(); const m = document.getElementById("of-msg"); if (m) m.textContent = text; }
+
 /* ---------- tarefas da tela inicial ---------- */
 function finTasks() {
   if (!fin.tx.length && !fin.invest.ops.length) return { setup: true, setupLabel: "Importar extrato", setupText: "Importe o extrato do banco ou da sua planilha para começar a acompanhar seu dinheiro.", tasks: [] };
@@ -1713,6 +1806,7 @@ function enterFin(tab) {
   state.ftab = FIN_TABS.some(t => t.id === tab) ? tab : ((!fin.tx.length || fin.tx.some(t => t.status !== "done")) ? "fin-pendentes" : "fin-relatorio");
   history.replaceState(null, "", "#" + state.ftab);
   renderTabs(); renderFin(); window.scrollTo(0, 0);
+  maybeAutoSync();
 }
 function renderFin() {
   const main = document.getElementById("main"); main.innerHTML = "";
@@ -1729,6 +1823,7 @@ function renderPendentes(main) {
   const pend = fin.tx.filter(t => t.status !== "done").sort((a, b) => a.date < b.date ? 1 : -1);
   head2(main, "Pendentes", pend.length ? pend.length + " lançamento(s) esperando classificação. Toque em um para dizer o que foi comprado." : "Nada para classificar agora.");
 
+  main.appendChild(ofSection());
   // importação
   const imp = el("details", "guide imp"); if (!fin.tx.length || finUI.msg || finUI.impOpen) imp.open = true;
   imp.addEventListener("toggle", () => { finUI.impOpen = imp.open; });
@@ -1752,7 +1847,6 @@ function renderPendentes(main) {
   form.addEventListener("submit", e => { e.preventDefault(); const v = parseMoney(vIn.value); if (!nIn.value.trim() || !(v > 0) || !dIn.value) { finUI.msg = "Preencha data, valor e estabelecimento."; renderFin(); return; }
     fin.tx.push({ id: uid(), date: dIn.value, desc: nIn.value.trim(), amount: Math.abs(v), dir: ss.value, bank: "", method: "", source: "manual", status: "pending" }); finUI.msg = "Lançamento adicionado."; saveFin(); renderFin(); });
   imp.append(el("p", "plan-t", "Adicionar à mão"), form, (() => { const b = el("div", "btns"); b.appendChild(ab); return b; })());
-  imp.appendChild(el("p", "note muted", "Conexão automática com o banco (Open Finance): ainda não configurada. Quando estiver ativa, os lançamentos novos chegam aqui sozinhos."));
   main.appendChild(imp);
 
   if (!pend.length) return;
@@ -2272,6 +2366,7 @@ const savedProfile = readProfile();
 if (savedProfile) loadProfile(savedProfile);
 history.replaceState(null, "", "#inicio");
 renderHome();
+maybeAutoSync();
 if ("serviceWorker" in navigator) { window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); }); }
 </script>
 </body>

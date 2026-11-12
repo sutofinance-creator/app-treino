@@ -2750,7 +2750,10 @@ function missoesTasks() {
       go: () => enterMissoes("ms-hoje", t.id) });
   });
   if (list.length > 6) tasks.push({ id: "task-ms-mais", title: "E mais " + (list.length - 6) + " missões hoje", optional: true, complete: false, pct: 0, label: "Ver", sub: "", go: () => enterMissoes("ms-hoje") });
-  if (!list.length && goal) tasks.push({ id: "task-ms-plan", title: "Planejar o dia", complete: false, pct: 0, label: "Planejar", sub: "Escolha as missões que você vai resolver hoje.", go: () => enterMissoes("ms-hoje", "plan") });
+  // só cobra o planejamento quando existe missão aberta para escolher; sem nenhuma, é só um convite (não conta como pendência)
+  const abertas = msData().tasks.filter(t => t.status === "aberta").length;
+  if (!list.length && goal && abertas) tasks.push({ id: "task-ms-plan", title: "Planejar o dia", complete: false, pct: 0, label: "Planejar", sub: "Você tem " + abertas + (abertas === 1 ? " missão aberta" : " missões abertas") + ". Escolha as que vai resolver hoje.", go: () => enterMissoes("ms-hoje", "plan") });
+  else if (!abertas) tasks.push({ id: "task-ms-nova", title: "Registrar missões", optional: true, complete: false, pct: 0, label: "Criar", sub: "Nenhuma missão cadastrada ainda. Anote as demandas para acompanhar prazos e entregas.", go: () => { enterMissoes("ms-lista"); const n = document.getElementById("msn-title"); if (n) { n.scrollIntoView({ block: "center" }); n.focus(); } } });
   return { tasks };
 }
 

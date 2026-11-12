@@ -475,6 +475,41 @@ ol.steps a { color: var(--accent); }
 .rat-part { display: grid; gap: 10px; padding: 10px 12px 12px; border: 1px solid var(--line); border-left: 3px solid var(--accent); background: rgba(166, 107, 255, .04); }
 .rat-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .rat-n { font: 700 15px var(--font-display); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+/* ---------- Rotina ---------- */
+.rt-home { padding: 14px 14px 12px; display: grid; gap: 6px; }
+.rt-home-l { display: grid; gap: 4px; }
+.rt-home-l b { color: var(--accent); font-family: var(--font-display); letter-spacing: .06em; text-transform: uppercase; font-size: 13px; }
+.rt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.rt-mark { font: 600 13px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 2px 4px; }
+.rt-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--accent); padding: 0 10px 0 0; }
+.rt-row.fixed { border-left-color: var(--muted); padding: 10px 12px; grid-template-columns: auto 1fr; opacity: .8; }
+.rt-row.fixed .rt-sub { grid-column: 2; }
+.rt-row.now { border-color: var(--warn); box-shadow: 0 0 14px rgba(255, 194, 75, .3); }
+.rt-main { display: grid; grid-template-columns: 92px 26px 1fr; gap: 10px; align-items: start; width: 100%; text-align: left; background: none; border: 0; color: var(--ink); font: inherit; padding: 10px 0 10px 12px; cursor: pointer; }
+.rt-time { font: 700 14px var(--font-display); letter-spacing: .04em; color: var(--accent); font-variant-numeric: tabular-nums; padding-top: 2px; }
+.rt-row.fixed .rt-time { color: var(--muted); }
+.rt-ico { width: 26px; height: 26px; display: grid; place-items: center; color: var(--accent); }
+.rt-ico svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.rt-txt { display: grid; gap: 2px; min-width: 0; }
+.rt-title { font-weight: 600; overflow-wrap: anywhere; }
+.rt-sub { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.rt-now { justify-self: start; margin-top: 4px; }
+.rt-skip { font-size: 12px; white-space: nowrap; color: var(--muted); }
+.rt-left h3, .rt-day h3, .rt-set h3 { margin: 0; font-size: 18px; }
+.rt-foot { display: grid; gap: 6px; }
+.rt-day { display: grid; gap: 8px; }
+.rt-day.over { border-color: var(--warn); }
+.rt-day-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.rt-load { font: 600 13px var(--font-display); letter-spacing: .06em; color: var(--muted); font-variant-numeric: tabular-nums; }
+.goalbar.over > span { background: var(--warn); box-shadow: 0 0 10px rgba(255, 194, 75, .5); }
+.rt-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.rt-it { display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: start; }
+.rt-it.opt { opacity: .7; }
+.rt-overmsg { color: var(--warn); font-size: 14px; }
+.rt-warn { border-color: var(--warn); }
+.rt-set { display: grid; gap: 10px; }
+.rt-set .field input { font-size: 17px; color-scheme: dark; }
+@media (max-width: 420px) { .rt-main { grid-template-columns: 84px 22px 1fr; gap: 8px; } }
 </style>
 </head>
 <body data-view="home">
@@ -638,6 +673,7 @@ function renderTabs() {
     ms: { tabs: MS_TABS, cur: state.mtab, label: "Seções do módulo Missões", set: id => { state.mtab = id; if (id === "ms-hoje") state.mdate = todayISO(); msUI.confirm = null; msUI.open = null; msUI.closing = null; }, draw: () => renderMissoes() },
     graca: { tabs: GRACA_TABS, cur: state.gtab, label: "Seções do módulo Graça", set: id => { state.gtab = id; if (id === "gr-hoje") state.gdate = todayISO(); grUI.confirm = null; }, draw: () => renderGraca() },
     est: { tabs: STAM_TABS, cur: state.stab, label: "Seções do módulo Estamina", set: id => { state.stab = id; if (id === "est-hoje") state.sdate = todayISO(); }, draw: () => renderStamina() },
+    rotina: { tabs: ROT_TABS, cur: state.rtab, label: "Seções da Rotina", set: id => { state.rtab = id; }, draw: () => renderRotina() },
     fin: { tabs: FIN_TABS, cur: state.ftab, label: "Seções do módulo Economia", set: id => { state.ftab = id; finUI.open = null; finUI.confirm = null; finUI.msg = ""; }, draw: () => renderFin() }
   }[v];
   if (!cfg) return;
@@ -781,7 +817,7 @@ function onEdit(ex, field, raw) {
 }
 
 function exportBackup() {
-  const blob = new Blob([JSON.stringify({ app: "plano-treino", version: 7, plan: profileId, logs: state.logs, intel: intel, fin: fin, stamina: stamina, graca: graca, missoes: mis, perfil: perfil }, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify({ app: "plano-treino", version: 7, plan: profileId, logs: state.logs, intel: intel, fin: fin, stamina: stamina, graca: graca, missoes: mis, perfil: perfil, rotina: rotina }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "backup-stek-" + todayISO() + ".json";
@@ -795,7 +831,7 @@ function importBackup(file, msg) {
     try {
       const data = JSON.parse(r.result);
       const logs = (data && data.logs) || {};
-      if (typeof logs !== "object" || (!data.logs && !data.intel && !data.fin && !data.stamina && !data.graca && !data.missoes && !data.perfil)) throw new Error();
+      if (typeof logs !== "object" || (!data.logs && !data.intel && !data.fin && !data.stamina && !data.graca && !data.missoes && !data.perfil && !data.rotina)) throw new Error();
       let n = 0;
       Object.keys(logs).forEach(date => {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !logs[date] || !logs[date].e) return;
@@ -837,6 +873,7 @@ function importBackup(file, msg) {
         Object.keys(data.graca.days || {}).forEach(d => { gg.days[d] = gg.days[d] || {}; Object.keys(data.graca.days[d] || {}).forEach(id => { const v = data.graca.days[d][id], cur = gg.days[d][id]; if (v && (!cur || (v.count || 0) > (cur.count || 0) || (v.sec || 0) > (cur.sec || 0))) gg.days[d][id] = v; }); });
         saveGraca();
       }
+      if (data.rotina && typeof data.rotina === "object" && (!rotina || (data.rotina.upd || 0) > (rotina.upd || 0))) { rotina = Object.assign({}, data.rotina); try { localStorage.setItem(ROT_KEY, JSON.stringify(rotina)); } catch (e) {} }
       if (data.perfil && typeof data.perfil === "object" && (!perfil || (data.perfil.upd || 0) > (perfil.upd || 0))) { perfil = Object.assign({}, data.perfil); savePerfil(true); }
       if (data.stamina && data.stamina.days) {
         const st = ensureStamina();
@@ -4324,6 +4361,7 @@ function renderHome() {
   document.getElementById("tabs").innerHTML = "";
   const main = document.getElementById("main"); main.innerHTML = "";
   main.appendChild(hexCard());
+  main.appendChild(rtHomeCard());
   const now = new Date();
   const head = el("div", "wk-head");
   head.append(el("h2", null, "Início"), el("p", null, WEEKDAYS[now.getDay()].replace(/^./, c => c.toUpperCase()) + ", " + now.getDate() + " de " + MONTHS[now.getMonth()] + ". Toque num módulo para entrar ou na seta para ver as pendências."));
@@ -4660,9 +4698,391 @@ function hexForm() {
   return box;
 }
 
+/* ======================= Rotina: agenda do dia e da semana com as tarefas dos módulos ======================= */
+// Lê o que falta em cada módulo e encaixa no seu tempo livre (horários cadastrados na aba Horários).
+// Tudo é recalculado na hora: concluiu, atrasou ou pulou algo, a agenda se refaz.
+const ROT_KEY = "stek-rotina-v1";
+const ROT_TABS = [{ id: "rot-hoje", label: "Hoje" }, { id: "rot-semana", label: "Semana" }, { id: "rot-horarios", label: "Horários" }];
+const ROT_DEF = { wake: { wk: "07:00", we: "08:00" }, sleep: { wk: "23:00", we: "23:30" }, work: { start: "08:00", end: "18:00" }, treino: "noite" };
+const ROT_TREINO = [["manha", "Manhã"], ["tarde", "Tarde"], ["noite", "Noite"]];
+let rotina = null;
+const rtUI = { msg: "", kind: "", fx: { name: "", start: "", end: "", days: [1, 2, 3, 4, 5] } };
+
+function loadRotina() { try { const v = JSON.parse(localStorage.getItem(ROT_KEY)); rotina = v && typeof v === "object" ? v : null; } catch (e) { rotina = null; } }
+function ensureRotina() { if (!rotina) rotina = {}; rotina.fixed = rotina.fixed || []; rotina.skip = rotina.skip || {}; return rotina; }
+function saveRotina() {
+  const r = ensureRotina(); r.upd = Date.now();
+  const lim = addDaysISO(todayISO(), -7); Object.keys(r.skip).forEach(d => { if (d < lim) delete r.skip[d]; });
+  try { localStorage.setItem(ROT_KEY, JSON.stringify(r)); setStatus("Salvo no celular", "ok"); }
+  catch (e) { setStatus("Não foi possível salvar neste navegador", "err"); }
+}
+function rt() {
+  const r = rotina || {};
+  return { wake: Object.assign({}, ROT_DEF.wake, r.wake), sleep: Object.assign({}, ROT_DEF.sleep, r.sleep), work: Object.assign({}, ROT_DEF.work, r.work),
+    treino: r.treino || ROT_DEF.treino, fixed: Array.isArray(r.fixed) ? r.fixed : [], skip: r.skip || {}, set: !!(r.wake || r.sleep) };
+}
+function hmToMin(s) { const m = /^(\d{1,2}):(\d{2})/.exec(s || ""); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
+function minToHM(n) { n = Math.round(n); const h = Math.floor(n / 60) % 24, m = ((n % 60) + 60) % 60; return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"); }
+function rtDow(iso) { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d).getDay(); }
+function rtDur(min) { min = Math.round(min); const h = Math.floor(min / 60), m = min % 60; return h ? h + "h" + (m ? String(m).padStart(2, "0") : "") : m + " min"; }
+function rtNow() { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); }
+function rtCut(free, a, b) { const out = []; free.forEach(([x, y]) => { if (b <= x || a >= y) { out.push([x, y]); return; } if (a > x) out.push([x, a]); if (b < y) out.push([b, y]); }); return out; }
+function rtFreeMin(free) { return free.reduce((s, [a, b]) => s + b - a, 0); }
+function rtWeekDays() { const t = todayISO(); return Array.from({ length: 7 }, (_, i) => addDaysISO(t, i)); }
+// tempo livre do dia: entre acordar e dormir, menos os compromissos fixos
+function rtDay(iso) {
+  const c = rt(), we = [0, 6].includes(rtDow(iso)) ? "we" : "wk";
+  const wake = hmToMin(c.wake[we]) ?? 420; let sleep = hmToMin(c.sleep[we]) ?? 1380; if (sleep <= wake) sleep += 1440;
+  const fixed = c.fixed.filter(f => (f.days || []).includes(rtDow(iso))).map(f => {
+    const a = hmToMin(f.start), b0 = hmToMin(f.end); if (a == null || b0 == null) return null;
+    return { a, b: b0 <= a ? b0 + 1440 : b0, name: f.name, id: f.id };
+  }).filter(Boolean).sort((x, y) => x.a - y.a);
+  let free = [[wake, sleep]]; fixed.forEach(f => { free = rtCut(free, f.a, f.b); });
+  return { wake, sleep, fixed, free };
+}
+function rtTreinoWin(d) { const p = rt().treino; return p === "manha" ? [d.wake, 720] : p === "tarde" ? [720, 1080] : [1080, d.sleep]; }
+function rtWorkout(iso) {
+  if (!modAllowed("forca") || !profileId || !strengthDay(iso)) return null;
+  const w = PLAN.find(p => p.id === prof().dayTab[rtDow(iso)]);
+  const sets = w ? w.ex.reduce((s, x) => s + (parseInt(x.sets, 10) || 3), 0) : 0;
+  return { w, name: w ? w.name : "Treino extra", dur: w ? Math.max(30, Math.round((sets * 2.5 + 10) / 5) * 5) : 60 };
+}
+
+// Missões da semana: planejadas primeiro; o resto por prazo (o que vence antes vai antes) e prioridade, até encher as horas de trabalho de cada dia
+function rtMissionPlan(days) {
+  const out = { byDay: {}, late: [], later: [] }; days.forEach(d => { out.byDay[d] = []; });
+  if (!modAllowed("missoes") || !mis) return out;
+  const today = days[0], last = days[days.length - 1], cap = {};
+  days.forEach(d => { cap[d] = Math.round((msGoalSec(d) - (d === today ? msDaySec(d) : 0)) / 60); if (cap[d] < 0) cap[d] = 0; });
+  const need = t => Math.max(15, (t.est || 60) - Math.floor(msTaskSec(t.id) / 60));
+  const put = (t, d) => { const n = need(t); out.byDay[d].push({ t, need: n }); cap[d] -= n; };
+  const rest = [];
+  msData().tasks.filter(t => t.status === "aberta").forEach(t => {
+    const pl = (t.plan || []).filter(x => x >= today).sort()[0] || ((t.plan || []).some(x => x < today) ? today : null);
+    if (pl && out.byDay[pl]) put(t, pl); else if (pl) out.later.push(t); else rest.push(t);
+  });
+  rest.sort((a, b) => { const da = a.due || "9999", db = b.due || "9999"; return da < db ? -1 : da > db ? 1 : (MS_PRI_RANK[a.pri] ?? 1) - (MS_PRI_RANK[b.pri] ?? 1); });
+  rest.forEach(t => {
+    const n = need(t), lim = t.due ? (t.due < today ? today : t.due) : null;
+    if (lim && lim > last) { const ok = days.filter(d => cap[d] >= n); if (ok.length) put(t, ok[0]); else out.later.push(t); return; }
+    const ok = days.filter(d => (!lim || d <= lim) && cap[d] >= n);
+    if (ok.length) { put(t, ok[0]); return; }
+    if (lim) { const ds = days.filter(d => d <= lim && msWorkDay(d)); put(t, ds.length ? ds.reduce((b, x) => cap[x] > cap[b] ? x : b, ds[0]) : today); out.late.push(t); return; }
+    out.later.push(t);
+  });
+  return out;
+}
+
+// O que cada módulo pede no dia (hoje: só o que falta)
+function rtDemand(iso, plan, sim) {
+  const today = todayISO(), isT = iso === today, c = rt(), d = rtDay(iso), skip = c.skip[iso] || [];
+  const items = [], done = [], skipped = [];
+  const add = it => { if (skip.includes(it.key)) skipped.push(it); else items.push(it); };
+  if (modAllowed("graca")) grTodayPlan(iso).forEach(r => {
+    const need = Math.max(1, r.times || 1), did = isT ? Math.min(need, grRec(iso, r.id).count || 0) : 0, dur = Math.max(5, Math.round(r.limit || 15));
+    for (let k = did; k < need; k++) {
+      let win, fromEnd = false;
+      if (need === 1 || k === 0) win = [d.wake, d.wake + 180];
+      else if (k === need - 1) { win = [d.sleep - 180, d.sleep]; fromEnd = true; }
+      else { const mid = d.wake + (d.sleep - d.wake) * k / (need - 1); win = [mid - 90, mid + 90]; }
+      add({ key: "gr-" + r.id + "-" + k, mod: "graca", title: r.name + (need > 1 ? " (" + (k + 1) + "ª vez)" : ""), sub: r.limit ? r.limit + " min" : "", dur, win, fromEnd, rank: 0, go: () => enterGraca("gr-hoje", r.id) });
+    }
+    if (did) done.push(r.name + (need > 1 ? " " + did + "/" + need : ""));
+  });
+  const wo = rtWorkout(iso), tw = rtTreinoWin(d);
+  if (wo) {
+    let dur = wo.dur;
+    if (isT) {
+      const rec = (state.logs[iso] && state.logs[iso].e) || {};
+      if (wo.w) { const dn = wo.w.ex.filter(x => exerciseDone(rec[x.id])).length; dur = dn >= wo.w.ex.length ? 0 : Math.round(wo.dur * (1 - dn / wo.w.ex.length)); }
+      else if (hasEntries(iso)) dur = 0;
+    }
+    if (dur > 0) add({ key: "forca", mod: "forca", title: "Treino: " + wo.name, sub: wo.w ? wo.w.focus : "", dur: Math.max(10, dur), win: tw, rank: 1, go: () => enterForca(wo.w ? wo.w.id : undefined) });
+    else done.push("Treino " + wo.name);
+  }
+  if (modAllowed("estamina")) {
+    // na semana, os dias seguintes já contam com o cardio que a rotina marcou antes (um 4x4 por semana, meta de minutos)
+    let cp = cardioPlan(iso); const ws = weekStart(iso);
+    if (sim && !isT) {
+      if (cp.pid === "x4" && sim.x4[ws]) cp = Object.assign({}, cp, { pid: "z2", target: practice("z2").target, why: "Cardio leve para somar na meta da semana; o 4x4 já está marcado em outro dia." });
+      if (!cp.optional && weekEq(iso, true) + (sim.eq[ws] || 0) >= stam().goals.weekMin) cp = Object.assign({}, cp, { optional: true, why: cp.why + " A meta da semana já fecha com o que está marcado, então é opcional." });
+    }
+    const have = isT ? Math.floor(stKindSec(iso, "cardio") / 60) : 0, need = cp.target - have;
+    if (sim && need > 0 && !cp.optional) { if (cp.pid === "x4") sim.x4[ws] = true; sim.eq[ws] = (sim.eq[ws] || 0) + need * (practice(cp.pid).factor || 1); }
+    if (need > 0) add({ key: "cardio", mod: "estamina", title: "Cardio: " + practice(cp.pid).name, sub: cp.optional ? "Opcional · " + cp.why : cp.why, dur: Math.max(10, need), optional: !!cp.optional, win: tw, afterForca: !!wo, rank: cp.optional ? 9 : 2, go: () => enterStamina("est-hoje", "cardio") });
+    else if (have) done.push("Cardio");
+    const fg = Math.round(stam().goals.focusMin), fh = isT ? Math.floor(stKindSec(iso, "foco") / 60) : 0;
+    if (fg - fh > 0) add({ key: "foco", mod: "estamina", title: "Foco: meditação ou respiração", sub: "Logo antes de estudar.", dur: fg - fh, beforeStudy: true, rank: 5, go: () => enterStamina("est-hoje", "foco") });
+    else if (fh) done.push("Foco");
+  }
+  if (modAllowed("missoes") && mis) {
+    const goal = Math.round(msGoalSec(iso) / 60), have = isT ? Math.floor(msDaySec(iso) / 60) : 0, ms = (plan && plan.byDay[iso]) || [];
+    const need = Math.max(goal - have, ms.reduce((s, x) => s + x.need, 0));
+    const w = rt().work, ws = hmToMin(w.start) ?? 480, we = hmToMin(w.end) ?? 1080;
+    if (need > 0) add({ key: "trabalho", mod: "missoes", title: "Trabalho", dur: need, missions: ms, split: 120, minChunk: 30, gapAfter: 10, win: [ws, we > ws ? we : we + 1440], rank: 3, go: () => enterMissoes("ms-hoje") });
+    else if (goal && have) done.push("Trabalho " + rtDur(have));
+  }
+  if (modAllowed("inteligencia") && intel) {
+    const goal = Math.round(goalSec(iso) / 60), have = isT ? Math.floor(daySec(iso) / 60) : 0, need = goal - have;
+    const subs = intel.subjects.map(s => {
+      const p = planFor(s, iso); if (!p || p.doneAll) return null;
+      if (isT) { const st = subjTask(s, iso); if (st && st.complete) return null; }
+      return s.name + (p.qty ? " (" + p.qty + " " + unitWord(s, p.qty) + ")" : "");
+    }).filter(Boolean);
+    const we = hmToMin(rt().work.end) ?? 1080;
+    if (need > 0) add({ key: "estudo", mod: "inteligencia", title: "Estudo", sub: subs.join(" · "), dur: need, split: 50, minChunk: 25, gapAfter: 10, win: [we, d.sleep], rank: 4, go: () => enterIntel("estudo") });
+    else if (have) done.push("Estudo " + rtDur(have));
+  }
+  if (isT && modAllowed("financas") && fin) {
+    const n = fin.tx.filter(t => t.status !== "done").length;
+    if (n) add({ key: "eco", mod: "financas", title: "Classificar " + n + (n === 1 ? " lançamento" : " lançamentos"), sub: "Pendentes da Economia.", dur: Math.min(30, Math.max(5, Math.ceil(n * 1.5 / 5) * 5)), win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6, go: () => enterFin("fin-pendentes") });
+  }
+  return { items, done, skipped, day: d };
+}
+
+// Encaixa os itens no tempo livre, do mais fixo ao mais flexível
+function rtSchedule(iso, items, from) {
+  const d = rtDay(iso), dayWin = [d.wake, d.sleep];
+  let free = d.free.map(x => x.slice()); if (from != null) free = rtCut(free, -1, from);
+  const blocks = [], left = [];
+  const cands = (dur, w) => free.map(([a, b]) => [Math.max(a, w[0]), Math.min(b, w[1])]).filter(([a, b]) => b - a >= dur);
+  const take = (dur, w, fromEnd, gap) => {
+    const c = cands(dur, w); if (!c.length) return null;
+    const [a, b] = fromEnd ? c[c.length - 1] : c[0], s = fromEnd ? b - dur : a;
+    free = rtCut(free, fromEnd ? s - gap : s, fromEnd ? s + dur : s + dur + gap); return s;
+  };
+  const one = (it, w, fe) => {
+    const gap = it.gapAfter ?? 5;
+    let s = take(it.dur, w || it.win || dayWin, fe != null ? fe : it.fromEnd, gap);
+    if (s == null) s = take(it.dur, dayWin, it.fromEnd, gap);
+    if (s == null) { left.push({ it, min: it.dur }); return null; }
+    const b = { s, e: s + it.dur, it }; blocks.push(b); return b;
+  };
+  // itens longos (trabalho, estudo) viram blocos; "lead" vai colado antes do primeiro bloco (o foco antes do estudo)
+  const many = (it, lead) => {
+    let rem = it.dur, part = 0; const gap = it.gapAfter ?? 5;
+    const fill = w => {
+      while (rem > 0) {
+        const extra = lead ? lead.dur : 0, c = cands(Math.min(rem, it.minChunk || 15) + extra, w); if (!c.length) return;
+        const [a, b] = c[0], s0 = a + extra, ch = Math.min(rem, it.split, b - s0);
+        if (lead) { blocks.push({ s: a, e: s0, it: lead }); lead = null; }
+        free = rtCut(free, a, s0 + ch + gap); blocks.push({ s: s0, e: s0 + ch, it, part: part++ }); rem -= ch;
+      }
+    };
+    fill(it.win || dayWin); if (rem > 0) fill(dayWin); if (rem > 0) left.push({ it, min: rem });
+    return lead;
+  };
+  const order = items.slice().sort((a, b) => a.rank - b.rank);
+  let foco = order.find(it => it.beforeStudy) || null;
+  order.filter(it => !it.optional && !it.beforeStudy).forEach(it => {
+    if (it.key === "cardio" && it.afterForca) { const fb = blocks.find(b => b.it.key === "forca"); one(it, fb ? [fb.e, fb.e + 120] : null); return; }
+    if (it.key === "estudo") { foco = many(it, foco); return; }
+    if (it.split) many(it); else one(it);
+  });
+  // foco sem estudo hoje (ou sem espaço colado): vai para onde couber
+  if (foco) one(foco);
+  order.filter(it => it.optional).forEach(it => { const fb = blocks.find(b => b.it.key === "forca"); const s = take(it.dur, it.afterForca && fb ? [fb.e, fb.e + 120] : (it.win || dayWin), false, 5); if (s != null) blocks.push({ s, e: s + it.dur, it }); });
+  // distribui as missões pelos blocos de trabalho, na ordem
+  const wb = blocks.filter(b => b.it.key === "trabalho").sort((a, b) => a.s - b.s), ms = ((items.find(x => x.key === "trabalho") || {}).missions || []).map(x => Object.assign({}, x, { rem: x.need }));
+  wb.forEach(b => { let room = b.e - b.s; b.missions = []; while (room > 0 && ms.length) { const m = ms[0], use = Math.min(room, m.rem); b.missions.push({ t: m.t, min: use }); m.rem -= use; room -= use; if (m.rem <= 0) ms.shift(); } });
+  blocks.sort((a, b) => a.s - b.s);
+  return { blocks, left, day: d };
+}
+
+function rtToday() {
+  const iso = todayISO(), plan = rtMissionPlan(rtWeekDays()), dem = rtDemand(iso, plan), d = dem.day;
+  const from = Math.max(d.wake, Math.ceil(rtNow() / 5) * 5);
+  return Object.assign(rtSchedule(iso, dem.items, from), { dem, plan, from });
+}
+function rtIcon(mod) { const s = el("span", "rt-ico"); s.innerHTML = ICONS[mod] || ""; return s; }
+
+function enterRotina(tab) {
+  state.view = "rotina"; document.body.dataset.view = "rotina";
+  document.getElementById("crumb").textContent = "/ Rotina";
+  state.rtab = ROT_TABS.some(t => t.id === tab) ? tab : "rot-hoje";
+  history.replaceState(null, "", "#" + state.rtab);
+  renderTabs(); renderRotina(); window.scrollTo(0, 0);
+}
+function renderRotina() {
+  const main = document.getElementById("main"); main.innerHTML = "";
+  if (state.rtab === "rot-semana") renderRtSemana(main);
+  else if (state.rtab === "rot-horarios") renderRtHorarios(main);
+  else renderRtHoje(main);
+}
+function rtSkip(key, on) {
+  const r = ensureRotina(), iso = todayISO(); const s = new Set(r.skip[iso] || []);
+  if (on) s.add(key); else s.delete(key); r.skip[iso] = [...s]; saveRotina(); renderRotina();
+}
+function rtDefaultsBanner(main) {
+  if (rt().set) return;
+  const b = el("section", "banner rt-def");
+  b.appendChild(el("span", null, "Usando horários padrão: acorda 7h e dorme 23h nos dias úteis, sem compromissos fixos. Cadastre os seus para a rotina encaixar no seu dia. "));
+  const l = el("button", "linkbtn", "Cadastrar horários"); l.type = "button"; l.id = "rt-go-hor"; l.addEventListener("click", () => enterRotina("rot-horarios"));
+  b.appendChild(l); main.appendChild(b);
+}
+
+function renderRtHoje(main) {
+  const now = new Date(), nowMin = rtNow(), R = rtToday(), d = R.day;
+  head2(main, "Rotina de hoje", capFirst(WEEKDAYS[now.getDay()]) + ", " + now.getDate() + " de " + MONTHS[now.getMonth()] + ". Montada às " + minToHM(nowMin) + " com o que falta nos módulos. Ela se refaz quando você conclui, atrasa ou pula algo.");
+  rtDefaultsBanner(main);
+  if (nowMin >= d.sleep) main.appendChild(el("p", "banner", "Pelo seu horário de dormir, o dia de hoje já acabou. Veja amanhã na aba Semana."));
+  const tl = el("ol", "rt-list"); tl.id = "rt-list";
+  const rows = R.blocks.map(b => ({ s: b.s, e: b.e, b })).concat(d.fixed.filter(f => f.b > nowMin).map(f => ({ s: f.a, e: f.b, f }))).sort((x, y) => x.s - y.s);
+  if (d.wake > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.wake) + " · Acordar"));
+  rows.forEach(r => {
+    const li = el("li", "rt-row" + (r.f ? " fixed" : " mod-" + r.b.it.mod) + (nowMin >= r.s && nowMin < r.e ? " now" : "")); 
+    const time = el("span", "rt-time", minToHM(r.s) + "–" + minToHM(r.e));
+    if (r.f) { li.append(time, el("span", "rt-title", r.f.name || "Compromisso"), el("span", "rt-sub", "Compromisso fixo")); tl.appendChild(li); return; }
+    const it = r.b.it; li.id = "rt-" + it.key + (r.b.part ? "-" + r.b.part : "");
+    const btn = el("button", "rt-main"); btn.type = "button"; btn.id = "rt-go-" + it.key + (r.b.part ? "-" + r.b.part : "");
+    btn.append(time, rtIcon(it.mod));
+    const tx = el("span", "rt-txt"); tx.appendChild(el("span", "rt-title", it.title + (it.split && (it.dur > r.e - r.s) ? " · " + rtDur(r.e - r.s) : "")));
+    let sub = it.sub || "";
+    if (r.b.missions) sub = r.b.missions.length ? r.b.missions.map(m => m.t.title + " (" + rtDur(m.min) + ")").join(" · ") : "Tempo de trabalho livre: escolha as missões do dia.";
+    if (sub) tx.appendChild(el("span", "rt-sub", sub));
+    if (nowMin >= r.s && nowMin < r.e) tx.appendChild(el("span", "st pend rt-now", "Agora"));
+    btn.appendChild(tx); btn.addEventListener("click", it.go); li.appendChild(btn);
+    if (!r.b.part) { const sk = el("button", "linkbtn rt-skip", "Pular hoje"); sk.type = "button"; sk.id = "rt-skip-" + it.key; sk.addEventListener("click", () => rtSkip(it.key, true)); li.appendChild(sk); }
+    tl.appendChild(li);
+  });
+  if (d.sleep > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.sleep) + " · Dormir"));
+  if (!R.blocks.length && !R.left.length) main.appendChild(el("p", "guide note", "Nada pendente hoje nos seus módulos. Bom trabalho."));
+  else main.appendChild(tl);
+  if (R.left.length) {
+    const s = el("section", "guide rt-left"); s.id = "rt-left";
+    s.append(el("h3", null, "Não coube hoje"), el("p", "note muted", "Não há tempo livre suficiente até a hora de dormir. Libere um horário, pule algo de menor prioridade ou deixe para amanhã."));
+    const ul = el("ul", "hist"); R.left.forEach(x => { const li = el("li"); li.append(el("span", null, x.it.title), el("span", null, rtDur(x.min))); ul.appendChild(li); }); s.appendChild(ul); main.appendChild(s);
+  }
+  const extra = el("div", "rt-foot");
+  if (R.dem.done.length) extra.appendChild(el("p", "note muted", "Já feito hoje: " + R.dem.done.join(" · ") + "."));
+  if (R.dem.skipped.length) {
+    const p = el("p", "note muted"); p.append("Pulado hoje: ");
+    R.dem.skipped.forEach((it, i) => { if (i) p.append(" · "); const b = el("button", "linkbtn", it.title + " (voltar)"); b.type = "button"; b.id = "rt-unskip-" + it.key; b.addEventListener("click", () => rtSkip(it.key, false)); p.appendChild(b); });
+    extra.appendChild(p);
+  }
+  if (extra.childNodes.length) main.appendChild(extra);
+}
+
+function renderRtSemana(main) {
+  const days = rtWeekDays(), plan = rtMissionPlan(days), nowMin = rtNow();
+  head2(main, "Semana", "O que cada módulo pede nos próximos 7 dias e se cabe no seu tempo livre.");
+  rtDefaultsBanner(main);
+  if (plan.late.length) {
+    const b = el("section", "banner rt-warn"); b.id = "rt-late";
+    b.appendChild(el("p", "note", "Não cabem até o prazo com a sua meta de horas: " + plan.late.map(t => t.title + " (prazo " + fmtDate(t.due).slice(0, 5) + ")").join(", ") + ". Renegocie o prazo, aumente a meta de horas ou adiante o trabalho."));
+    main.appendChild(b);
+  }
+  const sim = { x4: {}, eq: {} };
+  days.forEach((iso, i) => {
+    const isT = i === 0, dem = rtDemand(iso, plan, sim), d = dem.day, from = isT ? Math.max(d.wake, Math.ceil(nowMin / 5) * 5) : null;
+    const sch = rtSchedule(iso, dem.items, from), freeMin = rtFreeMin(from != null ? rtCut(d.free, -1, from) : d.free);
+    const load = dem.items.filter(x => !x.optional).reduce((s, x) => s + x.dur, 0);
+    const card = el("section", "guide rt-day" + (sch.left.length ? " over" : "")); card.id = "rt-d-" + iso;
+    const [y, m, dd] = iso.split("-").map(Number);
+    const hd = el("div", "rt-day-h"); hd.append(el("h3", null, (isT ? "Hoje" : i === 1 ? "Amanhã" : capFirst(DOW_SHORT[rtDow(iso)])) + " · " + String(dd).padStart(2, "0") + "/" + String(m).padStart(2, "0")), el("span", "rt-load", rtDur(load) + " de " + rtDur(freeMin) + (isT ? " livres até dormir" : " livres")));
+    card.appendChild(hd);
+    const bar = el("div", "goalbar"); const f = el("span"); f.style.width = Math.min(100, freeMin ? load / freeMin * 100 : 100) + "%"; bar.appendChild(f); if (load > freeMin) bar.classList.add("over"); card.appendChild(bar);
+    const ul = el("ul", "rt-items");
+    const grp = {}; dem.items.forEach(it => { const k = it.key.startsWith("gr-") ? "graca" : it.key; (grp[k] = grp[k] || []).push(it); });
+    const line = (mod, title, sub, opt) => { const li = el("li", "rt-it" + (opt ? " opt" : "")); li.appendChild(rtIcon(mod)); const t = el("span", "rt-txt"); t.appendChild(el("span", "rt-title", title)); if (sub) t.appendChild(el("span", "rt-sub", sub)); li.appendChild(t); ul.appendChild(li); };
+    ["forca", "cardio", "trabalho", "estudo", "foco", "graca", "eco"].forEach(k => {
+      const g = grp[k]; if (!g) return; const it = g[0];
+      if (k === "graca") { const names = {}; g.forEach(x => { const n = x.title.replace(/ \(\dª vez\)$/, ""); names[n] = (names[n] || 0) + 1; }); line("graca", "Graça · " + rtDur(g.reduce((s, x) => s + x.dur, 0)), Object.keys(names).map(n => n + (names[n] > 1 ? " ×" + names[n] : "")).join(" · ")); return; }
+      if (k === "trabalho") { line("missoes", "Trabalho · " + rtDur(it.dur), it.missions.length ? it.missions.map(x => x.t.title + " (" + rtDur(x.need) + (x.t.est ? "" : ", sem estimativa") + ")").join(" · ") : "Nenhuma missão marcada: tempo para as demandas que chegarem."); return; }
+      line(it.mod, it.title + " · " + rtDur(it.dur) + (it.optional ? " (opcional)" : ""), k === "cardio" ? "" : it.sub, it.optional);
+    });
+    if (!ul.childNodes.length) ul.appendChild(el("li", "rt-it opt", isT ? "Nada pendente hoje." : "Dia livre nos módulos."));
+    card.appendChild(ul);
+    if (sch.left.length) card.appendChild(el("p", "note rt-overmsg", "Não cabe: " + sch.left.map(x => x.it.title + " (" + rtDur(x.min) + ")").join(", ") + "."));
+    if (isT) { const go = el("button", "linkbtn", "Ver a agenda de hoje"); go.type = "button"; go.id = "rt-sem-hoje"; go.addEventListener("click", () => enterRotina("rot-hoje")); card.appendChild(go); }
+    main.appendChild(card);
+  });
+  if (plan.later.length) main.appendChild(el("p", "note muted", "Depois desta semana: " + plan.later.length + (plan.later.length === 1 ? " missão aberta" : " missões abertas") + " sem espaço nesta semana ou com prazo mais à frente."));
+}
+
+function renderRtHorarios(main) {
+  const c = rt(), r = ensureRotina();
+  head2(main, "Horários", "Seu tempo disponível. A rotina só marca tarefas entre acordar e dormir, fora dos compromissos fixos.");
+  const msg = el("p", "note"); msg.id = "rt-msg"; msg.setAttribute("aria-live", "polite"); if (rtUI.msg) flash(msg, rtUI.msg, rtUI.kind || "ok"); rtUI.msg = "";
+  const save = (txt) => { saveRotina(); rtUI.msg = txt || "Horários salvos."; rtUI.kind = "ok"; renderRotina(); };
+  const timeField = (grid, id, label, val, onSet) => { const f = el("div", "field"), l = el("label", null, label), i = el("input"); l.htmlFor = id; i.id = id; i.type = "time"; i.value = val; i.addEventListener("change", () => { if (hmToMin(i.value) == null) return; onSet(i.value); save(); }); f.append(l, i); grid.appendChild(f); return i; };
+  const s1 = el("section", "guide rt-set");
+  s1.appendChild(el("h3", null, "Sono"));
+  const g1 = el("div", "inputs two");
+  timeField(g1, "rt-wake-wk", "Acordo (seg a sex)", c.wake.wk, v => { r.wake = Object.assign({}, c.wake, r.wake, { wk: v }); });
+  timeField(g1, "rt-sleep-wk", "Durmo (seg a sex)", c.sleep.wk, v => { r.sleep = Object.assign({}, c.sleep, r.sleep, { wk: v }); });
+  timeField(g1, "rt-wake-we", "Acordo (sáb e dom)", c.wake.we, v => { r.wake = Object.assign({}, c.wake, r.wake, { we: v }); });
+  timeField(g1, "rt-sleep-we", "Durmo (sáb e dom)", c.sleep.we, v => { r.sleep = Object.assign({}, c.sleep, r.sleep, { we: v }); });
+  s1.appendChild(g1); main.append(s1);
+  const s2 = el("section", "guide rt-set");
+  s2.appendChild(el("h3", null, "Preferências"));
+  if (modAllowed("missoes")) {
+    const g2 = el("div", "inputs two");
+    timeField(g2, "rt-work-s", "Trabalho a partir de", c.work.start, v => { r.work = Object.assign({}, c.work, r.work, { start: v }); });
+    timeField(g2, "rt-work-e", "Trabalho até", c.work.end, v => { r.work = Object.assign({}, c.work, r.work, { end: v }); });
+    s2.append(g2, el("p", "note muted", "A meta de horas e os dias de trabalho continuam vindo das Missões."));
+  }
+  s2.appendChild(chipGroup("Treino e cardio de preferência", ROT_TREINO, c.treino, v => { r.treino = v; save("Preferência salva."); }, "rt-tr"));
+  main.appendChild(s2);
+  const s3 = el("section", "guide rt-set"); s3.id = "rt-fixos";
+  s3.append(el("h3", null, "Compromissos fixos"), el("p", "note muted", "Aulas, expediente, reuniões, deslocamento: o que já ocupa seu horário toda semana."));
+  if (c.fixed.length) {
+    const ul = el("ul", "hist");
+    c.fixed.slice().sort((a, b) => (a.start || "").localeCompare(b.start || "")).forEach(f => {
+      const li = el("li"); li.appendChild(el("span", null, f.name + " · " + (f.days || []).slice().sort().map(x => DOW_SHORT[x]).join(", ") + " · " + f.start + "–" + f.end));
+      const rm = el("button", "linkbtn", "Remover"); rm.type = "button"; rm.id = "rt-fx-rm-" + f.id; rm.addEventListener("click", () => { r.fixed = r.fixed.filter(x => x.id !== f.id); save("Compromisso removido."); }); li.appendChild(rm); ul.appendChild(li);
+    });
+    s3.appendChild(ul);
+  }
+  const fx = rtUI.fx, g3 = el("div", "inputs two");
+  const nf = el("div", "field span2"), nl = el("label", null, "Nome"), ni = el("input"); nl.htmlFor = "rt-fx-name"; ni.id = "rt-fx-name"; ni.placeholder = "Ex.: Aula na FFCLRP"; ni.value = fx.name; ni.addEventListener("input", () => { fx.name = ni.value; }); nf.append(nl, ni); g3.appendChild(nf);
+  const tf = (id, label, k) => { const f = el("div", "field"), l = el("label", null, label), i = el("input"); l.htmlFor = id; i.id = id; i.type = "time"; i.value = fx[k]; i.addEventListener("input", () => { fx[k] = i.value; }); f.append(l, i); g3.appendChild(f); };
+  tf("rt-fx-start", "Começa", "start"); tf("rt-fx-end", "Termina", "end");
+  s3.appendChild(g3);
+  const dg = el("div", "cg"); dg.appendChild(el("span", "field-l", "Dias"));
+  const row = el("div", "chips");
+  [1, 2, 3, 4, 5, 6, 0].forEach(n => { const b = el("button", "gchip", DOW_SHORT[n]); b.type = "button"; b.id = "rt-fx-d-" + n; b.setAttribute("aria-pressed", String(fx.days.includes(n))); b.addEventListener("click", () => { fx.days = fx.days.includes(n) ? fx.days.filter(x => x !== n) : fx.days.concat(n); b.setAttribute("aria-pressed", String(fx.days.includes(n))); }); row.appendChild(b); });
+  dg.appendChild(row); s3.appendChild(dg);
+  const fm = el("p", "note"); fm.id = "rt-fx-msg";
+  const add = el("button", "btn", "Adicionar compromisso"); add.type = "button"; add.id = "rt-fx-add";
+  add.addEventListener("click", () => {
+    const a = hmToMin(fx.start), b = hmToMin(fx.end);
+    if (!fx.name.trim()) { flash(fm, "Dê um nome ao compromisso.", "err"); return; }
+    if (a == null || b == null || a === b) { flash(fm, "Preencha o horário de começo e de fim.", "err"); return; }
+    if (!fx.days.length) { flash(fm, "Escolha pelo menos um dia.", "err"); return; }
+    r.fixed.push({ id: "f" + Date.now().toString(36), name: fx.name.trim(), start: fx.start, end: fx.end, days: fx.days.slice() });
+    rtUI.fx = { name: "", start: "", end: "", days: fx.days.slice() }; save("Compromisso adicionado.");
+  });
+  const bb = el("div", "btns"); bb.appendChild(add); s3.append(fm, bb);
+  main.insertBefore(msg, main.children[1] || null);
+  main.appendChild(s3);
+}
+
+function rtHomeCard() {
+  const R = rtToday(), nowMin = rtNow();
+  const card = el("section", "guide rt-home"); card.id = "rt-home";
+  const top = el("div", "hex-top"); top.appendChild(el("h3", null, "Rotina de hoje"));
+  const ob = el("button", "btn", "Abrir rotina"); ob.type = "button"; ob.id = "rt-open"; ob.addEventListener("click", () => enterRotina("rot-hoje")); top.appendChild(ob);
+  card.appendChild(top);
+  const cur = R.blocks.find(b => nowMin >= b.s && nowMin < b.e), next = R.blocks.find(b => b.s >= nowMin && b !== cur);
+  const p = el("div", "rt-home-l");
+  if (cur) { const l = el("p", "note"); l.append(el("b", null, "Agora: "), cur.it.title + " até " + minToHM(cur.e)); p.appendChild(l); }
+  if (next) { const l = el("p", "note"); l.append(el("b", null, (cur ? "Depois: " : "Próximo: ")), next.it.title + " às " + minToHM(next.s)); p.appendChild(l); }
+  if (!cur && !next) p.appendChild(el("p", "note muted", R.left.length ? "O tempo livre de hoje acabou." : "Nada pendente hoje nos seus módulos."));
+  const tot = R.blocks.reduce((s, b) => s + b.e - b.s, 0);
+  if (R.blocks.length) p.appendChild(el("p", "note muted", "Ainda hoje: " + R.blocks.length + (R.blocks.length === 1 ? " bloco" : " blocos") + " · " + rtDur(tot) + (R.left.length ? " · " + R.left.length + " " + (R.left.length === 1 ? "item não coube" : "itens não couberam") : "")));
+  card.appendChild(p);
+  return card;
+}
+setInterval(() => {
+  if (document.visibilityState !== "visible") return;
+  const a = document.activeElement; if (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) return;
+  if (state.view === "rotina" && state.rtab === "rot-hoje") renderRotina();
+}, 60000);
+
 /* ======================= Conta e nuvem ======================= */
 const CLOUD_KEY = "stek-cloud";
-const SYNC_KEYS = ["treino-perfil", "treino-logs-v1", "treino-logs-irma-v1", "treino-settings-v1", "treino-settings-irma-v1", "stek-intel-v1", "stek-fin-v1", "stek-stamina-v1", "stek-graca-v1", "stek-missoes-v1", "stek-perfil-v1"];
+const SYNC_KEYS = ["treino-perfil", "treino-logs-v1", "treino-logs-irma-v1", "treino-settings-v1", "treino-settings-irma-v1", "stek-intel-v1", "stek-fin-v1", "stek-stamina-v1", "stek-graca-v1", "stek-missoes-v1", "stek-perfil-v1", "stek-rotina-v1"];
 const DEFAULT_SERVER = "https://stek-pluggy.nataniel-akio.workers.dev";
 const _lsSet = Storage.prototype.setItem;
 let cloud = null, cloudApplying = false, cloudTimer = null, cloudBusy = false;
@@ -4748,7 +5168,7 @@ function applyRemote(items) {
   saveCloud(); reloadAllState();
 }
 function reloadAllState() {
-  loadIntel(); loadFin(); loadStamina(); loadGraca(); loadMs(); loadPerfil();
+  loadIntel(); loadFin(); loadStamina(); loadGraca(); loadMs(); loadPerfil(); loadRotina();
   const p = readProfile();
   if (p) { if (p !== profileId) useProfile(p); state.logs = {}; loadLogs(); loadSettings(); }
   rerenderView();
@@ -4764,6 +5184,7 @@ function rerenderView() {
   else if (v === "est") { renderTabs(); renderStamina(); }
   else if (v === "graca") { if (!modAllowed("graca")) goHome(); else { renderTabs(); renderGraca(); } }
   else if (v === "ms") { if (!modAllowed("missoes")) goHome(); else { renderTabs(); renderMissoes(); } }
+  else if (v === "rotina") { renderTabs(); renderRotina(); }
 }
 function cloudExpired() {
   if (cloud) { cloud.token = ""; saveCloud(); }
@@ -4819,7 +5240,7 @@ function mergeKey(k, a, b) {
     out.timer = R.timer || L.timer || null;
     return JSON.stringify(out);
   }
-  if (k === "stek-perfil-v1") return (L.upd || 0) > (R.upd || 0) ? a : b;
+  if (k === "stek-perfil-v1" || k === "stek-rotina-v1") return (L.upd || 0) > (R.upd || 0) ? a : b;
   if (k === "stek-missoes-v1") {
     if (!Array.isArray(L.tasks)) return b; if (!Array.isArray(R.tasks)) return a;
     const byId = {}; R.tasks.forEach(x => { byId[x.id] = x; });
@@ -4998,6 +5419,7 @@ window.addEventListener("hashchange", () => {
   if (STAM_TABS.some(t => t.id === h)) { if (state.view !== "est" || h !== state.stab) enterStamina(h); return; }
   if (GRACA_TABS.some(t => t.id === h)) { if (state.view !== "graca" || h !== state.gtab) enterGraca(h); return; }
   if (MS_TABS.some(t => t.id === h)) { if (state.view !== "ms" || h !== state.mtab) enterMissoes(h); return; }
+  if (ROT_TABS.some(t => t.id === h)) { if (state.view !== "rotina" || h !== state.rtab) enterRotina(h); return; }
   if (profileId && TABS.some(t => t.id === h) && (state.view !== "forca" || h !== state.tab)) enterForca(h);
 });
 loadCloud();
@@ -5007,6 +5429,7 @@ loadStamina();
 loadGraca();
 loadMs();
 loadPerfil();
+loadRotina();
 const savedProfile = readProfile();
 if (savedProfile) loadProfile(savedProfile);
 history.replaceState(null, "", "#inicio");

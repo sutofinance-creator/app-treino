@@ -545,7 +545,7 @@ function renderTabs() {
     forca: { tabs: TABS, cur: state.tab, label: "Treinos do módulo Força", set: id => { state.tab = id; }, draw: () => renderMain() },
     intel: { tabs: INTEL_TABS, cur: state.itab, label: "Seções do módulo Inteligência", set: id => { state.itab = id; if (id === "estudo") state.idate = todayISO(); }, draw: () => renderIntel() },
     est: { tabs: STAM_TABS, cur: state.stab, label: "Seções do módulo Estamina", set: id => { state.stab = id; if (id === "est-hoje") state.sdate = todayISO(); }, draw: () => renderStamina() },
-    fin: { tabs: FIN_TABS, cur: state.ftab, label: "Seções do módulo Finanças", set: id => { state.ftab = id; finUI.open = null; finUI.confirm = null; finUI.msg = ""; }, draw: () => renderFin() }
+    fin: { tabs: FIN_TABS, cur: state.ftab, label: "Seções do módulo Economia", set: id => { state.ftab = id; finUI.open = null; finUI.confirm = null; finUI.msg = ""; }, draw: () => renderFin() }
   }[v];
   if (!cfg) return;
   nav.setAttribute("aria-label", cfg.label);
@@ -1051,7 +1051,7 @@ function renderGuide(main) {
   const s = document.createElement("section"); s.className = "guide";
   const h = document.createElement("h3"); h.textContent = "Backup";
   const p = document.createElement("p"); p.style.margin = "0";
-  p.textContent = "Exporte um arquivo com todos os seus registros de treino, estudo e finanças e guarde no Drive ou mande para você mesmo. Para restaurar, importe esse arquivo.";
+  p.textContent = "Exporte um arquivo com todos os seus registros de treino, estudo e economia e guarde no Drive ou mande para você mesmo. Para restaurar, importe esse arquivo.";
   const btns = document.createElement("div"); btns.className = "btns";
   const ex = document.createElement("button"); ex.type = "button"; ex.className = "btn"; ex.id = "btn-export"; ex.textContent = "Exportar backup";
   ex.addEventListener("click", exportBackup);
@@ -2479,7 +2479,7 @@ function finTasks() {
 function enterFin(tab) {
   state.view = "fin"; document.body.dataset.view = "fin";
   ofBanks = null; ofStatusErr = "";
-  document.getElementById("crumb").textContent = "/ Finanças";
+  document.getElementById("crumb").textContent = "/ Economia";
   state.ftab = FIN_TABS.some(t => t.id === tab) ? tab : ((!fin.tx.length || fin.tx.some(t => t.status !== "done")) ? "fin-pendentes" : "fin-relatorio");
   history.replaceState(null, "", "#" + state.ftab);
   renderTabs(); renderFin(); window.scrollTo(0, 0);
@@ -2682,19 +2682,19 @@ function renderRelatorio(main) {
   insights(k, a, p, est).forEach(s => { const li = el("li"); li.textContent = s; ul.appendChild(li); });
   ins.appendChild(ul); main.appendChild(ins);
 
-  // para onde foi
-  const w = el("section", "guide"); w.appendChild(el("h3", null, "Para onde foi o dinheiro"));
-  const cats = Object.keys(a.byCat).map(c => ({ c, v: a.byCat[c], n: a.catCount[c], pv: p.byCat[c] || 0 })).sort((x, y) => y.v - x.v);
-  w.appendChild(hbars(cats.slice(0, 12).map(x => ({ label: x.c, value: x.v, note: x.n + "×" + (x.pv ? " · " + (x.v >= x.pv ? "+" : "−") + brl(Math.abs(x.v - x.pv)) : "") })), a.gastos));
-  if (cats.length > 12) w.appendChild(el("p", "note muted", "+ " + (cats.length - 12) + " categorias menores: " + brl(cats.slice(12).reduce((s, x) => s + x.v, 0))));
-  main.appendChild(w);
-
   // classificações
   const cl = el("section", "guide"); cl.appendChild(el("h3", null, "Perfil dos gastos"));
   cl.appendChild(stack("Essencialidade", ESS.map(([v, t]) => ({ label: t, value: a.byEss[v] || 0, cls: "ess-" + v }))));
   cl.appendChild(stack("Natureza", NAT.map(([v, t], i) => ({ label: t, value: a.byNat[v] || 0, cls: "s" + i }))));
   cl.appendChild(stack("Frequência", FREQ.map(([v, t], i) => ({ label: t, value: a.byFreq[v] || 0, cls: "s" + i }))));
   main.appendChild(cl);
+
+  // para onde foi
+  const w = el("section", "guide"); w.appendChild(el("h3", null, "Para onde foi o dinheiro"));
+  const cats = Object.keys(a.byCat).map(c => ({ c, v: a.byCat[c], n: a.catCount[c], pv: p.byCat[c] || 0 })).sort((x, y) => y.v - x.v);
+  w.appendChild(hbars(cats.slice(0, 12).map(x => ({ label: x.c, value: x.v, note: x.n + "×" + (x.pv ? " · " + (x.v >= x.pv ? "+" : "−") + brl(Math.abs(x.v - x.pv)) : "") })), a.gastos));
+  if (cats.length > 12) w.appendChild(el("p", "note muted", "+ " + (cats.length - 12) + " categorias menores: " + brl(cats.slice(12).reduce((s, x) => s + x.v, 0))));
+  main.appendChild(w);
 
   // evolução + ritmo
   const ev = el("section", "guide"); ev.appendChild(el("h3", null, "Evolução"));
@@ -2910,7 +2910,7 @@ const MODULES = [
   { id: "inteligencia", name: "Inteligência", ready: true, desc: "Estudos, cronômetros e metas" },
   { id: "estamina", name: "Estamina", ready: true, desc: "Cardio e foco" },
   { id: "forca", name: "Força", ready: true, desc: "Treinos, cargas e evolução" },
-  { id: "financas", name: "Finanças", ready: true, desc: "Gastos, relatório e investimentos" }
+  { id: "financas", name: "Economia", ready: true, desc: "Gastos, relatório e investimentos" }
 ];
 const expanded = new Set();
 
@@ -3049,7 +3049,7 @@ function loadCloud() {
 }
 function saveCloud() { try { if (cloud) _lsSet.call(localStorage, CLOUD_KEY, JSON.stringify(cloud)); else localStorage.removeItem(CLOUD_KEY); } catch (e) {} }
 function loggedIn() { return !!(cloud && cloud.token); }
-// Quem não é o dono (ou está sem conta) vê só Força e Finanças. Quem decide é o servidor, na resposta do login e da sincronização.
+// Quem não é o dono (ou está sem conta) vê só Força e Economia. Quem decide é o servidor, na resposta do login e da sincronização.
 const BASIC_MODS = ["forca", "financas"];
 function allowedModules() { return loggedIn() && Array.isArray(cloud.modules) ? cloud.modules : BASIC_MODS; }
 function modAllowed(id) { return allowedModules().includes(id); }
@@ -3268,7 +3268,7 @@ function renderConta() {
   if (loggedIn()) {
     const s = el("section", "guide");
     s.append(el("h3", null, "Conectado como " + cloud.user));
-    s.appendChild(el("p", "note muted", "Acesso: " + (modAllowed("inteligencia") ? "todos os módulos." : "módulos Força e Finanças.")));
+    s.appendChild(el("p", "note muted", "Acesso: " + (modAllowed("inteligencia") ? "todos os módulos." : "módulos Força e Economia.")));
     const st = el("p", "note"); st.id = "cloud-state";
     if (cloud.err) flash(st, cloud.err, "err"); else st.textContent = Object.keys(cloud.dirty).length ? "Há alterações esperando para subir para a nuvem." : "Tudo sincronizado. As alterações sobem sozinhas alguns segundos depois de feitas.";
     s.appendChild(st);

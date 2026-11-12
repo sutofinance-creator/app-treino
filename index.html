@@ -513,6 +513,8 @@ ol.steps a { color: var(--accent); }
 .rt-fx-acts { display: flex; gap: 14px; flex-shrink: 0; }
 .rt-fx-editing span:first-child { color: var(--accent); }
 .rt-fx-h { margin: 4px 0 0; font: 700 14px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.rt-presets { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rt-presets .field-l { margin-right: 4px; }
 </style>
 </head>
 <body data-view="home">
@@ -4709,7 +4711,18 @@ const ROT_TABS = [{ id: "rot-hoje", label: "Hoje" }, { id: "rot-semana", label: 
 const ROT_DEF = { wake: { wk: "07:00", we: "08:00" }, sleep: { wk: "23:00", we: "23:30" }, work: { start: "08:00", end: "18:00" }, treino: "noite" };
 const ROT_TREINO = [["manha", "Manhã"], ["tarde", "Tarde"], ["noite", "Noite"]];
 let rotina = null;
-const rtUI = { msg: "", kind: "", fx: { name: "", start: "", end: "", days: [1, 2, 3, 4, 5] } };
+const ROT_FXKIND = [["fixo", "Horário fixo"], ["flex", "Horário flexível"], ["wake", "Ao acordar"], ["sleep", "Antes de dormir"]];
+const ROT_SHIFT = [[30, "30 min"], [60, "1h"], [90, "1h30"], [120, "2h"]];
+const ROT_EXT = [[0, "Não"], [30, "30 min"], [60, "1h"]];
+// atalhos com horários de bom senso; dá para ajustar antes de adicionar
+const ROT_PRESETS = [
+  { label: "Café da manhã", kind: "wake", name: "Café da manhã", dur: 20 },
+  { label: "Almoço", kind: "flex", name: "Almoço", start: "12:00", dur: 60, shift: 60 },
+  { label: "Jantar", kind: "flex", name: "Jantar", start: "19:30", dur: 45, shift: 60 },
+  { label: "Cuidados noturnos", kind: "sleep", name: "Cuidados noturnos", dur: 30 }
+];
+const rtFxBlank = days => ({ kind: "fixo", name: "", start: "", end: "", dur: "", shift: 60, days: days || [1, 2, 3, 4, 5] });
+const rtUI = { msg: "", kind: "", fx: rtFxBlank() };
 
 function loadRotina() { try { const v = JSON.parse(localStorage.getItem(ROT_KEY)); rotina = v && typeof v === "object" ? v : null; } catch (e) { rotina = null; } }
 function ensureRotina() { if (!rotina) rotina = {}; rotina.fixed = rotina.fixed || []; rotina.skip = rotina.skip || {}; return rotina; }
@@ -4722,7 +4735,8 @@ function saveRotina() {
 function rt() {
   const r = rotina || {};
   return { wake: Object.assign({}, ROT_DEF.wake, r.wake), sleep: Object.assign({}, ROT_DEF.sleep, r.sleep), work: Object.assign({}, ROT_DEF.work, r.work),
-    treino: r.treino || ROT_DEF.treino, fixed: Array.isArray(r.fixed) ? r.fixed : [], skip: r.skip || {}, set: !!(r.wake || r.sleep) };
+    treino: r.treino || ROT_DEF.treino, fixed: Array.isArray(r.fixed) ? r.fixed : [], skip: r.skip || {}, set: !!(r.wake || r.sleep),
+    extWake: r.extWake ?? 30, extSleep: r.extSleep ?? 60 };
 }
 function hmToMin(s) { const m = /^(\d{1,2}):(\d{2})/.exec(s || ""); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
 function minToHM(n) { n = Math.round(n); const h = Math.floor(n / 60) % 24, m = ((n % 60) + 60) % 60; return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"); }
@@ -4732,16 +4746,39 @@ function rtNow() { const n = new Date(); return n.getHours() * 60 + n.getMinutes
 function rtCut(free, a, b) { const out = []; free.forEach(([x, y]) => { if (b <= x || a >= y) { out.push([x, y]); return; } if (a > x) out.push([x, a]); if (b < y) out.push([b, y]); }); return out; }
 function rtFreeMin(free) { return free.reduce((s, [a, b]) => s + b - a, 0); }
 function rtWeekDays() { const t = todayISO(); return Array.from({ length: 7 }, (_, i) => addDaysISO(t, i)); }
-// tempo livre do dia: entre acordar e dormir, menos os compromissos fixos
-function rtDay(iso) {
-  const c = rt(), we = [0, 6].includes(rtDow(iso)) ? "we" : "wk";
+// O dia "ideal": acordar, dormir, compromissos fixos e os flexíveis (refeições, cuidados) com a janela em que podem mudar.
+// Limites de bom senso: o dia nunca começa antes das 5h nem termina depois da 1h.
+function rtBase(iso) {
+  const c = rt(), dow = rtDow(iso), we = [0, 6].includes(dow) ? "we" : "wk";
   const wake = hmToMin(c.wake[we]) ?? 420; let sleep = hmToMin(c.sleep[we]) ?? 1380; if (sleep <= wake) sleep += 1440;
-  const fixed = c.fixed.filter(f => (f.days || []).includes(rtDow(iso))).map(f => {
+  const mine = c.fixed.filter(f => (f.days || []).includes(dow));
+  const fixed = mine.filter(f => !f.kind || f.kind === "fixo").map(f => {
     const a = hmToMin(f.start), b0 = hmToMin(f.end); if (a == null || b0 == null) return null;
     return { a, b: b0 <= a ? b0 + 1440 : b0, name: f.name, id: f.id };
   }).filter(Boolean).sort((x, y) => x.a - y.a);
-  let free = [[wake, sleep]]; fixed.forEach(f => { free = rtCut(free, f.a, f.b); });
-  return { wake, sleep, fixed, free };
+  const flex = mine.filter(f => ["flex", "wake", "sleep"].includes(f.kind)).map(f => {
+    const dur = Math.max(5, Math.round(Number(f.dur) || 30));
+    if (f.kind !== "flex") return { id: f.id, name: f.name, dur, anchor: f.kind };
+    const ideal = hmToMin(f.start); if (ideal == null) return null;
+    const sh = Number(f.shift) || 60, valid = [];
+    for (let a = ideal - sh; a <= ideal + sh; a += 5) if (a >= wake && a + dur <= sleep && !fixed.some(x => a < x.b && a + dur > x.a)) valid.push(a);
+    const near = valid.length ? valid.reduce((b, a) => Math.abs(a - ideal) < Math.abs(b - ideal) ? a : b) : ideal;
+    return { id: f.id, name: f.name, dur, ideal, shift: sh, pos: [...new Set([near, valid.length ? valid[0] : ideal, valid.length ? valid[valid.length - 1] : ideal])] };
+  }).filter(Boolean);
+  return { wake, sleep, fixed, flex, maxWake: Math.max(0, Math.min(c.extWake, wake - 300)), maxSleep: Math.max(0, Math.min(c.extSleep, 1500 - sleep)) };
+}
+// tempo livre numa configuração (cfg: ws = acordar X min antes, ss = dormir X min depois, flex = início de cada flexível)
+function rtDay(iso, cfg) {
+  const B = rtBase(iso); cfg = cfg || {};
+  const wake = B.wake - (cfg.ws || 0), sleep = B.sleep + (cfg.ss || 0);
+  const busy = B.fixed.map(f => Object.assign({}, f));
+  B.flex.forEach(f => {
+    const a = f.anchor === "wake" ? wake : f.anchor === "sleep" ? sleep - f.dur : (cfg.flex && cfg.flex[f.id] != null ? cfg.flex[f.id] : f.pos[0]);
+    busy.push({ a, b: a + f.dur, name: f.name, id: f.id, flex: f.anchor || "flex", ideal: f.ideal });
+  });
+  busy.sort((x, y) => x.a - y.a);
+  let free = [[wake, sleep]]; busy.forEach(f => { free = rtCut(free, f.a, f.b); });
+  return { wake, sleep, fixed: busy, free, base: B, cfg };
 }
 function rtTreinoWin(d) { const p = rt().treino; return p === "manha" ? [d.wake, 720] : p === "tarde" ? [720, 1080] : [1080, d.sleep]; }
 function rtWorkout(iso) {
@@ -4778,7 +4815,7 @@ function rtMissionPlan(days) {
 
 // O que cada módulo pede no dia (hoje: só o que falta)
 function rtDemand(iso, plan, sim) {
-  const today = todayISO(), isT = iso === today, c = rt(), d = rtDay(iso), skip = c.skip[iso] || [];
+  const today = todayISO(), isT = iso === today, c = rt(), d = rtBase(iso), skip = c.skip[iso] || [];
   const items = [], done = [], skipped = [];
   const add = it => { if (skip.includes(it.key)) skipped.push(it); else items.push(it); };
   if (modAllowed("graca")) grTodayPlan(iso).forEach(r => {
@@ -4832,8 +4869,7 @@ function rtDemand(iso, plan, sim) {
       if (isT) { const st = subjTask(s, iso); if (st && st.complete) return null; }
       return s.name + (p.qty ? " (" + p.qty + " " + unitWord(s, p.qty) + ")" : "");
     }).filter(Boolean);
-    const we = hmToMin(rt().work.end) ?? 1080;
-    if (need > 0) add({ key: "estudo", mod: "inteligencia", title: "Estudo", sub: subs.join(" · "), dur: need, split: 50, minChunk: 25, gapAfter: 10, win: [we, d.sleep], rank: 4, go: () => enterIntel("estudo") });
+    if (need > 0) add({ key: "estudo", mod: "inteligencia", title: "Estudo", sub: subs.join(" · "), dur: need, split: 50, minChunk: 25, gapAfter: 10, rank: 4, go: () => enterIntel("estudo") });
     else if (have) done.push("Estudo " + rtDur(have));
   }
   if (isT && modAllowed("financas") && fin) {
@@ -4844,8 +4880,8 @@ function rtDemand(iso, plan, sim) {
 }
 
 // Encaixa os itens no tempo livre, do mais fixo ao mais flexível
-function rtSchedule(iso, items, from) {
-  const d = rtDay(iso), dayWin = [d.wake, d.sleep];
+function rtSchedule(iso, items, from, cfg) {
+  const d = rtDay(iso, cfg), dayWin = [d.wake, d.sleep];
   let free = d.free.map(x => x.slice()); if (from != null) free = rtCut(free, -1, from);
   const blocks = [], left = [];
   const cands = (dur, w) => free.map(([a, b]) => [Math.max(a, w[0]), Math.min(b, w[1])]).filter(([a, b]) => b - a >= dur);
@@ -4866,8 +4902,9 @@ function rtSchedule(iso, items, from) {
     let rem = it.dur, part = 0; const gap = it.gapAfter ?? 5;
     const fill = w => {
       while (rem > 0) {
-        const extra = lead ? lead.dur : 0, c = cands(Math.min(rem, it.minChunk || 15) + extra, w); if (!c.length) return;
-        const [a, b] = c[0], s0 = a + extra, ch = Math.min(rem, it.split, b - s0);
+        // nenhum bloco menor que o mínimo (estudo: 25 min); o finzinho que sobraria pequeno vai junto do bloco atual
+        const mc = it.minChunk || 15, extra = lead ? lead.dur : 0, c = cands(mc + extra, w); if (!c.length) return;
+        const [a, b] = c[0], s0 = a + extra, want = rem - it.split < mc ? Math.max(rem, mc) : it.split, ch = Math.min(want, b - s0);
         if (lead) { blocks.push({ s: a, e: s0, it: lead }); lead = null; }
         free = rtCut(free, a, s0 + ch + gap); blocks.push({ s: s0, e: s0 + ch, it, part: part++ }); rem -= ch;
       }
@@ -4889,13 +4926,50 @@ function rtSchedule(iso, items, from) {
   const wb = blocks.filter(b => b.it.key === "trabalho").sort((a, b) => a.s - b.s), ms = ((items.find(x => x.key === "trabalho") || {}).missions || []).map(x => Object.assign({}, x, { rem: x.need }));
   wb.forEach(b => { let room = b.e - b.s; b.missions = []; while (room > 0 && ms.length) { const m = ms[0], use = Math.min(room, m.rem); b.missions.push({ t: m.t, min: use }); m.rem -= use; room -= use; if (m.rem <= 0) ms.shift(); } });
   blocks.sort((a, b) => a.s - b.s);
-  return { blocks, left, day: d };
+  return { blocks, left, day: d, free };
+}
+// Se algo não cabe, tenta remanejar refeições dentro da janela delas e esticar o dia (dentro dos limites que você deu).
+// Fica com a opção que deixa menos coisa de fora e mexe menos no seu dia.
+function rtPlan(iso, items, from) {
+  const B = rtBase(iso), score = r => r.left.reduce((s, x) => s + x.min, 0) * 100 + (r.cfg.ws || 0) + (r.cfg.ss || 0) + Object.keys(r.cfg.flex || {}).reduce((s, id) => { const f = B.flex.find(x => x.id === id); return s + (f ? Math.abs(r.cfg.flex[id] - f.ideal) : 0); }, 0);
+  const run = cfg => { const r = rtSchedule(iso, items, from, cfg); r.cfg = cfg; r.score = score(r); return r; };
+  let best = run({});
+  if (best.left.length) {
+    const wss = [0, 30, 60].filter(x => x <= B.maxWake && (from == null || B.wake - x > from - 5 || x === 0));
+    const sss = [0, 30, 60].filter(x => x <= B.maxSleep);
+    const fl = B.flex.filter(f => !f.anchor);
+    let combos = [{}];
+    fl.forEach(f => { const nx = []; combos.forEach(cmb => f.pos.forEach(p => nx.push(Object.assign({}, cmb, { [f.id]: p })))); combos = nx; });
+    wss.forEach(ws => sss.forEach(ss => combos.forEach(fx => { const r = run({ ws, ss, flex: fx }); if (r.score < best.score) best = r; })));
+  }
+  rtFillExtra(best, iso);
+  return best;
+}
+// Sobrou mais de 20 min livres? Vira estudo (dá tempo de resolver exercícios).
+function rtFillExtra(r, iso) {
+  if (!modAllowed("inteligencia") || !intel || !intel.subjects.length || (rt().skip[iso] || []).includes("extra")) return;
+  const subs = intel.subjects.filter(s => !(s.total && subjDoneUpTo(s) >= s.total)).map(s => s.name);
+  const it = { key: "extra", mod: "inteligencia", title: "Estudo extra", sub: subs.join(" · "), go: () => enterIntel("estudo"), extra: true };
+  let part = 0;
+  r.free.forEach(([a, b]) => {
+    let s = a, len = b - a - (b < r.day.sleep ? 5 : 0);
+    while (len > 20) { const ch = len <= 80 ? len : 50; r.blocks.push({ s, e: s + ch, it, part: part++ }); s += ch + 10; len -= ch + 10; }
+  });
+  r.blocks.sort((x, y) => x.s - y.s);
+}
+// o que foi remanejado para caber tudo (para avisar na tela)
+function rtChanges(r) {
+  const out = [], c = r.cfg || {}, d = r.day;
+  if (c.ws) out.push("acordar às " + minToHM(d.wake) + " (" + rtDur(c.ws) + " antes)");
+  if (c.ss) out.push("dormir às " + minToHM(d.sleep) + " (" + rtDur(c.ss) + " depois)");
+  d.fixed.filter(f => f.flex === "flex" && f.a !== f.ideal).forEach(f => out.push(f.name + " às " + minToHM(f.a) + " (ideal " + minToHM(f.ideal) + ")"));
+  return out;
 }
 
 function rtToday() {
-  const iso = todayISO(), plan = rtMissionPlan(rtWeekDays()), dem = rtDemand(iso, plan), d = dem.day;
-  const from = Math.max(d.wake, Math.ceil(rtNow() / 5) * 5);
-  return Object.assign(rtSchedule(iso, dem.items, from), { dem, plan, from });
+  const iso = todayISO(), plan = rtMissionPlan(rtWeekDays()), dem = rtDemand(iso, plan);
+  const from = Math.ceil(rtNow() / 5) * 5;
+  return Object.assign(rtPlan(iso, dem.items, from), { dem, plan, from });
 }
 function rtIcon(mod) { const s = el("span", "rt-ico"); s.innerHTML = ICONS[mod] || ""; return s; }
 
@@ -4928,18 +5002,23 @@ function renderRtHoje(main) {
   const now = new Date(), nowMin = rtNow(), R = rtToday(), d = R.day;
   head2(main, "Rotina de hoje", capFirst(WEEKDAYS[now.getDay()]) + ", " + now.getDate() + " de " + MONTHS[now.getMonth()] + ". Montada às " + minToHM(nowMin) + " com o que falta nos módulos. Ela se refaz quando você conclui, atrasa ou pula algo.");
   rtDefaultsBanner(main);
+  const ch = rtChanges(R);
+  if (ch.length) { const b = el("p", "banner rt-warn", "Para caber tudo hoje: " + ch.join(", ") + "."); b.id = "rt-changes"; main.appendChild(b); }
   if (nowMin >= d.sleep) main.appendChild(el("p", "banner", "Pelo seu horário de dormir, o dia de hoje já acabou. Veja amanhã na aba Semana."));
   const tl = el("ol", "rt-list"); tl.id = "rt-list";
   const rows = R.blocks.map(b => ({ s: b.s, e: b.e, b })).concat(d.fixed.filter(f => f.b > nowMin).map(f => ({ s: f.a, e: f.b, f }))).sort((x, y) => x.s - y.s);
-  if (d.wake > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.wake) + " · Acordar"));
+  if (d.wake > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.wake) + " · Acordar" + (R.cfg.ws ? " (" + rtDur(R.cfg.ws) + " antes, para caber tudo)" : "")));
   rows.forEach(r => {
     const li = el("li", "rt-row" + (r.f ? " fixed" : " mod-" + r.b.it.mod) + (nowMin >= r.s && nowMin < r.e ? " now" : "")); 
     const time = el("span", "rt-time", minToHM(r.s) + "–" + minToHM(r.e));
-    if (r.f) { li.append(time, el("span", "rt-title", r.f.name || "Compromisso"), el("span", "rt-sub", "Compromisso fixo")); tl.appendChild(li); return; }
+    if (r.f) {
+      const fs = r.f.flex === "flex" ? (r.f.a !== r.f.ideal ? "Remanejado: o ideal era " + minToHM(r.f.ideal) : "Horário flexível") : r.f.flex === "wake" ? "Ao acordar" : r.f.flex === "sleep" ? "Antes de dormir" : "Compromisso fixo";
+      li.append(time, el("span", "rt-title", r.f.name || "Compromisso"), el("span", "rt-sub", fs)); tl.appendChild(li); return;
+    }
     const it = r.b.it; li.id = "rt-" + it.key + (r.b.part ? "-" + r.b.part : "");
     const btn = el("button", "rt-main"); btn.type = "button"; btn.id = "rt-go-" + it.key + (r.b.part ? "-" + r.b.part : "");
     btn.append(time, rtIcon(it.mod));
-    const tx = el("span", "rt-txt"); tx.appendChild(el("span", "rt-title", it.title + (it.split && (it.dur > r.e - r.s) ? " · " + rtDur(r.e - r.s) : "")));
+    const tx = el("span", "rt-txt"); tx.appendChild(el("span", "rt-title", it.title + ((it.split && it.dur > r.e - r.s) || it.extra ? " · " + rtDur(r.e - r.s) : "")));
     let sub = it.sub || "";
     if (r.b.missions) sub = r.b.missions.length ? r.b.missions.map(m => m.t.title + " (" + rtDur(m.min) + ")").join(" · ") : "Tempo de trabalho livre: escolha as missões do dia.";
     if (sub) tx.appendChild(el("span", "rt-sub", sub));
@@ -4948,7 +5027,7 @@ function renderRtHoje(main) {
     if (!r.b.part) { const sk = el("button", "linkbtn rt-skip", "Pular hoje"); sk.type = "button"; sk.id = "rt-skip-" + it.key; sk.addEventListener("click", () => rtSkip(it.key, true)); li.appendChild(sk); }
     tl.appendChild(li);
   });
-  if (d.sleep > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.sleep) + " · Dormir"));
+  if (d.sleep > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.sleep) + " · Dormir" + (R.cfg.ss ? " (" + rtDur(R.cfg.ss) + " depois, para caber tudo)" : "")));
   if (!R.blocks.length && !R.left.length) main.appendChild(el("p", "guide note", "Nada pendente hoje nos seus módulos. Bom trabalho."));
   else main.appendChild(tl);
   if (R.left.length) {
@@ -4958,9 +5037,10 @@ function renderRtHoje(main) {
   }
   const extra = el("div", "rt-foot");
   if (R.dem.done.length) extra.appendChild(el("p", "note muted", "Já feito hoje: " + R.dem.done.join(" · ") + "."));
-  if (R.dem.skipped.length) {
+  const skExtra = (rt().skip[todayISO()] || []).includes("extra") ? [{ key: "extra", title: "Estudo extra" }] : [];
+  if (R.dem.skipped.length || skExtra.length) {
     const p = el("p", "note muted"); p.append("Pulado hoje: ");
-    R.dem.skipped.forEach((it, i) => { if (i) p.append(" · "); const b = el("button", "linkbtn", it.title + " (voltar)"); b.type = "button"; b.id = "rt-unskip-" + it.key; b.addEventListener("click", () => rtSkip(it.key, false)); p.appendChild(b); });
+    R.dem.skipped.concat(skExtra).forEach((it, i) => { if (i) p.append(" · "); const b = el("button", "linkbtn", it.title + " (voltar)"); b.type = "button"; b.id = "rt-unskip-" + it.key; b.addEventListener("click", () => rtSkip(it.key, false)); p.appendChild(b); });
     extra.appendChild(p);
   }
   if (extra.childNodes.length) main.appendChild(extra);
@@ -4977,8 +5057,8 @@ function renderRtSemana(main) {
   }
   const sim = { x4: {}, eq: {} };
   days.forEach((iso, i) => {
-    const isT = i === 0, dem = rtDemand(iso, plan, sim), d = dem.day, from = isT ? Math.max(d.wake, Math.ceil(nowMin / 5) * 5) : null;
-    const sch = rtSchedule(iso, dem.items, from), freeMin = rtFreeMin(from != null ? rtCut(d.free, -1, from) : d.free);
+    const isT = i === 0, dem = rtDemand(iso, plan, sim), d = rtDay(iso), from = isT ? Math.ceil(nowMin / 5) * 5 : null;
+    const sch = rtPlan(iso, dem.items, from), freeMin = rtFreeMin(from != null ? rtCut(d.free, -1, from) : d.free);
     const load = dem.items.filter(x => !x.optional).reduce((s, x) => s + x.dur, 0);
     const card = el("section", "guide rt-day" + (sch.left.length ? " over" : "")); card.id = "rt-d-" + iso;
     const [y, m, dd] = iso.split("-").map(Number);
@@ -4994,8 +5074,11 @@ function renderRtSemana(main) {
       if (k === "trabalho") { line("missoes", "Trabalho · " + rtDur(it.dur), it.missions.length ? it.missions.map(x => x.t.title + " (" + rtDur(x.need) + (x.t.est ? "" : ", sem estimativa") + ")").join(" · ") : "Nenhuma missão marcada: tempo para as demandas que chegarem."); return; }
       line(it.mod, it.title + " · " + rtDur(it.dur) + (it.optional ? " (opcional)" : ""), k === "cardio" ? "" : it.sub, it.optional);
     });
+    const ex = sch.blocks.filter(b => b.it.extra).reduce((s, b) => s + b.e - b.s, 0);
+    if (ex) line("inteligencia", "Estudo extra · " + rtDur(ex), "No tempo que sobra, em blocos de mais de 20 min.", true);
     if (!ul.childNodes.length) ul.appendChild(el("li", "rt-it opt", isT ? "Nada pendente hoje." : "Dia livre nos módulos."));
     card.appendChild(ul);
+    const chg = rtChanges(sch); if (chg.length) card.appendChild(el("p", "note rt-overmsg", "Para caber: " + chg.join(", ") + "."));
     if (sch.left.length) card.appendChild(el("p", "note rt-overmsg", "Não cabe: " + sch.left.map(x => x.it.title + " (" + rtDur(x.min) + ")").join(", ") + "."));
     if (isT) { const go = el("button", "linkbtn", "Ver a agenda de hoje"); go.type = "button"; go.id = "rt-sem-hoje"; go.addEventListener("click", () => enterRotina("rot-hoje")); card.appendChild(go); }
     main.appendChild(card);
@@ -5005,7 +5088,7 @@ function renderRtSemana(main) {
 
 function renderRtHorarios(main) {
   const c = rt(), r = ensureRotina();
-  head2(main, "Horários", "Seu tempo disponível. A rotina só marca tarefas entre acordar e dormir, fora dos compromissos fixos.");
+  head2(main, "Horários", "Seu tempo disponível. A rotina marca tarefas entre acordar e dormir, fora dos compromissos, e põe estudo em toda sobra de mais de 20 min.");
   const msg = el("p", "note"); msg.id = "rt-msg"; msg.setAttribute("aria-live", "polite"); if (rtUI.msg) flash(msg, rtUI.msg, rtUI.kind || "ok"); rtUI.msg = "";
   const save = (txt) => { saveRotina(); rtUI.msg = txt || "Horários salvos."; rtUI.kind = "ok"; renderRotina(); };
   const timeField = (grid, id, label, val, onSet) => { const f = el("div", "field"), l = el("label", null, label), i = el("input"); l.htmlFor = id; i.id = id; i.type = "time"; i.value = val; i.addEventListener("change", () => { if (hmToMin(i.value) == null) return; onSet(i.value); save(); }); f.append(l, i); grid.appendChild(f); return i; };
@@ -5016,7 +5099,11 @@ function renderRtHorarios(main) {
   timeField(g1, "rt-sleep-wk", "Durmo (seg a sex)", c.sleep.wk, v => { r.sleep = Object.assign({}, c.sleep, r.sleep, { wk: v }); });
   timeField(g1, "rt-wake-we", "Acordo (sáb e dom)", c.wake.we, v => { r.wake = Object.assign({}, c.wake, r.wake, { we: v }); });
   timeField(g1, "rt-sleep-we", "Durmo (sáb e dom)", c.sleep.we, v => { r.sleep = Object.assign({}, c.sleep, r.sleep, { we: v }); });
-  s1.appendChild(g1); main.append(s1);
+  s1.appendChild(g1);
+  s1.appendChild(el("p", "note muted", "Se faltar tempo para as tarefas do dia, a rotina pode mexer no sono só até estes limites. O dia nunca começa antes das 5h nem termina depois da 1h."));
+  s1.appendChild(chipGroup("Acordar mais cedo, se precisar", ROT_EXT, c.extWake, v => { r.extWake = v; save("Limite salvo."); }, "rt-xw"));
+  s1.appendChild(chipGroup("Dormir mais tarde, se precisar", ROT_EXT, c.extSleep, v => { r.extSleep = v; save("Limite salvo."); }, "rt-xs"));
+  main.append(s1);
   const s2 = el("section", "guide rt-set");
   s2.appendChild(el("h3", null, "Preferências"));
   if (modAllowed("missoes")) {
@@ -5027,31 +5114,53 @@ function renderRtHorarios(main) {
   }
   s2.appendChild(chipGroup("Treino e cardio de preferência", ROT_TREINO, c.treino, v => { r.treino = v; save("Preferência salva."); }, "rt-tr"));
   main.appendChild(s2);
+
   const s3 = el("section", "guide rt-set"); s3.id = "rt-fixos";
-  s3.append(el("h3", null, "Compromissos fixos"), el("p", "note muted", "Aulas, expediente, reuniões, deslocamento: o que já ocupa seu horário toda semana."));
+  s3.append(el("h3", null, "Compromissos"), el("p", "note muted", "Horário fixo: aulas, expediente, reuniões. Flexível: refeições, que a rotina pode adiantar ou atrasar dentro da janela que você der. Ao acordar e antes de dormir: cuidados que andam junto com o sono."));
+  const desc = f => {
+    const ds = (f.days || []).slice().sort(), key = ds.join("");
+    const dias = key === "0123456" ? "todos os dias" : key === "12345" ? "seg a sex" : key === "06" ? "fim de semana" : ds.map(x => DOW_SHORT[x]).join(", ");
+    if (f.kind === "flex") return f.name + " · " + dias + " · ideal " + f.start + " · " + rtDur(f.dur) + " · pode mudar até " + rtDur(f.shift || 60);
+    if (f.kind === "wake") return f.name + " · " + dias + " · " + rtDur(f.dur) + " ao acordar";
+    if (f.kind === "sleep") return f.name + " · " + dias + " · " + rtDur(f.dur) + " antes de dormir";
+    return f.name + " · " + dias + " · " + f.start + "–" + f.end;
+  };
   if (c.fixed.length) {
     const ul = el("ul", "hist");
-    c.fixed.slice().sort((a, b) => (a.start || "").localeCompare(b.start || "")).forEach(f => {
+    const ord = f => f.kind === "wake" ? -1 : f.kind === "sleep" ? 9999 : hmToMin(f.start) || 0;
+    c.fixed.slice().sort((a, b) => ord(a) - ord(b)).forEach(f => {
       const li = el("li", rtUI.fx.editId === f.id ? "rt-fx-editing" : null); li.id = "rt-fx-" + f.id;
-      li.appendChild(el("span", null, f.name + " · " + (f.days || []).slice().sort().map(x => DOW_SHORT[x]).join(", ") + " · " + f.start + "–" + f.end));
+      li.appendChild(el("span", null, desc(f)));
       const acts = el("span", "rt-fx-acts");
       const ed = el("button", "linkbtn", "Editar"); ed.type = "button"; ed.id = "rt-fx-ed-" + f.id;
       ed.addEventListener("click", () => {
-        rtUI.fx = { name: f.name, start: f.start, end: f.end, days: (f.days || []).slice(), editId: f.id }; renderRotina();
+        rtUI.fx = { kind: f.kind || "fixo", name: f.name, start: f.start || "", end: f.end || "", dur: f.dur ? String(f.dur) : "", shift: f.shift || 60, days: (f.days || []).slice(), editId: f.id }; renderRotina();
         const n = document.getElementById("rt-fx-name"); if (n) { n.scrollIntoView({ block: "center" }); n.focus(); }
       });
       const rm = el("button", "linkbtn", "Remover"); rm.type = "button"; rm.id = "rt-fx-rm-" + f.id;
-      rm.addEventListener("click", () => { r.fixed = r.fixed.filter(x => x.id !== f.id); if (rtUI.fx.editId === f.id) rtUI.fx = { name: "", start: "", end: "", days: [1, 2, 3, 4, 5] }; save("Compromisso removido."); });
+      rm.addEventListener("click", () => { r.fixed = r.fixed.filter(x => x.id !== f.id); if (rtUI.fx.editId === f.id) rtUI.fx = rtFxBlank(); save("Compromisso removido."); });
       acts.append(ed, rm); li.appendChild(acts); ul.appendChild(li);
     });
     s3.appendChild(ul);
   }
-  const fx = rtUI.fx, g3 = el("div", "inputs two");
+  const fx = rtUI.fx;
   if (fx.editId) s3.appendChild(el("p", "rt-fx-h", "Editando: " + ((c.fixed.find(x => x.id === fx.editId) || {}).name || fx.name)));
-  const nf = el("div", "field span2"), nl = el("label", null, "Nome"), ni = el("input"); nl.htmlFor = "rt-fx-name"; ni.id = "rt-fx-name"; ni.placeholder = "Ex.: Aula na FFCLRP"; ni.value = fx.name; ni.addEventListener("input", () => { fx.name = ni.value; }); nf.append(nl, ni); g3.appendChild(nf);
-  const tf = (id, label, k) => { const f = el("div", "field"), l = el("label", null, label), i = el("input"); l.htmlFor = id; i.id = id; i.type = "time"; i.value = fx[k]; i.addEventListener("input", () => { fx[k] = i.value; }); f.append(l, i); g3.appendChild(f); };
-  tf("rt-fx-start", "Começa", "start"); tf("rt-fx-end", "Termina", "end");
+  else {
+    const pr = el("div", "rt-presets"); pr.appendChild(el("span", "field-l", "Atalhos"));
+    ROT_PRESETS.forEach((p, i) => { const b = el("button", "gchip", p.label); b.type = "button"; b.id = "rt-pre-" + i; b.addEventListener("click", () => { rtUI.fx = Object.assign(rtFxBlank([0, 1, 2, 3, 4, 5, 6]), { kind: p.kind, name: p.name, start: p.start || "", dur: String(p.dur), shift: p.shift || 60 }); renderRotina(); const n = document.getElementById("rt-fx-add"); if (n) n.scrollIntoView({ block: "center" }); }); pr.appendChild(b); });
+    s3.appendChild(pr);
+  }
+  s3.appendChild(chipGroup("Tipo", ROT_FXKIND, fx.kind, v => { fx.kind = v; renderRotina(); const n = document.getElementById("rt-fx-name"); if (n) n.scrollIntoView({ block: "center" }); }, "rt-fx-k"));
+  const g3 = el("div", "inputs two");
+  const nf = el("div", "field span2"), nl = el("label", null, "Nome"), ni = el("input"); nl.htmlFor = "rt-fx-name"; ni.id = "rt-fx-name";
+  ni.placeholder = fx.kind === "flex" ? "Ex.: Almoço" : fx.kind === "sleep" ? "Ex.: Cuidados noturnos" : fx.kind === "wake" ? "Ex.: Café da manhã" : "Ex.: Aula na FFCLRP";
+  ni.value = fx.name; ni.addEventListener("input", () => { fx.name = ni.value; }); nf.append(nl, ni); g3.appendChild(nf);
+  const tf = (id, label, k, type) => { const f = el("div", "field"), l = el("label", null, label), i = el("input"); l.htmlFor = id; i.id = id; if (type) i.type = type; else { i.inputMode = "numeric"; i.placeholder = "Ex.: 30"; } i.value = fx[k] || ""; i.addEventListener("input", () => { fx[k] = i.value; }); f.append(l, i); g3.appendChild(f); };
+  if (fx.kind === "fixo") { tf("rt-fx-start", "Começa", "start", "time"); tf("rt-fx-end", "Termina", "end", "time"); }
+  else if (fx.kind === "flex") { tf("rt-fx-start", "Horário ideal", "start", "time"); tf("rt-fx-dur", "Duração (min)", "dur"); }
+  else tf("rt-fx-dur", "Duração (min)", "dur");
   s3.appendChild(g3);
+  if (fx.kind === "flex") s3.appendChild(chipGroup("Pode adiantar ou atrasar até", ROT_SHIFT, Number(fx.shift) || 60, v => { fx.shift = v; document.querySelectorAll('[id^="rt-fx-sh-"]').forEach(b => b.setAttribute("aria-pressed", String(b.id === "rt-fx-sh-" + v))); }, "rt-fx-sh"));
   const dg = el("div", "cg"); dg.appendChild(el("span", "field-l", "Dias"));
   const row = el("div", "chips");
   [1, 2, 3, 4, 5, 6, 0].forEach(n => { const b = el("button", "gchip", DOW_SHORT[n]); b.type = "button"; b.id = "rt-fx-d-" + n; b.setAttribute("aria-pressed", String(fx.days.includes(n))); b.addEventListener("click", () => { fx.days = fx.days.includes(n) ? fx.days.filter(x => x !== n) : fx.days.concat(n); b.setAttribute("aria-pressed", String(fx.days.includes(n))); }); row.appendChild(b); });
@@ -5059,17 +5168,23 @@ function renderRtHorarios(main) {
   const fm = el("p", "note"); fm.id = "rt-fx-msg";
   const add = el("button", "btn", fx.editId ? "Salvar alterações" : "Adicionar compromisso"); add.type = "button"; add.id = "rt-fx-add";
   add.addEventListener("click", () => {
-    const a = hmToMin(fx.start), b = hmToMin(fx.end);
+    const a = hmToMin(fx.start), b = hmToMin(fx.end), dur = Math.round(Number(String(fx.dur || "").replace(",", ".")));
     if (!fx.name.trim()) { flash(fm, "Dê um nome ao compromisso.", "err"); return; }
-    if (a == null || b == null || a === b) { flash(fm, "Preencha o horário de começo e de fim.", "err"); return; }
+    if (fx.kind === "fixo" && (a == null || b == null || a === b)) { flash(fm, "Preencha o horário de começo e de fim.", "err"); return; }
+    if (fx.kind === "flex" && a == null) { flash(fm, "Preencha o horário ideal.", "err"); return; }
+    if (fx.kind !== "fixo" && !(dur >= 5 && dur <= 240)) { flash(fm, "A duração precisa ficar entre 5 e 240 minutos.", "err"); return; }
     if (!fx.days.length) { flash(fm, "Escolha pelo menos um dia.", "err"); return; }
-    const val = { name: fx.name.trim(), start: fx.start, end: fx.end, days: fx.days.slice() };
+    const val = { name: fx.name.trim(), kind: fx.kind === "fixo" ? undefined : fx.kind, days: fx.days.slice() };
+    if (fx.kind === "fixo") Object.assign(val, { start: fx.start, end: fx.end, dur: undefined, shift: undefined });
+    else if (fx.kind === "flex") Object.assign(val, { start: fx.start, end: undefined, dur, shift: Number(fx.shift) || 60 });
+    else Object.assign(val, { start: undefined, end: undefined, dur, shift: undefined });
     const cur = fx.editId && r.fixed.find(x => x.id === fx.editId);
-    if (cur) Object.assign(cur, val); else r.fixed.push(Object.assign({ id: "f" + Date.now().toString(36) }, val));
-    rtUI.fx = { name: "", start: "", end: "", days: fx.days.slice() }; save(cur ? "Compromisso atualizado." : "Compromisso adicionado.");
+    if (cur) { Object.keys(val).forEach(k => { if (val[k] === undefined) delete cur[k]; else cur[k] = val[k]; }); }
+    else { const o = { id: "f" + Date.now().toString(36) }; Object.keys(val).forEach(k => { if (val[k] !== undefined) o[k] = val[k]; }); r.fixed.push(o); }
+    rtUI.fx = rtFxBlank(fx.days.slice()); save(cur ? "Compromisso atualizado." : "Compromisso adicionado.");
   });
   const bb = el("div", "btns"); bb.appendChild(add);
-  if (fx.editId) { const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = "rt-fx-cancel"; cc.addEventListener("click", () => { rtUI.fx = { name: "", start: "", end: "", days: [1, 2, 3, 4, 5] }; renderRotina(); }); bb.appendChild(cc); }
+  if (fx.editId || fx.name) { const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = "rt-fx-cancel"; cc.addEventListener("click", () => { rtUI.fx = rtFxBlank(); renderRotina(); }); bb.appendChild(cc); }
   s3.append(fm, bb);
   main.insertBefore(msg, main.children[1] || null);
   main.appendChild(s3);

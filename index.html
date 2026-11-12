@@ -510,6 +510,9 @@ ol.steps a { color: var(--accent); }
 .rt-set { display: grid; gap: 10px; }
 .rt-set .field input { font-size: 17px; color-scheme: dark; }
 @media (max-width: 420px) { .rt-main { grid-template-columns: 84px 22px 1fr; gap: 8px; } }
+.rt-fx-acts { display: flex; gap: 14px; flex-shrink: 0; }
+.rt-fx-editing span:first-child { color: var(--accent); }
+.rt-fx-h { margin: 4px 0 0; font: 700 14px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
 </style>
 </head>
 <body data-view="home">
@@ -5029,12 +5032,22 @@ function renderRtHorarios(main) {
   if (c.fixed.length) {
     const ul = el("ul", "hist");
     c.fixed.slice().sort((a, b) => (a.start || "").localeCompare(b.start || "")).forEach(f => {
-      const li = el("li"); li.appendChild(el("span", null, f.name + " · " + (f.days || []).slice().sort().map(x => DOW_SHORT[x]).join(", ") + " · " + f.start + "–" + f.end));
-      const rm = el("button", "linkbtn", "Remover"); rm.type = "button"; rm.id = "rt-fx-rm-" + f.id; rm.addEventListener("click", () => { r.fixed = r.fixed.filter(x => x.id !== f.id); save("Compromisso removido."); }); li.appendChild(rm); ul.appendChild(li);
+      const li = el("li", rtUI.fx.editId === f.id ? "rt-fx-editing" : null); li.id = "rt-fx-" + f.id;
+      li.appendChild(el("span", null, f.name + " · " + (f.days || []).slice().sort().map(x => DOW_SHORT[x]).join(", ") + " · " + f.start + "–" + f.end));
+      const acts = el("span", "rt-fx-acts");
+      const ed = el("button", "linkbtn", "Editar"); ed.type = "button"; ed.id = "rt-fx-ed-" + f.id;
+      ed.addEventListener("click", () => {
+        rtUI.fx = { name: f.name, start: f.start, end: f.end, days: (f.days || []).slice(), editId: f.id }; renderRotina();
+        const n = document.getElementById("rt-fx-name"); if (n) { n.scrollIntoView({ block: "center" }); n.focus(); }
+      });
+      const rm = el("button", "linkbtn", "Remover"); rm.type = "button"; rm.id = "rt-fx-rm-" + f.id;
+      rm.addEventListener("click", () => { r.fixed = r.fixed.filter(x => x.id !== f.id); if (rtUI.fx.editId === f.id) rtUI.fx = { name: "", start: "", end: "", days: [1, 2, 3, 4, 5] }; save("Compromisso removido."); });
+      acts.append(ed, rm); li.appendChild(acts); ul.appendChild(li);
     });
     s3.appendChild(ul);
   }
   const fx = rtUI.fx, g3 = el("div", "inputs two");
+  if (fx.editId) s3.appendChild(el("p", "rt-fx-h", "Editando: " + ((c.fixed.find(x => x.id === fx.editId) || {}).name || fx.name)));
   const nf = el("div", "field span2"), nl = el("label", null, "Nome"), ni = el("input"); nl.htmlFor = "rt-fx-name"; ni.id = "rt-fx-name"; ni.placeholder = "Ex.: Aula na FFCLRP"; ni.value = fx.name; ni.addEventListener("input", () => { fx.name = ni.value; }); nf.append(nl, ni); g3.appendChild(nf);
   const tf = (id, label, k) => { const f = el("div", "field"), l = el("label", null, label), i = el("input"); l.htmlFor = id; i.id = id; i.type = "time"; i.value = fx[k]; i.addEventListener("input", () => { fx[k] = i.value; }); f.append(l, i); g3.appendChild(f); };
   tf("rt-fx-start", "Começa", "start"); tf("rt-fx-end", "Termina", "end");
@@ -5044,16 +5057,20 @@ function renderRtHorarios(main) {
   [1, 2, 3, 4, 5, 6, 0].forEach(n => { const b = el("button", "gchip", DOW_SHORT[n]); b.type = "button"; b.id = "rt-fx-d-" + n; b.setAttribute("aria-pressed", String(fx.days.includes(n))); b.addEventListener("click", () => { fx.days = fx.days.includes(n) ? fx.days.filter(x => x !== n) : fx.days.concat(n); b.setAttribute("aria-pressed", String(fx.days.includes(n))); }); row.appendChild(b); });
   dg.appendChild(row); s3.appendChild(dg);
   const fm = el("p", "note"); fm.id = "rt-fx-msg";
-  const add = el("button", "btn", "Adicionar compromisso"); add.type = "button"; add.id = "rt-fx-add";
+  const add = el("button", "btn", fx.editId ? "Salvar alterações" : "Adicionar compromisso"); add.type = "button"; add.id = "rt-fx-add";
   add.addEventListener("click", () => {
     const a = hmToMin(fx.start), b = hmToMin(fx.end);
     if (!fx.name.trim()) { flash(fm, "Dê um nome ao compromisso.", "err"); return; }
     if (a == null || b == null || a === b) { flash(fm, "Preencha o horário de começo e de fim.", "err"); return; }
     if (!fx.days.length) { flash(fm, "Escolha pelo menos um dia.", "err"); return; }
-    r.fixed.push({ id: "f" + Date.now().toString(36), name: fx.name.trim(), start: fx.start, end: fx.end, days: fx.days.slice() });
-    rtUI.fx = { name: "", start: "", end: "", days: fx.days.slice() }; save("Compromisso adicionado.");
+    const val = { name: fx.name.trim(), start: fx.start, end: fx.end, days: fx.days.slice() };
+    const cur = fx.editId && r.fixed.find(x => x.id === fx.editId);
+    if (cur) Object.assign(cur, val); else r.fixed.push(Object.assign({ id: "f" + Date.now().toString(36) }, val));
+    rtUI.fx = { name: "", start: "", end: "", days: fx.days.slice() }; save(cur ? "Compromisso atualizado." : "Compromisso adicionado.");
   });
-  const bb = el("div", "btns"); bb.appendChild(add); s3.append(fm, bb);
+  const bb = el("div", "btns"); bb.appendChild(add);
+  if (fx.editId) { const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = "rt-fx-cancel"; cc.addEventListener("click", () => { rtUI.fx = { name: "", start: "", end: "", days: [1, 2, 3, 4, 5] }; renderRotina(); }); bb.appendChild(cc); }
+  s3.append(fm, bb);
   main.insertBefore(msg, main.children[1] || null);
   main.appendChild(s3);
 }

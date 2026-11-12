@@ -143,6 +143,11 @@ details summary { cursor: pointer; font: 600 14px var(--font-display); letter-sp
 .cal-d.plan { border: 1px dashed var(--accent); }
 .cal-d.miss { color: var(--bad); opacity: .7; text-decoration: line-through; }
 .cal-d.today { outline: 2px solid var(--ink); outline-offset: -2px; }
+button.cal-d { appearance: none; font: inherit; font-size: 13px; color: inherit; background: none; cursor: pointer; }
+button.cal-d:hover { border-color: var(--accent); }
+button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.step:disabled { opacity: .35; cursor: not-allowed; }
+.linkbtn { appearance: none; background: none; border: 0; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; text-align: left; }
 .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--muted); }
 .lg { display: inline-flex; align-items: center; gap: 6px; }
 .sw { width: 14px; height: 14px; display: inline-block; border: 1px solid transparent; }
@@ -751,18 +756,30 @@ function saveSettings() { try { localStorage.setItem(prof().setKey, JSON.stringi
 function ymd(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
 function hasEntries(date) { const l = state.logs[date]; return !!(l && l.e && Object.keys(l.e).length); }
 
+// Dias de treino do mês: seguem o plano (ex.: seg, ter, qui, sex) até você marcar ou desmarcar dias no calendário.
+function defaultPlanDays(y, m) { const last = new Date(y, m + 1, 0).getDate(), out = []; for (let d = 1; d <= last; d++) if (prof().dow.includes(new Date(y, m, d).getDay())) out.push(ymd(new Date(y, m, d))); return out; }
+function planDays(y, m) { const key = y + "-" + String(m + 1).padStart(2, "0"); return settings.days && settings.days[key] ? settings.days[key].slice() : defaultPlanDays(y, m); }
+function setPlanDays(key, arr) { settings.days = settings.days || {}; settings.days[key] = Array.from(new Set(arr)).sort(); delete settings.goals[key]; saveSettings(); }
+function isPlannedDay(iso) { const [y, m] = iso.split("-").map(Number); return planDays(y, m - 1).includes(iso); }
 function monthStats() {
   const now = new Date(); const y = now.getFullYear(), m = now.getMonth();
   const key = y + "-" + String(m + 1).padStart(2, "0");
   const last = new Date(y, m + 1, 0).getDate();
-  let planned = 0;
-  for (let d = 1; d <= last; d++) if (prof().dow.includes(new Date(y, m, d).getDay())) planned++;
-  const goal = settings.goals[key] != null ? settings.goals[key] : planned;
   const today = ymd(now);
+  const planned = defaultPlanDays(y, m).length;
+  // meta antiga (só o número, sem dias): vira dias no calendário, completando a partir de hoje
+  if (settings.goals[key] != null && !(settings.days && settings.days[key])) {
+    const want = settings.goals[key]; let arr = defaultPlanDays(y, m);
+    for (let d = now.getDate(); d <= last && arr.length < want; d++) { const iso = ymd(new Date(y, m, d)); if (!arr.includes(iso)) arr.push(iso); }
+    while (arr.length > want) { const fut = arr.filter(x => x >= today && !hasEntries(x)).sort(); if (!fut.length) break; arr = arr.filter(x => x !== fut[fut.length - 1]); }
+    setPlanDays(key, arr);
+  }
+  const plan = planDays(y, m);
+  const goal = plan.length;
   const done = Object.keys(state.logs).filter(d => d.startsWith(key) && hasEntries(d)).length;
   const remaining = last - now.getDate() + (hasEntries(today) ? 0 : 1);
   const need = Math.max(0, goal - done);
-  return { y, m, key, last, planned, goal, done, need, remaining, slack: remaining - need, today };
+  return { y, m, key, last, planned, plan, custom: !!(settings.days && settings.days[key]), goal, done, need, remaining, slack: remaining - need, today };
 }
 
 function flash(n, text, kind) { if (!n) return; n.textContent = text || ""; n.className = "note flash " + (kind || "info"); }
@@ -792,9 +809,17 @@ function renderProgress(main) {
   const minus = el("button", "step", "−"); minus.type = "button"; minus.id = "goal-minus"; minus.setAttribute("aria-label", "Diminuir meta");
   const val = el("span", "tile-num", String(s.goal));
   const plus = el("button", "step", "+"); plus.type = "button"; plus.id = "goal-plus"; plus.setAttribute("aria-label", "Aumentar meta");
-  const setGoal = n => { settings.goals[s.key] = Math.max(1, Math.min(s.last, n)); saveSettings(); renderMain(); };
-  minus.addEventListener("click", () => setGoal(s.goal - 1));
-  plus.addEventListener("click", () => setGoal(s.goal + 1));
+  // + marca o próximo dia livre a partir de hoje; − desmarca o último dia marcado que ainda não aconteceu
+  plus.addEventListener("click", () => {
+    for (let d = new Date().getDate(); d <= s.last; d++) { const iso = ymd(new Date(s.y, s.m, d)); if (!s.plan.includes(iso) && !hasEntries(iso)) { setPlanDays(s.key, s.plan.concat(iso)); renderMain(); return; } }
+  });
+  minus.addEventListener("click", () => {
+    const fut = s.plan.filter(x => x >= s.today && !hasEntries(x)).sort();
+    const pick = fut.length ? fut[fut.length - 1] : s.plan.filter(x => !hasEntries(x)).sort().pop();
+    if (pick) { setPlanDays(s.key, s.plan.filter(x => x !== pick)); renderMain(); }
+  });
+  minus.disabled = !s.plan.some(x => !hasEntries(x));
+  plus.disabled = !Array.from({ length: s.last - new Date().getDate() + 1 }, (_, i) => ymd(new Date(s.y, s.m, new Date().getDate() + i))).some(x => !s.plan.includes(x) && !hasEntries(x));
   stepper.append(minus, val, plus); tGoal.appendChild(stepper);
   tGoal.appendChild(el("span", "tile-sub", "treinos"));
 
@@ -811,7 +836,13 @@ function renderProgress(main) {
   else if (s.slack < 0) msg = "Restam " + s.remaining + " dias no mês e faltam " + s.need + " treinos: mesmo indo todos os dias, a meta não fecha. Ajuste a meta ou foque no próximo mês.";
   else msg = "Restam " + s.remaining + " dias no mês. Você precisa treinar em " + s.need + " deles, então pode faltar em até " + s.slack + ".";
   sec.appendChild(el("p", "note", msg));
-  sec.appendChild(el("p", "note muted", "A meta padrão (" + s.planned + ") conta as " + listPt(prof().dow.map(d => DOW_NAMES[d])) + " do mês. Um dia conta como treino quando você anota pelo menos um exercício nele."));
+  sec.appendChild(el("p", "note muted", "Toque num dia do calendário para marcar ou desmarcar como dia de treino; a meta é o total de dias marcados. Um dia conta como treino quando você anota pelo menos um exercício nele."));
+  if (s.custom) {
+    const rs = el("p", "note muted"); rs.append("Este mês está com dias personalizados. ");
+    const back = el("button", "linkbtn", "Voltar ao padrão (" + listPt(prof().dow.map(d => DOW_NAMES[d])) + ")"); back.type = "button"; back.id = "plan-reset";
+    back.addEventListener("click", () => { delete settings.days[s.key]; delete settings.goals[s.key]; saveSettings(); renderMain(); });
+    rs.appendChild(back); sec.appendChild(rs);
+  }
 
   // calendário
   const cal = el("div", "cal");
@@ -820,13 +851,17 @@ function renderProgress(main) {
   for (let i = 0; i < firstDow; i++) cal.appendChild(el("span", "cal-d empty"));
   for (let d = 1; d <= s.last; d++) {
     const iso = s.key + "-" + String(d).padStart(2, "0");
-    const dow = new Date(s.y, s.m, d).getDay();
+    const isPlan = s.plan.includes(iso), trained = hasEntries(iso);
     let cls = "cal-d";
-    if (hasEntries(iso)) cls += " done";
-    else if (prof().dow.includes(dow) && iso >= s.today) cls += " plan";
-    else if (prof().dow.includes(dow)) cls += " miss";
+    if (trained) cls += " done";
+    else if (isPlan && iso >= s.today) cls += " plan";
+    else if (isPlan) cls += " miss";
     if (iso === s.today) cls += " today";
-    cal.appendChild(el("span", cls, String(d)));
+    if (trained) { cal.appendChild(el("span", cls, String(d))); continue; }
+    const b = el("button", cls, String(d)); b.type = "button"; b.id = "cal-" + iso;
+    b.setAttribute("aria-pressed", String(isPlan)); b.setAttribute("aria-label", d + " de " + MONTHS[s.m] + (isPlan ? ": dia de treino" : ": sem treino"));
+    b.addEventListener("click", () => { setPlanDays(s.key, isPlan ? s.plan.filter(x => x !== iso) : s.plan.concat(iso)); renderMain(); });
+    cal.appendChild(b);
   }
   sec.appendChild(cal);
   const legend = el("div", "legend");
@@ -1555,7 +1590,9 @@ function focusStreak(iso) {
 }
 function strengthDay(iso) {
   if (!profileId) return null;
-  const [y, m, d] = iso.split("-").map(Number); const w = prof().dayTab[new Date(y, m - 1, d).getDay()];
+  const [y, m, d] = iso.split("-").map(Number);
+  if (settings.days && settings.days[iso.slice(0, 7)]) return isPlannedDay(iso);
+  const w = prof().dayTab[new Date(y, m - 1, d).getDay()];
   const p = w && PLAN.find(x => x.id === w);
   return !!(p && !p.optional);
 }
@@ -3089,7 +3126,7 @@ function mergeKey(k, a, b) {
     Object.keys(L).forEach(d => { const l = L[d]; if (!l || !l.e) return; const r = out[d] && out[d].e ? out[d] : null; out[d] = Object.assign({}, l, r || {}, { e: Object.assign({}, l.e, r ? r.e : {}) }); });
     return JSON.stringify(out);
   }
-  if (/^treino-settings/.test(k)) return JSON.stringify(Object.assign({}, L, R, { goals: Object.assign({}, L.goals, R.goals) }));
+  if (/^treino-settings/.test(k)) return JSON.stringify(Object.assign({}, L, R, { goals: Object.assign({}, L.goals, R.goals), days: Object.assign({}, L.days, R.days) }));
   if (k === "stek-intel-v1") {
     if (!Array.isArray(L.subjects)) return b; if (!Array.isArray(R.subjects)) return a;
     const out = Object.assign({}, R, { subjects: R.subjects.slice(), days: Object.assign({}, R.days) });

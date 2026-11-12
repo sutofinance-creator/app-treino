@@ -5027,7 +5027,7 @@ function renderRotina() {
 }
 function rtSkip(key, on) {
   const r = ensureRotina(), iso = todayISO(); const s = new Set(r.skip[iso] || []);
-  if (on) s.add(key); else s.delete(key); r.skip[iso] = [...s]; saveRotina(); renderRotina();
+  if (on) s.add(key); else s.delete(key); r.skip[iso] = [...s]; saveRotina(); if (state.view === "home") renderHome(); else renderRotina(); pushLastSig = ""; pushSync(true);
 }
 function rtDefaultsBanner(main) {
   if (rt().set) return;
@@ -5146,7 +5146,8 @@ function renderRtHorarios(main) {
   const c = rt(), r = ensureRotina();
   head2(main, "Horários", "Seu tempo disponível. A rotina marca tarefas entre acordar e dormir, fora dos compromissos, e põe estudo em toda sobra de mais de 20 min.");
   const msg = el("p", "note"); msg.id = "rt-msg"; msg.setAttribute("aria-live", "polite"); if (rtUI.msg) flash(msg, rtUI.msg, rtUI.kind || "ok"); rtUI.msg = "";
-  const save = (txt) => { saveRotina(); rtUI.msg = txt || "Horários salvos."; rtUI.kind = "ok"; renderRotina(); };
+  const save = (txt) => { saveRotina(); rtUI.msg = txt || "Horários salvos."; rtUI.kind = "ok"; renderRotina(); pushLastSig = ""; pushSync(true); };
+  pushSection(main);
   const timeField = (grid, id, label, val, onSet) => { const f = el("div", "field"), l = el("label", null, label), i = el("input"); l.htmlFor = id; i.id = id; i.type = "time"; i.value = val; i.addEventListener("change", () => { if (hmToMin(i.value) == null) return; onSet(i.value); save(); }); f.append(l, i); grid.appendChild(f); return i; };
   const s1 = el("section", "guide rt-set");
   s1.appendChild(el("h3", null, "Sono"));
@@ -5257,9 +5258,113 @@ function rtHomeSection() {
   const bb = el("div", "btns");
   const w = el("button", "btn", "Ver a semana"); w.type = "button"; w.id = "rt-open"; w.addEventListener("click", () => enterRotina("rot-semana"));
   const h = el("button", "btn ghost", "Horários"); h.type = "button"; h.id = "rt-open-hor"; h.addEventListener("click", () => enterRotina("rot-horarios"));
-  bb.append(w, h); sec.appendChild(bb);
+  bb.append(w, h);
+  if (pushSupported() && loggedIn() && !pushOn()) { const a = el("button", "btn ghost", "Avisos 10 min antes"); a.type = "button"; a.id = "rt-open-avisos"; a.addEventListener("click", () => { enterRotina("rot-horarios"); rtFocus("rt-avisos"); }); bb.appendChild(a); }
+  sec.appendChild(bb);
   return sec;
 }
+/* ---------- Avisos antes de cada tarefa (Web Push pelo Worker) ---------- */
+// O app manda para o servidor a agenda de hoje e de amanhã; o servidor avisa X min antes de cada bloco,
+// mesmo com o app fechado. A agenda enviada é a da última vez que o app foi aberto.
+const PUSH_LS = "stek-push-v1";
+const PUSH_LEADS = [[5, "5 min"], [10, "10 min"], [15, "15 min"], [30, "30 min"]];
+const pushUI = { msg: "", kind: "", busy: false };
+let pushLastSig = "", pushLastAt = 0;
+function pushState() { try { return JSON.parse(localStorage.getItem(PUSH_LS)) || {}; } catch (e) { return {}; } }
+function setPushState(o) { try { localStorage.setItem(PUSH_LS, JSON.stringify(Object.assign(pushState(), o))); } catch (e) {} }
+function pushSupported() { return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; }
+function pushIOSHint() { return /iPhone|iPad|iPod/.test(navigator.userAgent) && !(window.navigator.standalone || matchMedia("(display-mode: standalone)").matches); }
+function pushOn() { return pushSupported() && pushState().on && loggedIn() && Notification.permission === "granted"; }
+function pushB64(s) { const t = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)); return Uint8Array.from(t, c => c.charCodeAt(0)); }
+async function pushEnable() {
+  if (!pushSupported()) throw new Error(pushIOSHint() ? "No iPhone, os avisos só funcionam com o app na tela de início: toque em Compartilhar → Adicionar à Tela de Início, abra por lá e tente de novo." : "Este navegador não aceita notificações de sites.");
+  if (!loggedIn()) throw new Error("Entre na sua conta para ligar os avisos.");
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") throw new Error("As notificações estão bloqueadas para o app. Libere nas configurações do navegador (site sutofinance-creator.github.io) e tente de novo.");
+  let key;
+  try { key = (await cloudFetch("GET", "/push/key")).key; }
+  catch (e) { throw new Error(e.status === 404 ? "O servidor ainda não tem os avisos: atualize o código do Worker na Cloudflare (passo a passo na conversa com o Claude)." : e.message); }
+  const reg = await navigator.serviceWorker.ready, appKey = pushB64(key);
+  let sub = await reg.pushManager.getSubscription();
+  if (sub && sub.options && sub.options.applicationServerKey) {
+    const cur = new Uint8Array(sub.options.applicationServerKey);
+    if (cur.length !== appKey.length || cur.some((b, i) => b !== appKey[i])) { await sub.unsubscribe(); sub = null; }
+  }
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+  await cloudFetch("POST", "/push/subscribe", sub.toJSON());
+  setPushState({ on: true, endpoint: sub.endpoint, lead: pushState().lead || 10 });
+  pushLastSig = ""; await pushSync(true);
+}
+async function pushDisable() {
+  setPushState({ on: false });
+  try {
+    const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription();
+    if (sub) { if (loggedIn()) await cloudFetch("POST", "/push/unsubscribe", { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe(); }
+  } catch (e) {}
+}
+function pushItems() {
+  const lead = pushState().lead || 10, now = Date.now(), out = [], plan = rtMissionPlan(rtWeekDays());
+  [todayISO(), addDaysISO(todayISO(), 1)].forEach((iso, i) => {
+    const dem = rtDemand(iso, plan), r = rtPlan(iso, dem.items, i === 0 ? Math.ceil(rtNow() / 5) * 5 : null);
+    const [y, m, d] = iso.split("-").map(Number), base = new Date(y, m - 1, d).getTime();
+    r.blocks.forEach(b => {
+      const at = base + (b.s - lead) * 60000; if (at < now - 30000) return;
+      const it = b.it, ms = b.missions && b.missions.length ? ": " + b.missions.map(x => x.t.title).join(", ") : "";
+      const sub = it.subjects && it.subjects.length ? it.subjects.map(x => x.label).join(", ") : (it.sub || "");
+      out.push({ tag: iso + "-" + it.key + "-" + b.s, at, title: ("Em " + lead + " min: " + it.title + ms).slice(0, 118), body: (minToHM(b.s) + " às " + minToHM(b.e) + (sub && !ms ? " · " + sub : "")).slice(0, 290), url: "./#tarefa-" + it.key + "@" + b.s + "@" + iso });
+    });
+  });
+  return out.sort((a, b) => a.at - b.at).slice(0, 60);
+}
+async function pushSync(force) {
+  if (!pushOn()) return;
+  const items = pushItems(), sig = JSON.stringify(items.map(x => [x.tag, x.at]));
+  if (!force && (sig === pushLastSig || Date.now() - pushLastAt < 120000)) return;
+  try { await cloudFetch("PUT", "/push/schedule", { items }); pushLastSig = sig; pushLastAt = Date.now(); } catch (e) {}
+}
+// toque no aviso: abre a tarefa certa (hash #tarefa-chave@inicio@dia)
+function rtGoTaskHash(h) {
+  const [key, s, iso] = decodeURIComponent(String(h).replace(/^#?tarefa-/, "")).split("@");
+  if (iso && iso !== todayISO()) { enterRotina("rot-semana"); return; }
+  const R = rtToday(), want = Number(s) || 0;
+  const cand = R.blocks.filter(b => b.it.key === key).sort((a, b) => Math.abs(a.s - want) - Math.abs(b.s - want))[0];
+  if (!cand) { enterRotina("rot-hoje"); return; }
+  if (cand.missions && cand.missions.length) rtGoMission(cand.missions[0].t.id); else cand.it.go();
+}
+function pushSection(container) {
+  const s = el("section", "guide rt-set"); s.id = "rt-avisos";
+  s.appendChild(el("h3", null, "Avisos"));
+  const st = pushState(), on = pushOn();
+  const msg = el("p", "note"); msg.id = "push-msg"; msg.setAttribute("aria-live", "polite");
+  if (pushUI.msg) flash(msg, pushUI.msg, pushUI.kind || "ok"); pushUI.msg = "";
+  if (!pushSupported()) s.appendChild(el("p", "note muted", pushIOSHint() ? "No iPhone, os avisos só funcionam com o app na tela de início (Compartilhar → Adicionar à Tela de Início) e iOS 16.4 ou mais novo." : "Este navegador não aceita notificações de sites."));
+  else if (!loggedIn()) s.appendChild(el("p", "note muted", "Entre na sua conta para receber um aviso antes de cada tarefa, mesmo com o app fechado."));
+  else s.appendChild(el("p", "note muted", on ? "Ligados neste aparelho. O aviso segue a rotina da última vez que você abriu o app." : "Receba uma notificação antes de cada tarefa da rotina, mesmo com o app fechado."));
+  if (pushSupported() && loggedIn()) {
+    s.appendChild(chipGroup("Avisar com antecedência de", PUSH_LEADS, st.lead || 10, v => { setPushState({ lead: v }); pushLastSig = ""; pushSync(true); pushUI.msg = "Antecedência salva."; renderRotina(); }, "push-lead"));
+    const bb = el("div", "btns");
+    const tg = el("button", on ? "btn ghost" : "btn", on ? "Desligar avisos" : "Ligar avisos"); tg.type = "button"; tg.id = "push-toggle"; tg.disabled = pushUI.busy;
+    tg.addEventListener("click", async () => {
+      pushUI.busy = true; tg.disabled = true;
+      try { if (on) { await pushDisable(); pushUI.msg = "Avisos desligados neste aparelho."; pushUI.kind = "ok"; } else { await pushEnable(); pushUI.msg = "Avisos ligados. Você recebe o próximo " + (pushState().lead || 10) + " min antes da tarefa."; pushUI.kind = "ok"; } }
+      catch (e) { pushUI.msg = e.message; pushUI.kind = "err"; }
+      pushUI.busy = false; if (state.view === "rotina") renderRotina(); else renderHome();
+    });
+    bb.appendChild(tg);
+    if (on) {
+      const tb = el("button", "btn ghost", "Enviar aviso de teste"); tb.type = "button"; tb.id = "push-test";
+      tb.addEventListener("click", async () => { tb.disabled = true; try { await cloudFetch("POST", "/push/test", {}); flash(msg, "Aviso de teste enviado. Deve chegar em alguns segundos.", "ok"); } catch (e) { flash(msg, e.message, "err"); } tb.disabled = false; });
+      bb.appendChild(tb);
+    }
+    s.appendChild(bb);
+  }
+  s.appendChild(msg);
+  container.appendChild(s);
+}
+setInterval(() => { if (document.visibilityState === "visible") pushSync(false); }, 60000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") pushSync(true); });
+if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.type === "stek-go" && e.data.hash) rtGoTaskHash(e.data.hash); });
+
 setInterval(() => {
   if (document.visibilityState !== "visible") return;
   const a = document.activeElement; if (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) return;
@@ -5599,6 +5704,7 @@ document.getElementById("acct-btn").addEventListener("click", () => enterConta()
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && loggedIn()) cloudPull(); });
 window.addEventListener("hashchange", () => {
   const h = location.hash.replace("#", "");
+  if (h.startsWith("tarefa-")) { rtGoTaskHash(h); return; }
   if (h === "inicio" || h === "") { if (state.view !== "home") renderHome(); return; }
   if (h === "conta") { if (state.view !== "conta") enterConta(); return; }
   if (INTEL_TABS.some(t => t.id === h)) { if (state.view !== "intel" || h !== state.itab) enterIntel(h); return; }
@@ -5619,8 +5725,10 @@ loadPerfil();
 loadRotina();
 const savedProfile = readProfile();
 if (savedProfile) loadProfile(savedProfile);
+const startHash = location.hash;
 history.replaceState(null, "", "#inicio");
 renderHome();
+if (startHash.startsWith("#tarefa-")) rtGoTaskHash(startHash);
 updateAcct();
 cloudStartup();
 if ("serviceWorker" in navigator) {

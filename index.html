@@ -65,11 +65,6 @@ header.top { position: sticky; top: 0; z-index: 5; background: rgba(4, 6, 12, .9
 #status { font-size: 12px; color: var(--muted); white-space: nowrap; letter-spacing: .04em; }
 #status.ok { color: var(--good); }
 #status.err { color: var(--warn); }
-.lvl { max-width: 720px; margin: 0 auto; padding: 4px 16px 0; display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; font-family: var(--font-display); font-weight: 600; letter-spacing: .08em; font-size: 14px; }
-.lvl-badge { color: var(--accent); text-shadow: 0 0 8px rgba(166, 107, 255, .6); }
-.lvl-bar { height: 6px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; transform: skewX(-20deg); }
-.lvl-fill { height: 100%; background: linear-gradient(90deg, #6a2bff, var(--accent)); box-shadow: 0 0 10px var(--accent); }
-.lvl-xp { color: var(--muted); font-variant-numeric: tabular-nums; }
 nav.tabs { display: flex; gap: 6px; overflow-x: auto; padding: 10px 16px 10px; max-width: 720px; margin: 0 auto; scrollbar-width: none; }
 nav.tabs::-webkit-scrollbar { display: none; }
 nav.tabs button { flex: 0 0 auto; font: 600 15px var(--font-display); letter-spacing: .08em; text-transform: uppercase; padding: 7px 14px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
@@ -171,7 +166,6 @@ button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .chart .dot.last { fill: var(--accent); }
 @media (prefers-reduced-motion: no-preference) {
   nav.tabs button, .gchip { transition: background .15s, color .15s, box-shadow .15s; }
-  .lvl-fill { transition: width .6s ease; }
   .card, .guide { animation: rise .35s ease both; }
   @keyframes rise { from { transform: translateY(6px); } to { transform: none; } }
 }
@@ -439,12 +433,45 @@ ol.steps a { color: var(--accent); }
 .tile.bad { border-color: var(--bad); }
 .tile.bad .tile-num { color: var(--bad); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* ---------- Início: hexágono dos atributos ---------- */
+.hex-card { padding: 14px 14px 12px; display: grid; gap: 8px; }
+.hex-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hex-top h3 { margin: 0; font-size: 18px; }
+.hex-top .btn { padding: 6px 12px; font-size: 13px; }
+.hex-idx { font: 600 13px var(--font-display); color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+.hex-idx b { color: var(--accent); font-size: 18px; text-shadow: 0 0 8px rgba(166, 107, 255, .6); font-variant-numeric: tabular-nums; }
+.hex-svg { width: 100%; max-width: 440px; height: auto; display: block; margin: 0 auto; }
+.hx-ring { fill: none; stroke: var(--line); stroke-width: 1; }
+.hx-ref { fill: none; stroke: rgba(166, 107, 255, .8); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.hx-spoke { stroke: var(--line); stroke-width: 1; }
+.hx-you { fill: rgba(166, 107, 255, .26); stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; filter: drop-shadow(0 0 6px rgba(166, 107, 255, .8)); }
+.hx-dot { fill: var(--bg); stroke: var(--accent); stroke-width: 2; }
+.hx-ax.sel .hx-dot { fill: var(--accent); }
+.hx-name { font: 700 12px var(--font-display); letter-spacing: .08em; fill: var(--ink); }
+.hx-pct { font: 700 14px var(--font-display); fill: var(--accent); font-variant-numeric: tabular-nums; }
+.hx-ax.off .hx-name, .hx-ax.off .hx-pct { fill: var(--muted); }
+.hx-ax.sel .hx-name { fill: var(--accent); }
+.hx-hit { fill: transparent; cursor: pointer; }
+.hx-ax:focus { outline: none; }
+.hx-ax:focus-visible .hx-hit { stroke: var(--accent); stroke-width: 2; }
+.guide .hex-cap { margin: 0; max-width: none; font-size: 12px; color: var(--muted); text-align: center; }
+.hex-more summary { font-size: 13px; }
+.hex-rows { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.hex-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 8px 10px; background: var(--surface-2); border: 1px solid var(--line); border-left: 3px solid var(--accent); }
+.hex-row.off { border-left-color: var(--muted); }
+.hex-row.sel { border-color: var(--accent); box-shadow: 0 0 12px rgba(166, 107, 255, .35); }
+.hex-row-n { font: 700 15px var(--font-display); letter-spacing: .08em; text-transform: uppercase; }
+.hex-row-p { font: 700 16px var(--font-display); color: var(--accent); font-variant-numeric: tabular-nums; }
+.hex-row.off .hex-row-p { color: var(--muted); }
+.hex-row-l { grid-column: 1 / -1; font-size: 13px; color: var(--muted); }
+.hex-row-l.you { color: var(--ink); }
+.hex-form { display: grid; gap: 12px; }
+.hex-form .field input { font-size: 17px; }
 </style>
 </head>
 <body data-view="home">
 <header class="top">
   <div class="brand"><h1><button type="button" class="home-btn" id="home-btn" aria-label="Voltar ao início"><img src="logo-s.png" alt="" width="32" height="32">STEK</button><span class="crumb" id="crumb"></span></h1><span class="brand-r"><span id="status" aria-live="polite"></span><button type="button" class="acct" id="acct-btn">Entrar</button></span></div>
-  <div class="lvl" aria-live="polite"><span class="lvl-badge" id="lvl-badge">NÍVEL 1</span><div class="lvl-bar"><div class="lvl-fill" id="lvl-fill" style="width:0%"></div></div><span class="lvl-xp" id="lvl-xp">0/5</span></div>
   <nav class="tabs" id="tabs" role="tablist" aria-label="Treinos do módulo Força"></nav>
 </header>
 <main id="main"></main>
@@ -579,16 +606,8 @@ function loadLogs() {
   catch (e) { state.logs = {}; state.canWrite = false; }
 }
 
-const XP_PER_LEVEL = 5;
-function updateLevel() {
-  const total = Object.keys(state.logs).filter(d => { const l = state.logs[d]; return l && l.e && Object.keys(l.e).length; }).length;
-  const level = Math.floor(total / XP_PER_LEVEL) + 1, into = total % XP_PER_LEVEL;
-  document.getElementById("lvl-badge").textContent = "NÍVEL " + level;
-  document.getElementById("lvl-fill").style.width = (into / XP_PER_LEVEL * 100) + "%";
-  document.getElementById("lvl-xp").textContent = into + "/" + XP_PER_LEVEL + " treinos";
-}
 function saveLogs() {
-  try { localStorage.setItem(prof().logsKey, JSON.stringify(state.logs)); setStatus("Salvo no celular", "ok"); updateLevel(); }
+  try { localStorage.setItem(prof().logsKey, JSON.stringify(state.logs)); setStatus("Salvo no celular", "ok"); }
   catch (e) { setStatus("Não foi possível salvar neste navegador", "err"); }
 }
 
@@ -754,7 +773,7 @@ function onEdit(ex, field, raw) {
 }
 
 function exportBackup() {
-  const blob = new Blob([JSON.stringify({ app: "plano-treino", version: 6, plan: profileId, logs: state.logs, intel: intel, fin: fin, stamina: stamina, graca: graca, missoes: mis }, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify({ app: "plano-treino", version: 7, plan: profileId, logs: state.logs, intel: intel, fin: fin, stamina: stamina, graca: graca, missoes: mis, perfil: perfil }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "backup-stek-" + todayISO() + ".json";
@@ -768,7 +787,7 @@ function importBackup(file, msg) {
     try {
       const data = JSON.parse(r.result);
       const logs = (data && data.logs) || {};
-      if (typeof logs !== "object" || (!data.logs && !data.intel && !data.fin && !data.stamina && !data.graca && !data.missoes)) throw new Error();
+      if (typeof logs !== "object" || (!data.logs && !data.intel && !data.fin && !data.stamina && !data.graca && !data.missoes && !data.perfil)) throw new Error();
       let n = 0;
       Object.keys(logs).forEach(date => {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !logs[date] || !logs[date].e) return;
@@ -810,6 +829,7 @@ function importBackup(file, msg) {
         Object.keys(data.graca.days || {}).forEach(d => { gg.days[d] = gg.days[d] || {}; Object.keys(data.graca.days[d] || {}).forEach(id => { const v = data.graca.days[d][id], cur = gg.days[d][id]; if (v && (!cur || (v.count || 0) > (cur.count || 0) || (v.sec || 0) > (cur.sec || 0))) gg.days[d][id] = v; }); });
         saveGraca();
       }
+      if (data.perfil && typeof data.perfil === "object" && (!perfil || (data.perfil.upd || 0) > (perfil.upd || 0))) { perfil = Object.assign({}, data.perfil); savePerfil(true); }
       if (data.stamina && data.stamina.days) {
         const st = ensureStamina();
         Object.keys(data.stamina.days).forEach(d => { st.days[d] = st.days[d] || {}; Object.keys(data.stamina.days[d] || {}).forEach(pid => { const v = data.stamina.days[d][pid]; if (v && (!st.days[d][pid] || (v.sec || 0) > (st.days[d][pid].sec || 0))) st.days[d][pid] = v; }); });
@@ -4188,6 +4208,7 @@ function renderHome() {
   document.getElementById("crumb").textContent = "";
   document.getElementById("tabs").innerHTML = "";
   const main = document.getElementById("main"); main.innerHTML = "";
+  main.appendChild(hexCard());
   const now = new Date();
   const head = el("div", "wk-head");
   head.append(el("h2", null, "Início"), el("p", null, WEEKDAYS[now.getDay()].replace(/^./, c => c.toUpperCase()) + ", " + now.getDate() + " de " + MONTHS[now.getMonth()] + ". Toque num módulo para entrar ou na seta para ver as pendências."));
@@ -4273,15 +4294,260 @@ function enterForca(tab) {
 function loadProfile(id) {
   useProfile(id);
   state.logs = {}; state.group = null; state.date = todayISO();
-  loadLogs(); loadSettings(); updateLevel();
+  loadLogs(); loadSettings();
   setStatus(state.canWrite ? "Salvo no celular" : "Somente leitura", state.canWrite ? "ok" : "err");
 }
 
 function startProfile(id) { loadProfile(id); enterForca(); }
 
+/* ======================= Início: hexágono dos 6 módulos ======================= */
+// Cada eixo compara você com uma referência (100% = a média de quem tem o seu perfil ou a recomendação oficial).
+// O raio do gráfico vai até 200%; a linha tracejada é a referência.
+const PERFIL_KEY = "stek-perfil-v1";
+const HX_REF = {
+  // IPEA, Mercado de Trabalho n. 81 (abr. 2026), tabela 8, com a PNAD Contínua/IBGE do 4º trimestre de 2025
+  renda: {
+    geral: 3613,
+    idade: [[0, 24, 1984, "18 a 24 anos"], [25, 39, 3633, "25 a 39 anos"], [40, 59, 4073, "40 a 59 anos"], [60, 200, 4036, "60 anos ou mais"]],
+    sexo: { m: [3977, "dos homens"], f: [3137, "das mulheres"] },
+    esc: { fi: [1915, "até o fundamental incompleto"], fc: [2344, "fundamental completo"], mi: [2139, "médio incompleto"], mc: [2642, "médio completo"], sup: [6255, "superior completo ou mais"] }
+  },
+  // IBGE, PNAD Contínua, 3º trimestre de 2025: horas habitualmente trabalhadas por semana no trabalho principal
+  horas: { geral: [39.1, "dos trabalhadores brasileiros"], emp: [39.6, "dos empregados"], cp: [44.7, "de quem trabalha por conta própria"], empr: [37.5, "dos empregadores"] },
+  cardio: 150, // OMS 2020: 150 min/semana de aeróbico moderado (ou 75 vigoroso)
+  forca: 2     // OMS 2020: fortalecimento muscular em 2 ou mais dias por semana
+};
+const HX_SEXO = [["m", "Masculino"], ["f", "Feminino"]];
+const HX_ESC = [["", "Escolha"], ["fi", "Fundamental incompleto"], ["fc", "Fundamental completo"], ["mi", "Médio incompleto"], ["mc", "Médio completo"], ["sup", "Superior completo"]];
+const HX_OCUP = [["emp", "Empregado"], ["cp", "Conta própria"], ["empr", "Empregador"]];
+let perfil = null;
+const hexUI = { edit: false, sel: null, open: false, draft: null, msg: "" };
+
+function loadPerfil() { try { const v = JSON.parse(localStorage.getItem(PERFIL_KEY)); perfil = v && typeof v === "object" ? v : null; } catch (e) { perfil = null; } }
+function savePerfil(keepUpd) {
+  if (!perfil) return;
+  if (!keepUpd) perfil.upd = Date.now();
+  try { localStorage.setItem(PERFIL_KEY, JSON.stringify(perfil)); setStatus("Salvo no celular", "ok"); }
+  catch (e) { setStatus("Não foi possível salvar neste navegador", "err"); }
+}
+function perfAge(p) {
+  p = p || perfil; if (!p || !p.nasc) return null;
+  const [y, m, d] = p.nasc.split("-").map(Number), t = new Date();
+  let a = t.getFullYear() - y; if (t.getMonth() + 1 < m || (t.getMonth() + 1 === m && t.getDate() < d)) a--;
+  return a >= 10 && a <= 120 ? a : null;
+}
+// janela dos últimos 28 dias, começando no primeiro uso do módulo; hoje só entra se já conta a seu favor
+function hxWin(first, todayCounts) {
+  const today = todayISO(); let start = addDaysISO(today, -27); if (first && first > start) start = first;
+  const out = []; for (let d = start; d < today && out.length < 28; d = addDaysISO(d, 1)) out.push(d);
+  if (todayCounts || !out.length) out.push(today);
+  return out;
+}
+function hxFirst(keys, test) { let f = null; keys.forEach(k => { if ((!f || k < f) && test(k)) f = k; }); return f; }
+function hxH(h) { return (Math.round(h * 10) / 10).toString().replace(".", ","); }
+function hxPct(v) { return v == null ? "—" : Math.round(v * 100) + "%"; }
+function hxDias(n) { return n + (n === 1 ? " dia" : " dias"); }
+
+const HX_CALC = {
+  inteligencia() {
+    const goals = intel && intel.goals ? intel.goals : { week: 2, weekend: 4 };
+    const ref = "Referência: a sua meta de " + fmtNum(goals.week) + " h por dia útil e " + fmtNum(goals.weekend) + " h no fim de semana.";
+    const src = "Não há uma média nacional confiável de horas de estudo, então este eixo usa a sua meta.";
+    if (!intel || !intel.subjects.length) return { you: "Cadastre suas matérias e estude com o cronômetro.", ref, src };
+    const first = hxFirst(Object.keys(intel.days), d => daySec(d) > 0);
+    if (!first) return { you: "Nenhum estudo cronometrado ainda.", ref, src };
+    const t = todayISO(), days = hxWin(first, daySec(t) > 0 && daySec(t) >= goalSec(t));
+    const done = days.reduce((a, d) => a + daySec(d), 0), goal = days.reduce((a, d) => a + goalSec(d), 0);
+    if (!goal) return { you: "Sua meta diária de estudo está em zero.", ref, src };
+    return { val: done / goal, you: "Você: " + hxH(done / 3600) + " h de estudo nos últimos " + hxDias(days.length) + " (meta do período: " + hxH(goal / 3600) + " h).", ref, src };
+  },
+  estamina() {
+    const s = stam(), ref = "Referência: OMS, 150 min por semana de aeróbico moderado (minuto vigoroso conta em dobro).";
+    const src = "Só 42,3% dos adultos brasileiros fazem esses 150 minutos no tempo livre (Vigitel 2024).";
+    const first = hxFirst(Object.keys(s.days || {}), d => stEqMin(d) > 0);
+    if (!first) return { you: "Nenhum cardio registrado ainda.", ref, src };
+    const days = hxWin(first, stEqMin(todayISO()) > 0), eq = days.reduce((a, d) => a + stEqMin(d), 0), wk = eq / Math.max(7, days.length) * 7;
+    return { val: wk / HX_REF.cardio, you: "Você: cerca de " + Math.round(wk) + " min por semana nos últimos " + hxDias(days.length) + ".", ref, src };
+  },
+  forca() {
+    const ref = "Referência: OMS, musculação em 2 ou mais dias por semana.";
+    if (!profileId) return { you: "Escolha seu plano de treino na Força.", ref };
+    const first = hxFirst(Object.keys(state.logs), hasEntries);
+    if (!first) return { you: "Nenhum treino registrado ainda.", ref };
+    const days = hxWin(first, hasEntries(todayISO())), n = days.filter(hasEntries).length, wk = n / Math.max(7, days.length) * 7;
+    return { val: wk / HX_REF.forca, you: "Você: " + n + (n === 1 ? " treino" : " treinos") + " nos últimos " + hxDias(days.length) + " (" + hxH(wk) + " por semana).", ref };
+  },
+  financas() {
+    const R = HX_REF.renda, age = perfAge();
+    const grp = age != null ? R.idade.find(([a, b]) => age >= a && age <= b) : null, refV = grp ? grp[2] : R.geral;
+    const ref = "Referência: " + brl(refV) + " por mês, a média " + (grp ? "de quem tem " + grp[3] : "dos brasileiros que trabalham") + " (IBGE, fim de 2025).";
+    let inc = null, how = "", fromApp = false;
+    if (perfil && perfil.renda > 0) { inc = perfil.renda; how = "informada em Meus dados"; }
+    else if (fin) {
+      const cur = monthKey(todayISO()), ms = [1, 2, 3].map(i => monthAgg(addMonths(cur, -i))).filter(a => a.recebido > 0);
+      if (ms.length) { inc = ms.reduce((a, x) => a + x.recebido, 0) / ms.length; how = ms.length === 1 ? "receitas do mês passado na Economia" : "média das receitas dos últimos " + ms.length + " meses na Economia"; fromApp = true; }
+    }
+    const extra = [];
+    if (perfil && R.esc[perfil.esc]) extra.push("média de quem tem " + R.esc[perfil.esc][1] + ": " + brl(R.esc[perfil.esc][0]));
+    if (perfil && R.sexo[perfil.sexo]) extra.push("média " + R.sexo[perfil.sexo][1] + ": " + brl(R.sexo[perfil.sexo][0]));
+    let src = extra.length ? capFirst(extra.join(" · ")) + "." : "";
+    if (fromApp || inc == null) src += (src ? " " : "") + "O IBGE compara a renda bruta; o que cai na conta já vem com descontos, então informe a bruta em Meus dados para comparar certo.";
+    if (inc == null) return { you: "Classifique suas entradas como Receita na Economia ou informe sua renda em Meus dados.", ref, src };
+    return { val: inc / refV, you: "Você: " + brl(inc) + " por mês (" + how + ").", ref, src };
+  },
+  graca() {
+    const g = grData(), ref = "Referência: rezar todo dia, como faz a maioria dos brasileiros (76% rezam diariamente, Pew Research Center, 2024).";
+    if (!g.rituals.length) return { you: "Crie um ritual na Graça.", ref };
+    const prayed = d => { const x = g.days[d]; return !!x && Object.values(x).some(v => v && ((v.count || 0) > 0 || (v.sec || 0) > 0)); };
+    let first = hxFirst(Object.keys(g.days), prayed);
+    g.rituals.forEach(r => { if (r.created && (!first || r.created < first)) first = r.created; });
+    const days = hxWin(first, prayed(todayISO())), n = days.filter(prayed).length;
+    return { val: n / days.length, you: "Você: rezou em " + n + " de " + hxDias(days.length) + ".", ref };
+  },
+  missoes() {
+    const H = HX_REF.horas, o = perfil && H[perfil.ocup] ? H[perfil.ocup] : H.geral;
+    const ref = "Referência: " + hxH(o[0]) + " h por semana, a média " + o[1] + " (IBGE, 3º trimestre de 2025).";
+    if (perfil && perfil.horas > 0) return { val: perfil.horas / o[0], you: "Você: " + hxH(perfil.horas) + " h por semana (informadas em Meus dados).", ref };
+    const src = "Conta só o tempo cronometrado nas Missões. Se você trabalha mais do que cronometra, informe sua jornada em Meus dados.";
+    const g = msData(), first = hxFirst(Object.keys(g.days), d => msDaySec(d) > 0);
+    if (!first) return { you: "Nenhum tempo de trabalho cronometrado ainda.", ref, src };
+    const days = hxWin(first, msDaySec(todayISO()) > 0), h = days.reduce((a, d) => a + msDaySec(d), 0) / 3600, wk = h / Math.max(7, days.length) * 7;
+    return { val: wk / o[0], you: "Você: cerca de " + hxH(wk) + " h por semana cronometradas nos últimos " + hxDias(days.length) + ".", ref, src };
+  }
+};
+function hxAxes() {
+  return MODULES.map(m => {
+    const a = { id: m.id, name: m.name, val: null, you: "", ref: "", src: "", off: false };
+    if (!modAllowed(m.id)) return Object.assign(a, { off: true, you: "Módulo não disponível na sua conta." });
+    try { const r = HX_CALC[m.id](); if (r.val != null && !isFinite(r.val)) r.val = null; return Object.assign(a, r); }
+    catch (e) { return Object.assign(a, { you: "Não consegui calcular este eixo." }); }
+  });
+}
+
+function hexSVG(axes) {
+  const W = 360, H = 312, cx = 180, cy = 156, R = 110, n = axes.length;
+  const pt = (i, r) => { const t = -Math.PI / 2 + i * 2 * Math.PI / n; return [cx + r * Math.cos(t), cy + r * Math.sin(t)]; };
+  const f = v => v.toFixed(1), pts = rs => rs.map((r, i) => pt(i, r).map(f).join(",")).join(" ");
+  const ring = k => pts(axes.map(() => R * k));
+  const rad = a => a.val == null ? 0 : Math.min(a.val, 2) / 2 * R;
+  const desc = axes.map(a => a.name + ": " + (a.off ? "indisponível" : hxPct(a.val))).join(", ");
+  let s = '<svg class="hex-svg" viewBox="0 0 ' + W + " " + H + '" role="img" aria-labelledby="hx-t hx-d"><title id="hx-t">Hexágono dos módulos: você em relação à referência</title><desc id="hx-d">' + hxEsc(desc) + "</desc>";
+  [0.25, 0.75, 1].forEach(k => { s += '<polygon class="hx-ring" points="' + ring(k) + '"/>'; });
+  axes.forEach((_, i) => { const [x, y] = pt(i, R); s += '<line class="hx-spoke" x1="' + cx + '" y1="' + cy + '" x2="' + f(x) + '" y2="' + f(y) + '"/>'; });
+  s += '<polygon class="hx-ref" points="' + ring(0.5) + '"/>';
+  s += '<polygon class="hx-you" points="' + pts(axes.map(rad)) + '"/>';
+  axes.forEach((a, i) => {
+    const [x0, y0] = pt(i, R + 14), side = Math.abs(x0 - cx) < 4 ? 0 : x0 > cx ? 1 : -1;
+    const anchor = side === 0 ? "middle" : side > 0 ? "start" : "end", top = y0 < cy - R, bot = y0 > cy + R;
+    const yN = top ? y0 - 16 : bot ? y0 + 6 : y0 - 2, yP = yN + 16;
+    const [dx, dy] = pt(i, rad(a)), tip = a.name + ": " + (a.off ? "indisponível" : hxPct(a.val));
+    s += '<g class="hx-ax' + (a.off || a.val == null ? " off" : "") + (hexUI.sel === a.id ? " sel" : "") + '" data-ax="' + a.id + '" tabindex="0" role="button" aria-label="' + hxEsc(tip + ". Ver detalhes") + '"><title>' + hxEsc(tip) + "</title>";
+    s += '<circle class="hx-hit" cx="' + f(x0) + '" cy="' + f((yN + yP) / 2 - 4) + '" r="24"/>';
+    if (a.val != null) s += '<circle class="hx-hit" cx="' + f(dx) + '" cy="' + f(dy) + '" r="14"/><circle class="hx-dot" cx="' + f(dx) + '" cy="' + f(dy) + '" r="4.5"/>';
+    s += '<text class="hx-name" x="' + f(x0) + '" y="' + f(yN) + '" text-anchor="' + anchor + '">' + hxEsc(a.name.toUpperCase()) + "</text>";
+    s += '<text class="hx-pct" x="' + f(x0) + '" y="' + f(yP) + '" text-anchor="' + anchor + '">' + (a.off ? "—" : hxPct(a.val)) + "</text></g>";
+  });
+  return s + "</svg>";
+}
+function hxEsc(t) { return String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+
+function hexCard() {
+  const card = el("section", "guide hex-card"); card.id = "hex";
+  const top = el("div", "hex-top");
+  if (hexUI.edit) { top.appendChild(el("h3", null, "Meus dados")); card.append(top, hexForm()); return card; }
+  const axes = hxAxes(), got = axes.filter(a => a.val != null);
+  const idx = got.length ? got.reduce((a, x) => a + Math.min(x.val, 2), 0) / got.length : null;
+  const left = el("div"); left.appendChild(el("h3", null, "Seus atributos"));
+  if (idx != null) { const i = el("span", "hex-idx"); i.id = "hex-idx"; i.append("Média geral "); i.appendChild(el("b", null, hxPct(idx))); left.appendChild(i); }
+  const eb = el("button", "btn", "Meus dados"); eb.type = "button"; eb.id = "hex-edit";
+  eb.addEventListener("click", () => { hexUI.edit = true; hexUI.draft = Object.assign({}, perfil || {}); hexUI.msg = ""; renderHome(); const c = document.getElementById("hex"); if (c) c.scrollIntoView({ block: "start" }); });
+  top.append(left, eb);
+  const chart = el("div"); chart.id = "hex-chart"; chart.innerHTML = hexSVG(axes);
+  const cap = el("p", "hex-cap", "Linha tracejada = 100%: a média de quem tem o seu perfil ou a recomendação oficial. A borda é 200%. Últimos 28 dias.");
+  card.append(top, chart, cap);
+  if (hexUI.msg) { const m = el("p", "note flash ok", hexUI.msg); card.appendChild(m); hexUI.msg = ""; }
+  if (!perfil || !perfil.nasc) card.appendChild(el("p", "note muted", "Preencha Meus dados (idade, escolaridade e trabalho) para comparar com quem tem o seu perfil."));
+  const more = el("details", "hex-more"); more.id = "hex-more"; more.open = hexUI.open;
+  more.addEventListener("toggle", () => { hexUI.open = more.open; });
+  more.appendChild(el("summary", null, "Como cada eixo é calculado"));
+  const ul = el("ul", "hex-rows");
+  axes.forEach(a => {
+    const li = el("li", "hex-row" + (a.off || a.val == null ? " off" : "") + (hexUI.sel === a.id ? " sel" : "")); li.id = "hex-row-" + a.id;
+    li.append(el("span", "hex-row-n", a.name), el("span", "hex-row-p", a.off ? "—" : hxPct(a.val)));
+    if (a.you) li.appendChild(el("span", "hex-row-l you", a.you));
+    if (a.ref) li.appendChild(el("span", "hex-row-l", a.ref));
+    if (a.src) li.appendChild(el("span", "hex-row-l", a.src));
+    ul.appendChild(li);
+  });
+  more.appendChild(ul); card.appendChild(more);
+  const pick = id => {
+    hexUI.sel = hexUI.sel === id ? null : id;
+    chart.querySelectorAll(".hx-ax").forEach(g => g.classList.toggle("sel", g.dataset.ax === hexUI.sel));
+    ul.querySelectorAll(".hex-row").forEach(r => r.classList.toggle("sel", r.id === "hex-row-" + hexUI.sel));
+    if (hexUI.sel) { more.open = true; hexUI.open = true; const r = document.getElementById("hex-row-" + id); if (r && r.scrollIntoView) r.scrollIntoView({ block: "nearest" }); }
+  };
+  chart.addEventListener("click", e => { const g = e.target.closest && e.target.closest("[data-ax]"); if (g) pick(g.dataset.ax); });
+  chart.addEventListener("keydown", e => { if (e.key !== "Enter" && e.key !== " ") return; const g = e.target.closest && e.target.closest("[data-ax]"); if (g) { e.preventDefault(); pick(g.dataset.ax); } });
+  return card;
+}
+
+function hexForm() {
+  const d = hexUI.draft || (hexUI.draft = Object.assign({}, perfil || {}));
+  const box = el("div", "hex-form");
+  box.appendChild(el("p", "note muted", "Com esses dados o hexágono compara você com a média de quem tem o seu perfil. Renda e horas são opcionais: vazias, o app calcula com a Economia e as Missões. Tudo fica só no seu aparelho e na sua conta."));
+  const grid = el("div", "inputs two");
+  const fld = (k, label, ph, type, mode) => {
+    const f = el("div", "field" + (k === "nasc" ? " span2" : "")), l = el("label", null, label), i = el("input"); l.htmlFor = "hx-" + k; i.id = "hx-" + k;
+    if (type) i.type = type; if (ph) i.placeholder = ph; if (mode) i.inputMode = mode;
+    f.append(l, i); grid.appendChild(f); return i;
+  };
+  const nasc = fld("nasc", "Data de nascimento", null, "date"); nasc.value = d.nasc || ""; nasc.max = todayISO();
+  const ef = el("div", "field span2"), el2 = el("label", null, "Escolaridade"); el2.htmlFor = "hx-esc";
+  const es = el("select"); es.className = "sel"; es.id = "hx-esc";
+  HX_ESC.forEach(([v, t]) => { const o = el("option", null, t); o.value = v; if ((d.esc || "") === v) o.selected = true; es.appendChild(o); });
+  ef.append(el2, es); grid.appendChild(ef);
+  const renda = fld("renda", "Renda bruta/mês", "Da Economia", null, "decimal"); renda.value = d.renda ? fmtNum(d.renda) : "";
+  const horas = fld("horas", "Horas/semana", "Das Missões", null, "decimal"); horas.value = d.horas ? fmtNum(d.horas) : "";
+  box.appendChild(grid);
+  const chips = (label, opts, key) => {
+    const g = el("div", "cg"); g.appendChild(el("span", "field-l", label));
+    const row = el("div", "chips");
+    opts.forEach(([v, t]) => {
+      const c = el("button", "gchip", t); c.type = "button"; c.id = "hx-" + key + "-" + v; c.setAttribute("aria-pressed", String(d[key] === v));
+      c.addEventListener("click", () => { d[key] = d[key] === v ? null : v; row.querySelectorAll(".gchip").forEach(b => b.setAttribute("aria-pressed", String(b.id === "hx-" + key + "-" + d[key]))); });
+      row.appendChild(c);
+    });
+    g.appendChild(row); box.appendChild(g);
+  };
+  chips("Sexo", HX_SEXO, "sexo");
+  chips("Como você trabalha", HX_OCUP, "ocup");
+  nasc.addEventListener("input", () => { d.nasc = nasc.value; });
+  es.addEventListener("change", () => { d.esc = es.value || null; });
+  renda.addEventListener("input", () => { d.rendaTxt = renda.value; });
+  horas.addEventListener("input", () => { d.horasTxt = horas.value; });
+  if (d.rendaTxt != null) renda.value = d.rendaTxt;
+  if (d.horasTxt != null) horas.value = d.horasTxt;
+  const msg = el("p", "note"); msg.id = "hx-msg"; msg.setAttribute("aria-live", "polite");
+  const row = el("div", "btns");
+  const sv = el("button", "btn", "Salvar"); sv.type = "button"; sv.id = "hx-save";
+  const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = "hx-cancel";
+  sv.addEventListener("click", () => {
+    const rv = renda.value.trim() ? parseMoney(renda.value) : null, hv = horas.value.trim() ? parseNum(horas.value) : null;
+    if (nasc.value && (nasc.value > todayISO() || nasc.value < "1900-01-01" || perfAge({ nasc: nasc.value }) == null)) { flash(msg, "Confira a data de nascimento.", "err"); return; }
+    if (rv != null && !(rv > 0 && rv < 10000000)) { flash(msg, "Digite a renda só com números, por exemplo 8500 ou 8.500,00.", "err"); return; }
+    if (hv != null && !(hv > 0 && hv <= 120)) { flash(msg, "As horas por semana precisam ficar entre 1 e 120.", "err"); return; }
+    perfil = { nasc: nasc.value || null, sexo: d.sexo || null, esc: es.value || null, ocup: d.ocup || null, renda: rv, horas: hv };
+    savePerfil(); hexUI.edit = false; hexUI.draft = null; hexUI.msg = "Dados salvos. O hexágono já usa o seu perfil.";
+    renderHome(); window.scrollTo(0, 0);
+  });
+  cc.addEventListener("click", () => { hexUI.edit = false; hexUI.draft = null; renderHome(); window.scrollTo(0, 0); });
+  row.append(sv, cc); box.append(msg, row);
+  return box;
+}
+
 /* ======================= Conta e nuvem ======================= */
 const CLOUD_KEY = "stek-cloud";
-const SYNC_KEYS = ["treino-perfil", "treino-logs-v1", "treino-logs-irma-v1", "treino-settings-v1", "treino-settings-irma-v1", "stek-intel-v1", "stek-fin-v1", "stek-stamina-v1", "stek-graca-v1", "stek-missoes-v1"];
+const SYNC_KEYS = ["treino-perfil", "treino-logs-v1", "treino-logs-irma-v1", "treino-settings-v1", "treino-settings-irma-v1", "stek-intel-v1", "stek-fin-v1", "stek-stamina-v1", "stek-graca-v1", "stek-missoes-v1", "stek-perfil-v1"];
 const DEFAULT_SERVER = "https://stek-pluggy.nataniel-akio.workers.dev";
 const _lsSet = Storage.prototype.setItem;
 let cloud = null, cloudApplying = false, cloudTimer = null, cloudBusy = false;
@@ -4367,10 +4633,10 @@ function applyRemote(items) {
   saveCloud(); reloadAllState();
 }
 function reloadAllState() {
-  loadIntel(); loadFin(); loadStamina(); loadGraca(); loadMs();
+  loadIntel(); loadFin(); loadStamina(); loadGraca(); loadMs(); loadPerfil();
   const p = readProfile();
   if (p) { if (p !== profileId) useProfile(p); state.logs = {}; loadLogs(); loadSettings(); }
-  updateLevel(); rerenderView();
+  rerenderView();
 }
 function rerenderView() {
   const v = state.view;
@@ -4438,6 +4704,7 @@ function mergeKey(k, a, b) {
     out.timer = R.timer || L.timer || null;
     return JSON.stringify(out);
   }
+  if (k === "stek-perfil-v1") return (L.upd || 0) > (R.upd || 0) ? a : b;
   if (k === "stek-missoes-v1") {
     if (!Array.isArray(L.tasks)) return b; if (!Array.isArray(R.tasks)) return a;
     const byId = {}; R.tasks.forEach(x => { byId[x.id] = x; });
@@ -4624,6 +4891,7 @@ loadFin();
 loadStamina();
 loadGraca();
 loadMs();
+loadPerfil();
 const savedProfile = readProfile();
 if (savedProfile) loadProfile(savedProfile);
 history.replaceState(null, "", "#inicio");

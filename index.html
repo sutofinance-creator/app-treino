@@ -2205,6 +2205,7 @@ function fmtStamp(iso) { const d = new Date(iso); return String(d.getDate()).pad
 let ofBanks = null, ofBanksLoading = false, ofStatusErr = "";
 async function refreshBanks() {
   if (!loggedIn() || ofBanksLoading) return;
+  if (localStorage.getItem(OF_PENDING) && await resumePendingLink()) return;
   ofBanksLoading = true;
   try { const d = await cloudFetch("GET", "/of/status"); ofBanks = d.items || []; ofStatusErr = ""; if (fin.of.linked !== ofBanks.length) { fin.of.linked = ofBanks.length; saveFin(); } }
   catch (e) { ofStatusErr = e.status === 401 || e.status === 404 ? "O servidor ainda não tem a conexão por conta: falta atualizar o Worker." : "Não consegui ver suas conexões: " + e.message; }
@@ -2219,24 +2220,43 @@ function loadPluggy() {
     document.head.appendChild(sc);
   });
 }
+// A conexão recém-criada fica anotada até o servidor confirmar (vale também se a Pluggy recarregar o app depois da autorização)
+const OF_PENDING = "stek-of-pending";
+function notePending(id) { try { if (id) localStorage.setItem(OF_PENDING, JSON.stringify({ id, at: Date.now() })); } catch (e) {} }
+async function linkItem(id) {
+  await cloudFetch("POST", "/of/items", { itemId: id });
+  try { localStorage.removeItem(OF_PENDING); } catch (e) {}
+  fin.of.linked = Math.max(1, (fin.of.linked || 0) + 1); fin.of.v = 2; if (!fin.of.from) fin.of.from = ofDefaultFrom(); saveFin();
+  finUI.msg = "Banco conectado. Buscando os lançamentos…"; if (state.view === "fin") renderFin();
+  ofBanks = null; await refreshBanks();
+  syncOF().then(r => { finUI.msg = r ? "Banco conectado. " + r.added + " lançamento(s) novo(s)." : ""; if (state.view === "fin") renderFin(); }).catch(() => { if (state.view === "fin") renderFin(); });
+}
+async function resumePendingLink() {
+  if (!loggedIn()) return false;
+  let p = null; try { p = JSON.parse(localStorage.getItem(OF_PENDING)); } catch (e) {}
+  if (!p || !p.id) return false;
+  if (Date.now() - (p.at || 0) > 2 * 3600000) { try { localStorage.removeItem(OF_PENDING); } catch (e) {} return false; }
+  try { await linkItem(p.id); return true; } catch (e) { if (e.status === 403 || e.status === 404 || e.status === 400) try { localStorage.removeItem(OF_PENDING); } catch (x) {} return false; }
+}
+function pluggyErr(err) {
+  if (!err) return "tente de novo";
+  const parts = [err.message, err.data && err.data.message, err.data && err.data.item && err.data.item.status, err.code].filter(Boolean);
+  return parts.length ? parts.join(" · ") : (typeof err === "string" ? err : JSON.stringify(err).slice(0, 200));
+}
 async function connectBank(msg, btn) {
   btn.disabled = true; flash(msg, "Abrindo a conexão…", "info");
   try {
-    const tk = await cloudFetch("POST", "/of/connect", {});
+    const tk = await cloudFetch("POST", "/of/connect", { redirect: location.origin + location.pathname });
     await loadPluggy();
     const opts = { connectToken: tk.accessToken, includeSandbox: false,
+      onEvent: ev => { const it = ev && (ev.item || (ev.data && ev.data.item) || (ev.payload && ev.payload.item)); if (it && it.id) notePending(it.id); },
       onSuccess: async data => {
         const id = data && data.item && data.item.id;
         if (!id) { flash(msg, "A Pluggy não devolveu a conexão. Tente de novo.", "err"); return; }
-        try {
-          await cloudFetch("POST", "/of/items", { itemId: id });
-          fin.of.linked = Math.max(1, (fin.of.linked || 0) + 1); fin.of.v = 2; if (!fin.of.from) fin.of.from = ofDefaultFrom(); saveFin();
-          finUI.msg = "Banco conectado. Buscando os lançamentos…"; renderFin();
-          await refreshBanks();
-          syncOF().then(r => { finUI.msg = r ? "Banco conectado. " + r.added + " lançamento(s) novo(s)." : ""; renderFin(); }).catch(() => renderFin());
-        } catch (e) { flash(msg, "Não consegui salvar a conexão: " + e.message, "err"); }
+        notePending(id);
+        try { await linkItem(id); } catch (e) { flash(msg, "Não consegui salvar a conexão: " + e.message, "err"); }
       },
-      onError: err => { flash(msg, "A conexão não foi concluída: " + ((err && (err.message || (err.data && err.data.message))) || "tente de novo") + ".", "err"); },
+      onError: err => { const it = err && err.data && err.data.item; if (it && it.id) notePending(it.id); flash(msg, "A conexão não foi concluída: " + pluggyErr(err) + ".", "err"); },
       onClose: () => { btn.disabled = false; } };
     if (tk.connectorId) opts.selectedConnectorId = tk.connectorId;
     new window.PluggyConnect(opts).init();
@@ -3034,7 +3054,7 @@ function cloudExpired() {
   setStatus("Entre na sua conta", "err"); updateAcct();
 }
 async function cloudStartup() {
-  if (loggedIn()) { await cloudPull(); }
+  if (loggedIn()) { await cloudPull(); await resumePendingLink(); }
   maybeAutoSync();
 }
 function localHasData() { return SYNC_KEYS.some(k => k !== "treino-perfil" && localStorage.getItem(k) != null); }

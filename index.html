@@ -2744,8 +2744,10 @@ function missoesTasks() {
   list.slice(0, 6).forEach(t => {
     const di = msDueInfo(t, iso), done = t.status !== "aberta";
     const pri = MS_PRI.find(p => p[0] === t.pri);
-    tasks.push({ id: "task-ms-" + t.id, title: t.title, complete: done, pct: done ? 1 : 0,
-      label: done ? (t.status === "feita" ? "Entregue" : "Não resolvida") : di && di.cls === "bad" ? "Atrasada" : di && di.cls === "pend" ? (t.rec && t.rec.type ? "Hoje" : "Vence hoje") : "Hoje",
+    // pendente = atrasada ou com prazo hoje (sem prazo e marcada para hoje também vale); prazo mais à frente não pesa, mesmo planejada para hoje
+    const later = !done && t.due && t.due > iso;
+    tasks.push({ id: "task-ms-" + t.id, title: t.title, complete: done, pct: done ? 1 : 0, optional: later,
+      label: done ? (t.status === "feita" ? "Entregue" : "Não resolvida") : later ? "Prazo " + fmtDate(t.due).slice(0, 5) : di && di.cls === "bad" ? "Atrasada" : di && di.cls === "pend" ? (t.rec && t.rec.type ? "Hoje" : "Vence hoje") : "Hoje",
       sub: [t.proj, t.setor, t.sol, pri && "prioridade " + pri[1].toLowerCase(), t.est ? "est. " + fmtHM(t.est * 60) : ""].filter(Boolean).join(" · "),
       go: () => enterMissoes("ms-hoje", t.id) });
   });

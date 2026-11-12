@@ -375,6 +375,13 @@ ol.steps a { color: var(--accent); }
 .dd-ex { font-weight: 600; }
 .dd-g { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
 .dd-v { font-variant-numeric: tabular-nums; color: var(--ink); opacity: .9; }
+
+/* ---------- Filtro por essencialidade ---------- */
+.lg.pick { appearance: none; font: inherit; color: inherit; background: none; border: 1px solid var(--line); padding: 4px 8px; cursor: pointer; }
+.lg.pick:hover { border-color: var(--accent); }
+.lg.pick.on { border-color: var(--accent); background: rgba(166, 107, 255, .16); box-shadow: 0 0 10px rgba(166, 107, 255, .35); }
+.stk.filtering .stk-bar span:not(.on) { opacity: .25; }
+.stk.filtering .lg.pick:not(.on) { opacity: .6; }
 </style>
 </head>
 <body data-view="home">
@@ -2154,7 +2161,7 @@ function importFile(file, done) {
 
 /* ---------- agregados ---------- */
 function monthAgg(k) {
-  const a = { k, recebido: 0, gastos: 0, aportes: 0, byCat: {}, catCount: {}, catNat: {}, byEss: {}, byFreq: {}, byNat: {}, daily: {}, n: 0, pending: 0, recCat: {} };
+  const a = { k, recebido: 0, gastos: 0, aportes: 0, byCat: {}, catCount: {}, catNat: {}, byEss: {}, byFreq: {}, byNat: {}, daily: {}, n: 0, pending: 0, recCat: {}, byCatEss: {}, catCountEss: {} };
   fin.tx.forEach(t => {
     if (monthKey(t.date) !== k) return;
     if (t.status !== "done") { a.pending++; return; }
@@ -2165,6 +2172,8 @@ function monthAgg(k) {
       a.gastos += t.amount;
       a.byCat[t.cat] = (a.byCat[t.cat] || 0) + t.amount; a.catCount[t.cat] = (a.catCount[t.cat] || 0) + 1;
       a.catNat[t.cat] = t.nat;
+      const ce = a.byCatEss[t.ess] = a.byCatEss[t.ess] || {}, cn = a.catCountEss[t.ess] = a.catCountEss[t.ess] || {};
+      ce[t.cat] = (ce[t.cat] || 0) + t.amount; cn[t.cat] = (cn[t.cat] || 0) + 1;
       a.byEss[t.ess] = (a.byEss[t.ess] || 0) + t.amount; a.byFreq[t.freq] = (a.byFreq[t.freq] || 0) + t.amount; a.byNat[t.nat] = (a.byNat[t.nat] || 0) + t.amount;
       const d = Number(t.date.slice(8, 10)); a.daily[d] = (a.daily[d] || 0) + t.amount;
     }
@@ -2684,15 +2693,30 @@ function renderRelatorio(main) {
 
   // classificações
   const cl = el("section", "guide"); cl.appendChild(el("h3", null, "Perfil dos gastos"));
-  cl.appendChild(stack("Essencialidade", ESS.map(([v, t]) => ({ label: t, value: a.byEss[v] || 0, cls: "ess-" + v }))));
+  // tocar numa essencialidade filtra o quadro "Para onde foi o dinheiro"
+  cl.appendChild(stack("Essencialidade", ESS.map(([v, t]) => ({ key: v, label: t, value: a.byEss[v] || 0, cls: "ess-" + v })), {
+    selected: finUI.ess || null,
+    pick: v => { finUI.ess = finUI.ess === v ? null : v; renderFin(); const w2 = document.getElementById("rel-onde"); if (w2) w2.scrollIntoView({ block: "nearest" }); }
+  }));
+  if (!finUI.ess) cl.appendChild(el("p", "note muted", "Toque em Necessário, Substituível, Supérfluo ou Luxo para ver só esses gastos no quadro abaixo."));
   cl.appendChild(stack("Natureza", NAT.map(([v, t], i) => ({ label: t, value: a.byNat[v] || 0, cls: "s" + i }))));
   cl.appendChild(stack("Frequência", FREQ.map(([v, t], i) => ({ label: t, value: a.byFreq[v] || 0, cls: "s" + i }))));
   main.appendChild(cl);
 
   // para onde foi
-  const w = el("section", "guide"); w.appendChild(el("h3", null, "Para onde foi o dinheiro"));
-  const cats = Object.keys(a.byCat).map(c => ({ c, v: a.byCat[c], n: a.catCount[c], pv: p.byCat[c] || 0 })).sort((x, y) => y.v - x.v);
-  w.appendChild(hbars(cats.slice(0, 12).map(x => ({ label: x.c, value: x.v, note: x.n + "×" + (x.pv ? " · " + (x.v >= x.pv ? "+" : "−") + brl(Math.abs(x.v - x.pv)) : "") })), a.gastos));
+  const fe = finUI.ess && ESS.some(([v]) => v === finUI.ess) ? finUI.ess : null;
+  const ESS_PL = { necessario: "necessários", substituivel: "substituíveis", superfluo: "supérfluos", luxo: "de luxo" };
+  const w = el("section", "guide"); w.id = "rel-onde"; w.appendChild(el("h3", null, "Para onde foi o dinheiro" + (fe ? " · " + LABEL[fe] : "")));
+  const srcCat = fe ? (a.byCatEss[fe] || {}) : a.byCat, srcCnt = fe ? (a.catCountEss[fe] || {}) : a.catCount, prvCat = fe ? (p.byCatEss[fe] || {}) : p.byCat;
+  if (fe) {
+    const nt = el("p", "note muted", "Só gastos " + ESS_PL[fe] + ": " + brl(a.byEss[fe] || 0) + " de " + brl(a.gastos) + ". ");
+    const all = el("button", "linkbtn", "Ver todos"); all.type = "button"; all.id = "rel-ess-clear";
+    all.addEventListener("click", () => { finUI.ess = null; renderFin(); });
+    nt.appendChild(all); w.appendChild(nt);
+  }
+  const cats = Object.keys(srcCat).map(c => ({ c, v: srcCat[c], n: srcCnt[c], pv: prvCat[c] || 0 })).sort((x, y) => y.v - x.v);
+  if (fe && !cats.length) w.appendChild(el("p", "note muted", "Nenhum gasto " + ESS_PL[fe] + " neste mês."));
+  else w.appendChild(hbars(cats.slice(0, 12).map(x => ({ label: x.c, value: x.v, note: x.n + "×" + (x.pv ? " · " + (x.v >= x.pv ? "+" : "−") + brl(Math.abs(x.v - x.pv)) : "") })), fe ? (a.byEss[fe] || 0) : a.gastos));
   if (cats.length > 12) w.appendChild(el("p", "note muted", "+ " + (cats.length - 12) + " categorias menores: " + brl(cats.slice(12).reduce((s, x) => s + x.v, 0))));
   main.appendChild(w);
 
@@ -2721,11 +2745,18 @@ function hbars(rows, total) {
   rows.forEach(r => { const row = el("div", "hb"); const top = el("div", "hb-top"); top.append(el("span", "hb-l", r.label), el("span", "hb-v", brl(r.value) + (total ? " · " + pctf(r.value / total) : ""))); const bar = el("div", "hb-bar"); const f = el("span"); f.style.width = (r.value / max * 100) + "%"; bar.appendChild(f); row.append(top, bar); if (r.note) row.appendChild(el("span", "hb-n", r.note)); box.appendChild(row); });
   return box;
 }
-function stack(title, segs) {
-  const tot = segs.reduce((s, x) => s + x.value, 0); const w = el("div", "stk");
+function stack(title, segs, opt) {
+  const tot = segs.reduce((s, x) => s + x.value, 0); const w = el("div", "stk" + (opt && opt.selected ? " filtering" : ""));
   w.appendChild(el("span", "field-l", title));
-  const bar = el("div", "stk-bar"); segs.forEach(s => { if (!s.value) return; const sp = el("span", s.cls); sp.style.width = (s.value / tot * 100) + "%"; sp.title = s.label; bar.appendChild(sp); }); w.appendChild(bar);
-  const lg = el("div", "stk-lg"); segs.forEach(s => { const i = el("span", "lg"); i.append(el("span", "sw " + s.cls), document.createTextNode(s.label + " " + brl(s.value) + " (" + pctf(tot ? s.value / tot : 0) + ")")); lg.appendChild(i); }); w.appendChild(lg);
+  const on = s => opt && opt.selected === s.key;
+  const bar = el("div", "stk-bar"); segs.forEach(s => { if (!s.value) return; const sp = el("span", s.cls + (on(s) ? " on" : "")); sp.style.width = (s.value / tot * 100) + "%"; sp.title = s.label; if (opt) { sp.style.cursor = "pointer"; sp.addEventListener("click", () => opt.pick(s.key)); } bar.appendChild(sp); }); w.appendChild(bar);
+  const lg = el("div", "stk-lg");
+  segs.forEach(s => {
+    const i = el(opt ? "button" : "span", "lg" + (opt ? " pick" : "") + (on(s) ? " on" : ""));
+    if (opt) { i.type = "button"; i.id = "ess-" + s.key; i.setAttribute("aria-pressed", String(on(s))); i.addEventListener("click", () => opt.pick(s.key)); }
+    i.append(el("span", "sw " + s.cls), document.createTextNode(s.label + " " + brl(s.value) + " (" + pctf(tot ? s.value / tot : 0) + ")")); lg.appendChild(i);
+  });
+  w.appendChild(lg);
   return w;
 }
 function evoSVG(hist) {

@@ -382,6 +382,10 @@ ol.steps a { color: var(--accent); }
 .lg.pick.on { border-color: var(--accent); background: rgba(166, 107, 255, .16); box-shadow: 0 0 10px rgba(166, 107, 255, .35); }
 .stk.filtering .stk-bar span:not(.on) { opacity: .25; }
 .stk.filtering .lg.pick:not(.on) { opacity: .6; }
+
+/* ---------- Plano de estudo ---------- */
+.plan-ed { display: grid; gap: 8px; margin: 10px 0 12px; padding: 12px; border: 1px solid var(--line); background: var(--surface-2); }
+.plan-ed .chips { margin: 0; }
 </style>
 </head>
 <body data-view="home">
@@ -1192,7 +1196,8 @@ const STUDY_PRESET = [
 
 /* ---------- Inteligência: dados ---------- */
 const INTEL_KEY = "stek-intel-v1";
-const UNITS = { exercicios: ["exercício", "exercícios"], modulos: ["módulo", "módulos"] };
+const UNITS = { exercicios: ["exercício", "exercícios"], modulos: ["módulo", "módulos"], aulas: ["aula", "aulas"], licoes: ["lição", "lições"], paginas: ["página", "páginas"], capitulos: ["capítulo", "capítulos"] };
+const UNIT_OPTS = [["exercicios", "Exercícios"], ["modulos", "Módulos"], ["aulas", "Aulas"], ["licoes", "Lições"], ["paginas", "Páginas"], ["capitulos", "Capítulos"]];
 const INTEL_TABS = [{ id: "estudo", label: "Hoje" }, { id: "estudo-progresso", label: "Progresso" }, { id: "materias", label: "Matérias" }];
 let intel = null;
 const intelConfirm = new Set();
@@ -1224,9 +1229,53 @@ function runningSec(iso, sid) {
 function subjSec(iso, sid) { return getRec(iso, sid).sec + runningSec(iso, sid); }
 function daySec(iso) { return intel.subjects.reduce((a, s) => a + subjSec(iso, s.id), 0); }
 function subjDoneUpTo(sub, iso) { let n = sub.base || 0; Object.keys(intel.days).forEach(d => { if (!iso || d <= iso) n += getRec(d, sub.id).count || 0; }); return n; }
-function planFor(sub, iso) { const p = sub.plan && sub.plan[iso]; return p ? { qty: p[0], items: p[1], theory: p[2] } : null; }
-function expectedUpTo(sub, iso) { let n = sub.base || 0; Object.keys(sub.plan || {}).forEach(d => { if (d <= iso) n += sub.plan[d][0]; }); return n; }
-function planRange(sub) { const ks = Object.keys(sub.plan || {}).sort(); return ks.length ? [ks[0], ks[ks.length - 1]] : null; }
+/* Plano de estudo de cada matéria: cronograma importado (sub.plan) ou meta própria (sub.goal):
+   - prazo: terminar o total até uma data, nos dias da semana escolhidos (a meta do dia se ajusta ao que falta);
+   - diaria: quantidade fixa por dia de estudo. */
+function goalOf(sub) { return !sub.plan && sub.goal && (sub.goal.type === "prazo" || sub.goal.type === "diaria") ? sub.goal : null; }
+function hasPlan(sub) { return !!(sub.plan || goalOf(sub)); }
+function studyDay(sub, iso) { const g = goalOf(sub); if (!g) return false; const [y, m, d] = iso.split("-").map(Number); return (g.days || [1, 2, 3, 4, 5]).includes(new Date(y, m - 1, d).getDay()); }
+function countStudyDays(sub, a, b) { let n = 0; for (let d = a, i = 0; d <= b && i < 1500; d = addDaysISO(d, 1), i++) if (studyDay(sub, d)) n++; return n; }
+function goalTarget(sub, iso) {
+  const g = goalOf(sub); if (!g || !studyDay(sub, iso) || (g.start && iso < g.start)) return null;
+  const before = subjDoneUpTo(sub, addDaysISO(iso, -1));
+  if (sub.total && before >= sub.total) return { qty: 0, left: 0, remaining: 0 };
+  if (g.type === "diaria") return { qty: Math.max(1, g.qty || 1), remaining: sub.total ? sub.total - before : null };
+  if (!sub.total || !g.end || iso > g.end) return null;
+  const remaining = sub.total - before, left = countStudyDays(sub, iso, g.end);
+  return { qty: Math.ceil(remaining / Math.max(1, left)), left, remaining };
+}
+function goalFinish(sub, iso) {
+  const g = goalOf(sub); if (!g || g.type !== "diaria" || !sub.total) return null;
+  let rem = sub.total - subjDoneUpTo(sub, iso), d = iso, i = 0;
+  if (rem <= 0) return iso;
+  while (rem > 0 && i < 1500) { d = addDaysISO(d, 1); i++; if (studyDay(sub, d)) rem -= Math.max(1, g.qty || 1); }
+  return rem > 0 ? null : d;
+}
+function planFor(sub, iso) {
+  if (sub.plan) { const p = sub.plan[iso]; return p ? { qty: p[0], items: p[1], theory: p[2] } : null; }
+  const t = goalTarget(sub, iso); if (!t) return null;
+  const u = n => n + " " + unitWord(sub, n);
+  if (t.qty === 0) return { qty: 0, items: "", theory: "", doneAll: true };
+  const g = goalOf(sub);
+  const items = g.type === "prazo"
+    ? u(t.qty) + " hoje para terminar até " + fmtDate(g.end).slice(0, 5) + ": faltam " + u(t.remaining) + " em " + t.left + (t.left === 1 ? " dia" : " dias") + " de estudo."
+    : u(t.qty) + " por dia de estudo" + (t.remaining != null ? "; faltam " + u(t.remaining) + "." : ".");
+  return { qty: t.qty, items, theory: "" };
+}
+function expectedUpTo(sub, iso) {
+  if (sub.plan) { let n = sub.base || 0; Object.keys(sub.plan).forEach(d => { if (d <= iso) n += sub.plan[d][0]; }); return n; }
+  const g = goalOf(sub); if (!g || !g.start) return subjDoneUpTo(sub, iso);
+  const k = iso < g.start ? 0 : countStudyDays(sub, g.start, iso), s0 = g.startDone || 0;
+  if (g.type === "diaria") return Math.min(sub.total || Infinity, s0 + k * Math.max(1, g.qty || 1));
+  const L = Math.max(1, countStudyDays(sub, g.start, g.end));
+  return Math.min(sub.total, Math.round(s0 + (sub.total - s0) * Math.min(k, L) / L));
+}
+function planRange(sub) {
+  if (sub.plan) { const ks = Object.keys(sub.plan).sort(); return ks.length ? [ks[0], ks[ks.length - 1]] : null; }
+  const g = goalOf(sub); if (!g || !g.start || !sub.total) return null;
+  return [g.start, g.type === "prazo" ? g.end : (goalFinish(sub, todayISO()) || "9999-12-31")];
+}
 function nextExam(sub, iso) { return (sub.exams || []).filter(d => d >= iso).sort()[0] || null; }
 function daysBetween(a, b) { return Math.round((dayBounds(b)[0] - dayBounds(a)[0]) / 86400000); }
 function fmtHMS(sec) { const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60; return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0"); }
@@ -1247,6 +1296,7 @@ function stopTimer(silent) { const t = intel.timer; if (!t) return; addTime(t.st
 
 function subjTask(sub, iso) {
   const p = planFor(sub, iso); if (!p) return null;
+  if (p.doneAll) return { done: 1, total: 1, complete: true, label: "Concluído", sub: "Total da matéria concluído." };
   const r = getRec(iso, sub.id);
   const needCount = p.qty > 0, needTheory = !!p.theory;
   const done = (needCount ? Math.min(r.count, p.qty) : 0) + (needTheory && r.theory ? 1 : 0);
@@ -1256,7 +1306,7 @@ function subjTask(sub, iso) {
   if (complete) label = "Concluído";
   const parts = [];
   if (p.theory) parts.push("Teoria: " + p.theory + (r.theory ? " (feita)" : ""));
-  if (needCount) parts.push(p.qty + " " + unitWord(sub, p.qty) + ": " + p.items);
+  if (needCount) parts.push(sub.plan ? p.qty + " " + unitWord(sub, p.qty) + ": " + p.items : p.items);
   return { done, total, complete, label, sub: parts.join(" · ") };
 }
 
@@ -1355,6 +1405,9 @@ function buildSubjCard(s, n, iso) {
   const infos = [];
   if (ex) { const dd = daysBetween(iso, ex); infos.push(dd === 0 ? "Prova hoje" : "Prova em " + dd + (dd === 1 ? " dia" : " dias") + " (" + fmtDate(ex).slice(0, 5) + ")"); }
   if (s.total) infos.push(s.total + " " + unitWord(s, s.total) + " no total");
+  const sg = goalOf(s);
+  if (sg && sg.type === "prazo" && sg.end) infos.push("terminar até " + fmtDate(sg.end).slice(0, 5));
+  if (sg && !studyDay(s, iso)) infos.push("hoje não é dia de estudo desta matéria");
   if (infos.length) box.appendChild(el("p", "ex-note", infos.join(" · ")));
   top.append(el("div", "num", String(n).padStart(2, "0")), box);
   card.appendChild(top);
@@ -1383,6 +1436,7 @@ function buildSubjCard(s, n, iso) {
   if (p) {
     const pl = el("div", "plan");
     pl.appendChild(el("span", "plan-t", "Plano do dia"));
+    if (p.doneAll) pl.appendChild(el("p", "plan-items", "Total concluído. Ajuste o plano em Matérias se quiser continuar."));
     if (p.qty > 0) pl.appendChild(el("p", "plan-items", p.items));
     if (p.theory) {
       const lab = el("label", "theory"); lab.htmlFor = "th-" + s.id;
@@ -1417,10 +1471,11 @@ function buildSubjCard(s, n, iso) {
     line.appendChild(el("span", "presc", done + "/" + s.total + " (" + Math.round(done / s.total * 100) + "%)"));
     const rng = planRange(s);
     if (rng && iso >= rng[0] && iso <= rng[1]) {
-      const exp = expectedUpTo(s, iso), diff = done - exp;
+      // no dia de hoje, a cota do dia só conta como atraso depois que o dia passa
+      const exp = iso === today ? Math.min(expectedUpTo(s, iso), expectedUpTo(s, addDaysISO(iso, -1)) + (r.count || 0)) : expectedUpTo(s, iso), diff = done - exp;
       const chip = el("span", "st " + (diff >= 0 ? "ok" : "pend"), diff > 0 ? diff + " adiantado" + (diff > 1 ? "s" : "") : diff === 0 ? "No ritmo" : (-diff) + " atrasado" + (diff < -1 ? "s" : ""));
       line.appendChild(chip);
-      line.appendChild(el("span", "last", "Plano até este dia: " + exp));
+      line.appendChild(el("span", "last", "Plano até este dia: " + expectedUpTo(s, iso)));
     }
     prog.appendChild(line);
     const b = el("div", "goalbar thin"); const f = el("span"); f.style.width = Math.min(100, done / s.total * 100) + "%"; b.appendChild(f);
@@ -1468,9 +1523,9 @@ function renderIntelProgress(main) {
     row.appendChild(top);
     if (s.total) {
       const done = subjDoneUpTo(s);
-      row.appendChild(el("p", "ex-note", done + " de " + s.total + " " + unitWord(s, s.total) + " (" + Math.round(done / s.total * 100) + "%)" + (s.plan ? " · plano até hoje: " + expectedUpTo(s, today) : "")));
+      row.appendChild(el("p", "ex-note", done + " de " + s.total + " " + unitWord(s, s.total) + " (" + Math.round(done / s.total * 100) + "%)" + (hasPlan(s) ? " · plano até hoje: " + expectedUpTo(s, today) : "")));
       const b = el("div", "goalbar thin"); const f = el("span"); f.style.width = Math.min(100, done / s.total * 100) + "%"; b.appendChild(f);
-      if (s.plan) { const mk = el("i"); mk.style.left = Math.min(100, expectedUpTo(s, today) / s.total * 100) + "%"; b.appendChild(mk); }
+      if (hasPlan(s)) { const mk = el("i"); mk.style.left = Math.min(100, expectedUpTo(s, today) / s.total * 100) + "%"; b.appendChild(mk); }
       row.appendChild(b);
     }
     ms.appendChild(row);
@@ -1493,6 +1548,79 @@ function studySVG(rows) {
   const step = 2;
   rows.forEach((r, i) => { if (i % step === (n - 1) % step) g += '<text class="ax" x="' + xs(i) + '" y="' + (CH - 6) + '" text-anchor="middle">' + fmtDate(r.iso).slice(0, 5) + '</text>'; });
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Horas de estudo por dia nos últimos 14 dias">' + g + '</svg>';
+}
+
+let intelNew = null;
+const DOW_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+function planEditor(s) {
+  const box = el("div", "plan-ed"); box.id = "plan-" + s.id;
+  box.appendChild(el("span", "plan-t", "Plano de estudo"));
+  if (intelNew === s.id && !s.plan && !goalOf(s)) box.appendChild(el("p", "note", "Agora escolha a meta desta matéria para o app montar a demanda de cada dia."));
+  const today = todayISO();
+  const g = s.goal || {};
+  const type = s.plan ? "import" : (goalOf(s) ? g.type : "none");
+  const setGoal = patch => {
+    const ng = Object.assign({ days: g.days || [1, 2, 3, 4, 5] }, s.goal || {}, patch);
+    ng.start = today; ng.startDone = subjDoneUpTo(s, addDaysISO(today, -1));
+    s.goal = ng; intelNew = null; saveIntel(); renderIntel();
+  };
+  const grid = el("div", "inputs two");
+  const tf = el("div", "field"); const tl = el("label", null, "Meta"); tl.htmlFor = "m-gtype-" + s.id;
+  const ts = el("select"); ts.className = "sel"; ts.id = "m-gtype-" + s.id;
+  const opts = [["none", "Sem meta"], ["prazo", "Até uma data"], ["diaria", "Fixa por dia"]];
+  if (s.plan) opts.unshift(["import", "Cronograma"]);
+  opts.forEach(([v, t]) => { const o = el("option", null, t); o.value = v; if (v === type) o.selected = true; ts.appendChild(o); });
+  ts.addEventListener("change", () => {
+    if (ts.value === "import") return;
+    s.plan = null;
+    if (ts.value === "none") { s.goal = Object.assign({}, s.goal || {}, { type: "none" }); saveIntel(); renderIntel(); return; }
+    const patch = { type: ts.value };
+    if (ts.value === "prazo" && !g.end) { const ex = (s.exams || []).filter(d => d > today).sort()[0]; patch.end = ex ? addDaysISO(ex, -1) : addDaysISO(today, 30); }
+    if (ts.value === "diaria" && !g.qty) patch.qty = 5;
+    setGoal(patch);
+  });
+  tf.append(tl, ts); grid.appendChild(tf);
+  if (type === "prazo") {
+    const f = el("div", "field"); const l = el("label", null, "Terminar até"); l.htmlFor = "m-gend-" + s.id;
+    const i = el("input"); i.type = "date"; i.id = "m-gend-" + s.id; i.value = g.end || ""; i.min = today;
+    i.addEventListener("change", () => { if (i.value && i.value >= today) setGoal({ end: i.value }); });
+    f.append(l, i); grid.appendChild(f);
+  } else if (type === "diaria") {
+    const f = el("div", "field"); const l = el("label", null, "Por dia de estudo"); l.htmlFor = "m-gqty-" + s.id;
+    const i = el("input"); i.id = "m-gqty-" + s.id; i.inputMode = "numeric"; i.value = String(g.qty || 5);
+    i.addEventListener("change", () => { const v = Math.round(parseNum(i.value) || 0); if (v >= 1 && v <= 500) setGoal({ qty: v }); else i.value = String(g.qty || 5); });
+    f.append(l, i); grid.appendChild(f);
+  }
+  const ef = el("div", "field"); const elb = el("label", null, "Data da prova (opcional)"); elb.htmlFor = "m-exam-" + s.id;
+  const ei = el("input"); ei.type = "date"; ei.id = "m-exam-" + s.id; ei.value = (s.exams || []).filter(d => d >= today).sort()[0] || "";
+  ei.addEventListener("change", () => { const old = (s.exams || []).filter(d => d < today); s.exams = ei.value ? old.concat(ei.value) : old; saveIntel(); renderIntel(); });
+  ef.append(elb, ei); grid.appendChild(ef);
+  box.appendChild(grid);
+  if (type === "prazo" || type === "diaria") {
+    box.appendChild(el("span", "field-l", "Dias de estudo"));
+    const chips = el("div", "chips"); chips.setAttribute("role", "group"); chips.setAttribute("aria-label", "Dias de estudo");
+    [1, 2, 3, 4, 5, 6, 0].forEach(w => {
+      const days = g.days || [1, 2, 3, 4, 5], on = days.includes(w);
+      const c = el("button", "gchip", DOW_SHORT[w]); c.type = "button"; c.id = "m-gday-" + s.id + "-" + w; c.setAttribute("aria-pressed", String(on));
+      c.addEventListener("click", () => { const nd = on ? days.filter(x => x !== w) : days.concat(w); if (nd.length) setGoal({ days: nd }); });
+      chips.appendChild(c);
+    });
+    box.appendChild(chips);
+    let msg = "";
+    const t = goalTarget(s, today), next = (() => { for (let i = 0, d = today; i < 14; i++, d = addDaysISO(d, 1)) { const x = goalTarget(s, d); if (x && x.qty > 0) return { d, x }; } return null; })();
+    if (type === "prazo" && !s.total) msg = "Preencha o total acima para o app dividir o que falta até a data.";
+    else if (s.total && subjDoneUpTo(s, today) >= s.total) msg = "Total concluído.";
+    else if (t && t.qty > 0) msg = "Hoje: " + t.qty + " " + unitWord(s, t.qty) + (type === "prazo" ? " (faltam " + t.remaining + " em " + t.left + (t.left === 1 ? " dia" : " dias") + " de estudo; a meta se ajusta se você adiantar ou atrasar)." : ".");
+    else if (next) msg = "Hoje não é dia de estudo desta matéria. Próximo: " + DOW_SHORT[new Date(next.d + "T12:00").getDay()] + ", " + fmtDate(next.d).slice(0, 5) + " (" + next.x.qty + " " + unitWord(s, next.x.qty) + ").";
+    if (type === "diaria" && s.total) { const fin = goalFinish(s, today); if (fin) msg += " Nesse ritmo, termina em " + fmtDate(fin).slice(0, 5) + "."; }
+    if (type === "prazo" && g.end && s.exams && s.exams.some(d => d <= g.end && d >= today)) msg += " Atenção: a prova cai antes da data final.";
+    if (msg) box.appendChild(el("p", "note", msg.trim()));
+  } else if (type === "import") {
+    box.appendChild(el("p", "note muted", "Escolher outra meta substitui o cronograma importado."));
+  } else {
+    box.appendChild(el("p", "note muted", "Sem meta diária, a matéria aparece só para cronometrar e contar o que você fizer."));
+  }
+  return box;
 }
 
 function renderMaterias(main) {
@@ -1521,21 +1649,22 @@ function renderMaterias(main) {
       let i;
       if (type === "unit") {
         i = el("select"); i.className = "sel";
-        [["exercicios", "Exercícios"], ["modulos", "Módulos"]].forEach(([v, t]) => { const o = el("option", null, t); o.value = v; if (s.unit === v) o.selected = true; i.appendChild(o); });
+        UNIT_OPTS.forEach(([v, t]) => { const o = el("option", null, t); o.value = v; if (s.unit === v) o.selected = true; i.appendChild(o); });
       } else { i = el("input"); if (type === "num") i.inputMode = "numeric"; i.value = k === "name" ? s.name : String(s[k] || 0); }
       i.id = "m-" + k + "-" + s.id;
       i.addEventListener("change", () => {
         if (k === "name") { const v = i.value.trim(); if (v) { s.name = v; h.textContent = v; } else i.value = s.name; }
         else if (type === "unit") s.unit = i.value;
         else { const v = parseNum(i.value); s[k] = v == null ? 0 : Math.round(v); i.value = String(s[k]); }
-        saveIntel();
+        saveIntel(); if (k === "total" || k === "base") renderIntel();
       });
       f.append(l, i); grid.appendChild(f);
     };
     field("name", "Nome", "text"); field("unit", "Contar por", "unit");
     field("total", "Total (0 = sem total)", "num"); field("base", "Já feitos antes", "num");
     c.appendChild(grid);
-    const rng = planRange(s);
+    c.appendChild(planEditor(s));
+    const rng = s.plan ? planRange(s) : null;
     if (rng) c.appendChild(el("p", "note muted", "Cronograma importado de " + fmtDate(rng[0]).slice(0, 5) + " a " + fmtDate(rng[1]).slice(0, 5) + (s.exams && s.exams.length ? "; provas em " + s.exams.map(d => fmtDate(d).slice(0, 5)).join(" e ") : "") + ". " + (s.note || "")));
     const rm = el("button", "btn danger", intelConfirm.has(s.id) ? "Confirmar remoção" : "Remover matéria"); rm.type = "button"; rm.id = "rm-" + s.id;
     rm.addEventListener("click", () => {
@@ -1556,7 +1685,7 @@ function renderMaterias(main) {
   const nm = mk("new-name", "Nome", "Ex.: Estatística");
   const uf = el("div", "field"); const ul = el("label", null, "Contar por"); ul.htmlFor = "new-unit";
   const us = el("select"); us.className = "sel"; us.id = "new-unit";
-  [["exercicios", "Exercícios"], ["modulos", "Módulos"]].forEach(([v, t]) => { const o = el("option", null, t); o.value = v; us.appendChild(o); });
+  UNIT_OPTS.forEach(([v, t]) => { const o = el("option", null, t); o.value = v; us.appendChild(o); });
   uf.append(ul, us); form.appendChild(uf);
   const tt = mk("new-total", "Total (opcional)", "0", "numeric");
   const bs = mk("new-base", "Já feitos antes", "0", "numeric");
@@ -1566,7 +1695,9 @@ function renderMaterias(main) {
     e.preventDefault();
     const name = nm.value.trim(); if (!name) { flashAuto(msg, "Dê um nome para a matéria."); return; }
     intel.subjects.push({ id: "s" + Date.now().toString(36), name, unit: us.value, total: Math.round(parseNum(tt.value) || 0), base: Math.round(parseNum(bs.value) || 0), exams: [], plan: null });
+    intelNew = intel.subjects[intel.subjects.length - 1].id;
     saveIntel(); renderIntel();
+    const ne = document.getElementById("plan-" + intelNew); if (ne) ne.scrollIntoView({ block: "center" });
   });
   add.append(form, (() => { const b = el("div", "btns"); b.appendChild(sb); sb.setAttribute("form", "add-subj"); return b; })(), msg);
   main.appendChild(add);

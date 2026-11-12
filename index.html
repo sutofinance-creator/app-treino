@@ -467,6 +467,14 @@ ol.steps a { color: var(--accent); }
 .hex-row-l.you { color: var(--ink); }
 .hex-form { display: grid; gap: 12px; }
 .hex-form .field input { font-size: 17px; }
+/* ---------- Economia: rateio ---------- */
+.rat-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; border-top: 1px dashed var(--line); padding-top: 10px; }
+.rat-left { margin: 0; font: 700 15px var(--font-display); letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+.rat-left.ok { color: var(--good); }
+.rat-left.err { color: var(--warn); }
+.rat-part { display: grid; gap: 10px; padding: 10px 12px 12px; border: 1px solid var(--line); border-left: 3px solid var(--accent); background: rgba(166, 107, 255, .04); }
+.rat-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.rat-n { font: 700 15px var(--font-display); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
 </style>
 </head>
 <body data-view="home">
@@ -3218,7 +3226,7 @@ const NAT = [["fixo", "Fixo"], ["variavel", "Variável"]];
 const KIND_OUT = [["gasto", "Gasto"], ["investimento", "Aporte em investimento"], ["transferencia", "Transferência entre contas"]];
 const KIND_IN = [["receita", "Receita"], ["transferencia", "Transferência entre contas"]];
 const ESS_COLOR = { necessario: "var(--good)", substituivel: "var(--accent)", superfluo: "var(--warn)", luxo: "var(--bad)" };
-const LABEL = Object.fromEntries([...ESS, ...FREQ, ...NAT, ...KIND_OUT, ...KIND_IN]);
+const LABEL = Object.fromEntries([...ESS, ...FREQ, ...NAT, ...KIND_OUT, ...KIND_IN, ["rateio", "Rateio"]]);
 const RATE_MES = 0.01; // premissa de rendimento usada nas simulações (1% ao mês)
 let fin = null;
 const finUI = { open: null, month: null, cmonth: "", q: "", confirm: null, msg: "" };
@@ -3259,8 +3267,34 @@ function learnRule(t) {
   const k = ruleKey(t.desc); if (!k) return;
   const r = fin.rules[k] || { n: 0 };
   Object.assign(r, { cat: t.cat, item: t.item || r.item || "", kind: t.kind, ess: t.ess, freq: t.freq, nat: t.nat, dir: t.dir });
+  // rateio: guarda a proporção de cada parte para sugerir a mesma divisão da próxima vez
+  if (isSplit(t)) r.split = t.split.map(p => ({ pct: p.amount / t.amount, kind: p.kind, cat: p.cat, item: p.item || "", ess: p.ess || null, freq: p.freq || null, nat: p.nat || null }));
+  else delete r.split;
   r.n = (r.n || 0) + 1; fin.rules[k] = r;
 }
+/* ---------- rateio: um lançamento dividido em várias classificações ---------- */
+function isSplit(t) { return !!(t && Array.isArray(t.split) && t.split.length >= 2); }
+function cents(v) { return Math.round((v || 0) * 100); }
+// divide o valor na mesma proporção das partes (pct ou valor), acertando os centavos na última
+function scaleSplit(parts, amount) {
+  const w = parts.map(p => p.pct != null ? p.pct : (p.amount || 0)), tot = w.reduce((a, x) => a + x, 0) || 1;
+  let left = cents(amount);
+  return parts.map((p, i) => {
+    const c = i === parts.length - 1 ? left : Math.round(cents(amount) * w[i] / tot); left -= c;
+    const o = Object.assign({}, p, { amount: c / 100 }); delete o.pct; return o;
+  });
+}
+function splitLeft(d) { return (cents(d.amount) - d.split.reduce((a, p) => a + cents(p.amount), 0)) / 100; }
+function splitOk(d) {
+  if (!isSplit(d) || cents(splitLeft(d)) !== 0) return false;
+  return d.split.every(p => p.amount > 0 && isComplete({ dir: d.dir, kind: p.kind, cat: (p.cat || "").trim(), item: p.item, ess: p.ess, freq: p.freq, nat: p.nat }));
+}
+// cada parte de um rateio classificado vira um "lançamento" próprio nos relatórios
+function txParts(t) {
+  if (t.status !== "done" || !isSplit(t)) return [t];
+  return t.split.map((p, i) => Object.assign({}, t, { kind: p.kind, cat: p.cat, item: p.item, ess: p.ess, freq: p.freq, nat: p.nat, amount: p.amount, split: undefined, part: i }));
+}
+function finFlat() { const out = []; fin.tx.forEach(t => { if (t.status === "done" && isSplit(t)) txParts(t).forEach(x => out.push(x)); else out.push(t); }); return out; }
 function suggestFor(t) {
   const k = ruleKey(t.desc);
   let r = fin.rules[k];
@@ -3274,6 +3308,7 @@ function suggestFor(t) {
   return null;
 }
 function isComplete(t) {
+  if (isSplit(t)) return splitOk(t);
   if (!t.cat || !t.kind) return false;
   if (t.dir === "out" && t.kind === "gasto") return !!(t.ess && t.freq && t.nat && (t.item || "").trim());
   return true;
@@ -3388,7 +3423,7 @@ function importFile(file, done) {
 /* ---------- agregados ---------- */
 function monthAgg(k) {
   const a = { k, recebido: 0, gastos: 0, aportes: 0, byCat: {}, catCount: {}, catNat: {}, byEss: {}, byFreq: {}, byNat: {}, daily: {}, n: 0, pending: 0, recCat: {}, byCatEss: {}, catCountEss: {} };
-  fin.tx.forEach(t => {
+  finFlat().forEach(t => {
     if (monthKey(t.date) !== k) return;
     if (t.status !== "done") { a.pending++; return; }
     a.n++;
@@ -3447,7 +3482,7 @@ function positions() {
 }
 function investedInMonth(k) {
   const compras = fin.invest.ops.filter(o => o.type === "compra" && monthKey(o.date) === k).reduce((s, o) => s + o.qty * o.price, 0);
-  const aportes = fin.tx.filter(t => t.status === "done" && t.kind === "investimento" && monthKey(t.date) === k).reduce((s, t) => s + t.amount, 0);
+  const aportes = finFlat().filter(t => t.status === "done" && t.kind === "investimento" && monthKey(t.date) === k).reduce((s, t) => s + t.amount, 0);
   return Math.max(compras, aportes);
 }
 function sobraInfo() {
@@ -3762,12 +3797,12 @@ function renderPendentes(main) {
   main.appendChild(imp);
 
   if (!pend.length) return;
-  const sug = pend.filter(t => { const r = suggestFor(t); return r && isComplete(Object.assign({}, t, pickAll(r))); });
+  const sug = pend.filter(t => { const r = suggestFor(t); return r && !r.split && isComplete(Object.assign({}, t, pickAll(r), { split: undefined })); });
   if (sug.length) {
     const s = el("section", "guide");
     s.append(el("h3", null, "Sugestões prontas"), el("p", "note", sug.length + " lançamento(s) têm a mesma origem de algo que você já classificou. Dá para aceitar todos de uma vez e revisar depois em Classificados."));
     const b = el("button", "btn", "Aceitar " + sug.length + " sugestão(ões)"); b.type = "button"; b.id = "accept-all";
-    b.addEventListener("click", () => { sug.forEach(t => { Object.assign(t, pickAll(suggestFor(t)), { status: "done" }); learnRule(t); }); finUI.msg = ""; saveFin(); renderFin(); });
+    b.addEventListener("click", () => { sug.forEach(t => { Object.assign(t, pickAll(suggestFor(t)), { status: "done", split: undefined }); learnRule(t); }); finUI.msg = ""; saveFin(); renderFin(); });
     const bb = el("div", "btns"); bb.appendChild(b); s.appendChild(bb); main.appendChild(s);
   }
   const list = el("div", "txlist");
@@ -3787,13 +3822,19 @@ function txRow(t, pending) {
   r.appendChild(el("span", "tx-val " + (t.dir === "in" ? "in" : "out"), (t.dir === "in" ? "+ " : "− ") + brl(t.amount)));
   if (t.status === "done") {
     const chips = el("span", "tx-chips");
-    chips.appendChild(el("span", "mini", t.cat));
-    if (t.kind === "gasto") chips.appendChild(el("span", "mini ess-" + t.ess, LABEL[t.ess]));
-    else chips.appendChild(el("span", "mini", LABEL[t.kind]));
+    if (isSplit(t)) {
+      chips.appendChild(el("span", "mini", "Rateio · " + t.split.length + " partes"));
+      t.split.slice(0, 4).forEach(p => chips.appendChild(el("span", "mini" + (p.kind === "gasto" && p.ess ? " ess-" + p.ess : ""), p.cat + " " + brl(p.amount))));
+      if (t.split.length > 4) chips.appendChild(el("span", "mini", "+" + (t.split.length - 4)));
+    } else {
+      chips.appendChild(el("span", "mini", t.cat));
+      if (t.kind === "gasto") chips.appendChild(el("span", "mini ess-" + t.ess, LABEL[t.ess]));
+      else chips.appendChild(el("span", "mini", LABEL[t.kind]));
+    }
     left.appendChild(chips);
   } else {
     const s = suggestFor(t);
-    if (s) left.appendChild(el("span", "tx-sug", "Sugestão: " + s.cat + (s.kind === "gasto" && s.ess ? " · " + LABEL[s.ess] : "")));
+    if (s) left.appendChild(el("span", "tx-sug", s.split ? "Sugestão: rateio em " + s.split.length + " partes, como da última vez" : "Sugestão: " + s.cat + (s.kind === "gasto" && s.ess ? " · " + LABEL[s.ess] : "")));
   }
   b.append(left, r);
   b.addEventListener("click", () => { finUI.open = finUI.open === t.id ? null : t.id; finUI.confirm = null; renderFin(); const n = document.getElementById("tx-" + t.id); if (n) n.scrollIntoView({ block: "nearest" }); });
@@ -3811,36 +3852,110 @@ function chipGroup(label, opts, value, onPick, idp) {
 
 function txEditor(t) {
   const d = Object.assign({}, t);
-  if (t.status !== "done") { const s = suggestFor(t); if (s) Object.keys(pick(s)).forEach(k => { if (d[k] == null || d[k] === "") d[k] = s[k]; }); }
-  if (!d.kind) d.kind = t.dir === "in" ? "receita" : "gasto";
+  if (isSplit(t)) d.split = t.split.map(p => Object.assign({}, p)); else delete d.split;
+  const defKind = t.dir === "in" ? "receita" : "gasto", kinds = t.dir === "in" ? KIND_IN : KIND_OUT;
+  let sugSplit = false;
+  if (t.status !== "done") {
+    const s = suggestFor(t);
+    if (s && s.split) { if (!d.split) { d.split = scaleSplit(s.split, t.amount); sugSplit = true; } }
+    else if (s) Object.keys(pick(s)).forEach(k => { if (d[k] == null || d[k] === "") d[k] = s[k]; });
+  }
+  if (!d.kind || d.kind === "rateio") d.kind = defKind;
   const box = el("div", "tx-edit");
+  const moneyTxt = v => v > 0 ? v.toFixed(2).replace(".", ",") : "";
   const draw = () => {
     box.innerHTML = "";
-    if (t.status !== "done" && suggestFor(t)) box.appendChild(el("p", "note muted", "Campos preenchidos com base no que você já classificou para \"" + t.desc + "\". Confira e ajuste."));
-    box.appendChild(chipGroup("Tipo de lançamento", t.dir === "in" ? KIND_IN : KIND_OUT, d.kind, v => { d.kind = v; draw(); }, "k-" + t.id));
-    const grid = el("div", "inputs two");
-    const fld = (k, label, ph, list) => { const f = el("div", "field"); const l = el("label", null, label); l.htmlFor = "f-" + k + "-" + t.id; const i = el("input"); i.id = "f-" + k + "-" + t.id; i.value = d[k] || ""; i.placeholder = ph; if (list) i.setAttribute("list", list); i.addEventListener("input", () => { d[k] = i.value; upd(); }); f.append(l, i); grid.appendChild(f); };
-    if (d.kind === "gasto") fld("item", "O que foi comprado", "Ex.: compras da semana");
-    fld("cat", d.kind === "receita" ? "Origem" : "Categoria", d.kind === "receita" ? "Ex.: Salário" : "Ex.: Mercado", "cat-list");
-    box.appendChild(grid);
-    if (d.kind === "gasto") {
-      box.appendChild(chipGroup("Essencialidade", ESS, d.ess, v => { d.ess = v; draw(); }, "e-" + t.id));
-      box.appendChild(chipGroup("Frequência", FREQ, d.freq, v => { d.freq = v; draw(); }, "fq-" + t.id));
-      box.appendChild(chipGroup("Natureza", NAT, d.nat, v => { d.nat = v; draw(); }, "n-" + t.id));
+    let leftEl = null, fillBtn = null;
+    if (!d.split) {
+      if (t.status !== "done" && suggestFor(t)) box.appendChild(el("p", "note muted", "Campos preenchidos com base no que você já classificou para \"" + t.desc + "\". Confira e ajuste."));
+      box.appendChild(chipGroup("Tipo de lançamento", kinds, d.kind, v => { d.kind = v; draw(); }, "k-" + t.id));
+      const grid = el("div", "inputs two");
+      const fld = (k, label, ph, list) => { const f = el("div", "field"); const l = el("label", null, label); l.htmlFor = "f-" + k + "-" + t.id; const i = el("input"); i.id = "f-" + k + "-" + t.id; i.value = d[k] || ""; i.placeholder = ph; if (list) i.setAttribute("list", list); i.addEventListener("input", () => { d[k] = i.value; upd(); }); f.append(l, i); grid.appendChild(f); };
+      if (d.kind === "gasto") fld("item", "O que foi comprado", "Ex.: compras da semana");
+      fld("cat", d.kind === "receita" ? "Origem" : "Categoria", d.kind === "receita" ? "Ex.: Salário" : "Ex.: Mercado", "cat-list");
+      box.appendChild(grid);
+      if (d.kind === "gasto") {
+        box.appendChild(chipGroup("Essencialidade", ESS, d.ess, v => { d.ess = v; draw(); }, "e-" + t.id));
+        box.appendChild(chipGroup("Frequência", FREQ, d.freq, v => { d.freq = v; draw(); }, "fq-" + t.id));
+        box.appendChild(chipGroup("Natureza", NAT, d.nat, v => { d.nat = v; draw(); }, "n-" + t.id));
+      }
+      const rr = el("div", "rat-cta");
+      rr.appendChild(el("span", "note muted", "Esse valor juntou várias compras?"));
+      const rb = el("button", "btn ghost", "Ratear em várias classificações"); rb.type = "button"; rb.id = "rat-" + t.id;
+      rb.addEventListener("click", () => {
+        d.split = [{ amount: null, kind: d.kind, cat: d.cat || "", item: d.item || "", ess: d.ess || null, freq: d.freq || null, nat: d.nat || null }, { amount: null, kind: defKind }];
+        draw(); const f = document.getElementById("f-amount-" + t.id + "-0"); if (f) f.focus();
+      });
+      rr.appendChild(rb); box.appendChild(rr);
+    } else {
+      box.appendChild(el("p", "note muted", sugSplit
+        ? "Rateio sugerido na mesma proporção da última vez para \"" + t.desc + "\". Confira os valores de cada parte."
+        : "Divida os " + brl(t.amount) + " entre o que foi pago. Cada parte entra no relatório com a própria categoria e classificação."));
+      leftEl = el("p", "rat-left"); leftEl.id = "rat-left-" + t.id; leftEl.setAttribute("aria-live", "polite"); box.appendChild(leftEl);
+      d.split.forEach((p, i) => {
+        const idp = t.id + "-" + i, sec = el("div", "rat-part"); sec.id = "rat-part-" + idp;
+        const hd = el("div", "rat-head"); hd.appendChild(el("span", "rat-n", "Parte " + (i + 1)));
+        if (d.split.length > 2) { const rm = el("button", "linkbtn", "Remover parte"); rm.type = "button"; rm.id = "rat-rm-" + idp; rm.addEventListener("click", () => { d.split.splice(i, 1); draw(); }); hd.appendChild(rm); }
+        sec.appendChild(hd);
+        sec.appendChild(chipGroup("Tipo", kinds, p.kind || defKind, v => { p.kind = v; draw(); }, "k-" + idp));
+        const grid = el("div", "inputs two");
+        const fld = (k, label, ph, list) => {
+          const f = el("div", "field" + (k === "item" ? " span2" : "")); const l = el("label", null, label); l.htmlFor = "f-" + k + "-" + idp; const inp = el("input"); inp.id = "f-" + k + "-" + idp; inp.placeholder = ph;
+          if (k === "amount") { inp.inputMode = "decimal"; inp.value = moneyTxt(p.amount); inp.addEventListener("input", () => { const v = parseMoney(inp.value); p.amount = v > 0 ? Math.round(v * 100) / 100 : null; upd(); }); }
+          else { inp.value = p[k] || ""; inp.addEventListener("input", () => { p[k] = inp.value; upd(); }); }
+          if (list) inp.setAttribute("list", list); f.append(l, inp); grid.appendChild(f);
+        };
+        if (!p.kind) p.kind = defKind;
+        fld("amount", "Valor (R$)", "0,00");
+        fld("cat", p.kind === "receita" ? "Origem" : "Categoria", p.kind === "receita" ? "Ex.: Salário" : "Ex.: Mercado", "cat-list");
+        if (p.kind === "gasto") fld("item", "O que foi comprado", "Ex.: compras do mês");
+        sec.appendChild(grid);
+        if (p.kind === "gasto") {
+          sec.appendChild(chipGroup("Essencialidade", ESS, p.ess, v => { p.ess = v; draw(); }, "e-" + idp));
+          sec.appendChild(chipGroup("Frequência", FREQ, p.freq, v => { p.freq = v; draw(); }, "fq-" + idp));
+          sec.appendChild(chipGroup("Natureza", NAT, p.nat, v => { p.nat = v; draw(); }, "n-" + idp));
+        }
+        box.appendChild(sec);
+      });
+      const rb = el("div", "btns");
+      const add = el("button", "btn", "+ Adicionar parte"); add.type = "button"; add.id = "rat-add-" + t.id;
+      add.addEventListener("click", () => { const rem = splitLeft(d); d.split.push({ amount: rem > 0 ? rem : null, kind: defKind }); draw(); const f = document.getElementById("f-" + (rem > 0 ? "item" : "amount") + "-" + t.id + "-" + (d.split.length - 1)); if (f) f.focus(); });
+      fillBtn = el("button", "btn ghost", "Pôr o que falta na última parte"); fillBtn.type = "button"; fillBtn.id = "rat-fill-" + t.id;
+      fillBtn.addEventListener("click", () => { const last = d.split[d.split.length - 1], v = Math.round(((last.amount || 0) + splitLeft(d)) * 100) / 100; if (v > 0) { last.amount = v; draw(); } });
+      const off = el("button", "btn ghost", "Desfazer rateio"); off.type = "button"; off.id = "rat-off-" + t.id;
+      off.addEventListener("click", () => { const p0 = d.split[0]; Object.assign(d, { kind: p0.kind || defKind, cat: p0.cat || "", item: p0.item || "", ess: p0.ess || null, freq: p0.freq || null, nat: p0.nat || null }); delete d.split; sugSplit = false; draw(); });
+      rb.append(add, fillBtn, off); box.appendChild(rb);
     }
     const same = fin.tx.filter(x => x.id !== t.id && x.status !== "done" && x.dir === t.dir && ruleKey(x.desc) === ruleKey(t.desc));
     let cb = null;
-    if (same.length) { const lab = el("label", "theory"); cb = el("input"); cb.type = "checkbox"; cb.id = "same-" + t.id; lab.htmlFor = cb.id; lab.append(cb, el("span", null, "Aplicar a mesma classificação aos outros " + same.length + " pendente(s) de \"" + t.desc + "\"")); box.appendChild(lab); }
+    if (same.length) { const lab = el("label", "theory"); cb = el("input"); cb.type = "checkbox"; cb.id = "same-" + t.id; lab.htmlFor = cb.id; lab.append(cb, el("span", null, (d.split ? "Aplicar o mesmo rateio, na mesma proporção, aos outros " : "Aplicar a mesma classificação aos outros ") + same.length + " pendente(s) de \"" + t.desc + "\"")); box.appendChild(lab); }
     const btns = el("div", "btns");
     const sv = el("button", "btn", t.status === "done" ? "Salvar alterações" : "Salvar classificação"); sv.type = "button"; sv.id = "save-" + t.id;
     const hint = el("p", "note muted"); hint.id = "hint-" + t.id;
-    function upd() { const ok = isComplete(d); sv.disabled = !ok; hint.textContent = ok ? "" : (d.kind === "gasto" ? "Preencha o que foi comprado, a categoria e as três classificações." : "Preencha a " + (d.kind === "receita" ? "origem." : "categoria.")); }
+    function upd() {
+      const ok = isComplete(d); sv.disabled = !ok;
+      if (d.split) {
+        const rem = splitLeft(d), sum = d.amount - rem;
+        leftEl.textContent = "Distribuído " + brl(sum) + " de " + brl(d.amount) + (cents(rem) > 0 ? " · falta " + brl(rem) : cents(rem) < 0 ? " · passou " + brl(-rem) : " · tudo distribuído");
+        leftEl.className = "rat-left " + (cents(rem) === 0 ? "ok" : "err");
+        fillBtn.disabled = cents(rem) === 0 || !(((d.split[d.split.length - 1].amount || 0) + rem) > 0);
+        hint.textContent = ok ? "" : cents(rem) !== 0 ? (cents(rem) > 0 ? "Distribua o valor todo: ainda falta " + brl(rem) + "." : "As partes passam do total em " + brl(-rem) + ".") : "Preencha valor, categoria e as classificações de cada parte.";
+      } else hint.textContent = ok ? "" : (d.kind === "gasto" ? "Preencha o que foi comprado, a categoria e as três classificações." : "Preencha a " + (d.kind === "receita" ? "origem." : "categoria."));
+    }
     sv.addEventListener("click", () => {
       if (!isComplete(d)) return;
-      const fields = { kind: d.kind, cat: (d.cat || "").trim(), item: (d.item || "").trim() };
-      if (d.kind === "gasto") Object.assign(fields, { ess: d.ess, freq: d.freq, nat: d.nat }); else Object.assign(fields, { ess: null, freq: null, nat: null });
-      Object.assign(t, fields, { status: "done" }); learnRule(t);
-      if (cb && cb.checked) same.forEach(x => { Object.assign(x, fields, { status: "done" }); learnRule(x); });
+      let fields;
+      if (d.split) {
+        const parts = d.split.map(p => { const o = { amount: Math.round(p.amount * 100) / 100, kind: p.kind, cat: (p.cat || "").trim(), item: (p.item || "").trim() }; if (p.kind === "gasto") Object.assign(o, { ess: p.ess, freq: p.freq, nat: p.nat }); else Object.assign(o, { ess: null, freq: null, nat: null }); return o; });
+        fields = { kind: "rateio", cat: "Rateio", item: parts.map(p => p.item || p.cat).join(" + "), ess: null, freq: null, nat: null, split: parts };
+        Object.assign(t, fields, { status: "done" }); learnRule(t);
+        if (cb && cb.checked) same.forEach(x => { Object.assign(x, fields, { split: scaleSplit(parts, x.amount), status: "done" }); learnRule(x); });
+      } else {
+        fields = { kind: d.kind, cat: (d.cat || "").trim(), item: (d.item || "").trim(), split: undefined };
+        if (d.kind === "gasto") Object.assign(fields, { ess: d.ess, freq: d.freq, nat: d.nat }); else Object.assign(fields, { ess: null, freq: null, nat: null });
+        Object.assign(t, fields, { status: "done" }); learnRule(t);
+        if (cb && cb.checked) same.forEach(x => { Object.assign(x, fields, { status: "done" }); learnRule(x); });
+      }
       finUI.open = null; saveFin(); renderFin();
     });
     btns.appendChild(sv);
@@ -3861,7 +3976,7 @@ function catDatalist() {
   let dl = document.getElementById("cat-list");
   if (!dl) { dl = el("datalist"); dl.id = "cat-list"; document.body.appendChild(dl); }
   dl.innerHTML = "";
-  [...new Set(fin.tx.filter(t => t.cat).map(t => t.cat))].sort().forEach(c => { const o = el("option"); o.value = c; dl.appendChild(o); });
+  [...new Set(finFlat().filter(t => t.cat && !(t.kind === "rateio")).map(t => t.cat))].sort().forEach(c => { const o = el("option"); o.value = c; dl.appendChild(o); });
 }
 
 /* ---------- aba Classificados ---------- */
@@ -3877,9 +3992,9 @@ function renderClassificados(main) {
   q.addEventListener("change", () => { finUI.q = q.value; renderFin(); });
   f.append(ml, ms, q); main.appendChild(f);
   const nq = normTxt(finUI.q);
-  const list = done.filter(t => (!finUI.cmonth || monthKey(t.date) === finUI.cmonth) && (!nq || normTxt(t.desc + " " + (t.item || "") + " " + t.cat).indexOf(nq) > -1)).sort((a, b) => a.date < b.date ? 1 : -1);
+  const list = done.filter(t => (!finUI.cmonth || monthKey(t.date) === finUI.cmonth) && (!nq || normTxt(t.desc + " " + (t.item || "") + " " + t.cat + (isSplit(t) ? " " + t.split.map(p => (p.item || "") + " " + p.cat).join(" ") : "")).indexOf(nq) > -1)).sort((a, b) => a.date < b.date ? 1 : -1);
   if (!list.length) { main.appendChild(el("p", "note muted", "Nenhum lançamento encontrado.")); return; }
-  const tot = list.reduce((s, t) => s + (t.dir === "out" && t.kind === "gasto" ? t.amount : 0), 0);
+  const tot = list.reduce((s, t) => s + txParts(t).reduce((a, x) => a + (x.dir === "out" && x.kind === "gasto" ? x.amount : 0), 0), 0);
   main.appendChild(el("p", "note muted", list.length + " lançamento(s) · " + brl(tot) + " em gastos"));
   const box = el("div", "txlist"); list.slice(0, 300).forEach(t => box.appendChild(txRow(t, false))); main.appendChild(box);
 }
@@ -4032,7 +4147,7 @@ function insights(k, a, p, est) {
   if (sup > 0) out.push("Supérfluo e luxo somam " + brl(sup) + ". Cortar metade libera " + brl(sup / 2) + " por mês; aplicado todo mês a 1% ao mês, isso vira cerca de " + brl(fv(sup / 2, 12)) + " em 12 meses.");
   const small = Object.keys(a.byCat).filter(c => a.catCount[c] >= 6 && a.byCat[c] / a.catCount[c] < 40).sort((x, y) => a.byCat[y] - a.byCat[x]);
   small.slice(0, 2).forEach(c => out.push("Gastos pequenos que somam: " + c + " teve " + a.catCount[c] + " compras de " + brl(a.byCat[c] / a.catCount[c]) + " em média, " + brl(a.byCat[c]) + " no mês."));
-  const subs = {}; fin.tx.forEach(t => { if (t.status === "done" && t.kind === "gasto" && monthKey(t.date) === k && t.freq === "recorrente" && (t.ess === "superfluo" || t.ess === "luxo")) subs[t.cat] = (subs[t.cat] || 0) + t.amount; });
+  const subs = {}; finFlat().forEach(t => { if (t.status === "done" && t.kind === "gasto" && monthKey(t.date) === k && t.freq === "recorrente" && (t.ess === "superfluo" || t.ess === "luxo")) subs[t.cat] = (subs[t.cat] || 0) + t.amount; });
   const sk = Object.keys(subs); if (sk.length) out.push("Recorrentes que não são necessários (candidatos a cancelar ou renegociar): " + sk.map(c => c + " " + brl(subs[c])).join(", ") + ".");
   if (a.byEss.substituivel) out.push("Gastos substituíveis somam " + brl(a.byEss.substituivel) + ". Trocar por opções mais baratas economiza mesmo sem abrir mão do item.");
   if (a.saldo > 0) out.push("Sobra de " + brl(a.saldo) + " neste mês. Investindo esse valor todo mês a 1% ao mês, em 12 meses você teria cerca de " + brl(fv(a.saldo, 12)) + ".");

@@ -561,7 +561,7 @@ function renderMain() {
   if (state.tab === "progresso") { renderProgress(main); return; }
   const w = PLAN.find(p => p.id === state.tab);
   const head = document.createElement("div"); head.className = "wk-head";
-  const h2 = document.createElement("h2"); h2.textContent = w.name + " · " + w.day;
+  const h2 = document.createElement("h2"); h2.textContent = w.name;
   const p = document.createElement("p"); p.textContent = w.focus;
   head.append(h2, p); main.appendChild(head);
 

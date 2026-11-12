@@ -482,10 +482,10 @@ ol.steps a { color: var(--accent); }
 .rt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .rt-mark { font: 600 13px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 2px 4px; }
 .rt-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--accent); padding: 0 10px 0 0; }
-.rt-row.fixed { border-left-color: var(--muted); padding: 10px 12px; grid-template-columns: auto 1fr; opacity: .8; }
+.rt-row.fixed { border-left-color: var(--muted); padding: 10px 12px; grid-template-columns: auto 1fr; grid-template-areas: none; opacity: .8; }
 .rt-row.fixed .rt-sub { grid-column: 2; }
 .rt-row.now { border-color: var(--warn); box-shadow: 0 0 14px rgba(255, 194, 75, .3); }
-.rt-main { display: grid; grid-template-columns: 92px 26px 1fr; gap: 10px; align-items: start; width: 100%; text-align: left; background: none; border: 0; color: var(--ink); font: inherit; padding: 10px 0 10px 12px; cursor: pointer; }
+.rt-main { display: grid; grid-template-columns: 66px 26px 1fr; gap: 10px; align-items: start; width: 100%; text-align: left; background: none; border: 0; color: var(--ink); font: inherit; padding: 10px 0 10px 12px; cursor: pointer; }
 .rt-time { font: 700 14px var(--font-display); letter-spacing: .04em; color: var(--accent); font-variant-numeric: tabular-nums; padding-top: 2px; }
 .rt-row.fixed .rt-time { color: var(--muted); }
 .rt-ico { width: 26px; height: 26px; display: grid; place-items: center; color: var(--accent); }
@@ -509,12 +509,27 @@ ol.steps a { color: var(--accent); }
 .rt-warn { border-color: var(--warn); }
 .rt-set { display: grid; gap: 10px; }
 .rt-set .field input { font-size: 17px; color-scheme: dark; }
-@media (max-width: 420px) { .rt-main { grid-template-columns: 84px 22px 1fr; gap: 8px; } }
+@media (max-width: 420px) { .rt-main { grid-template-columns: 60px 22px 1fr; gap: 8px; } }
 .rt-fx-acts { display: flex; gap: 14px; flex-shrink: 0; }
 .rt-fx-editing span:first-child { color: var(--accent); }
 .rt-fx-h { margin: 4px 0 0; font: 700 14px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
 .rt-presets { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .rt-presets .field-l { margin-right: 4px; }
+.rt-homesec { display: grid; gap: 12px; margin-top: 26px; }
+.rt-homesec .wk-head { margin-bottom: 0; }
+.rt-row { grid-template-areas: "main skip" "links links"; }
+.rt-row > .rt-main { grid-area: main; }
+.rt-row > .rt-skip { grid-area: skip; }
+.rt-links { grid-area: links; display: flex; flex-wrap: wrap; gap: 6px; padding: 0 10px 10px 124px; }
+.rt-link { background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); font: inherit; font-size: 13px; padding: 5px 10px; cursor: pointer; text-align: left; }
+.rt-link:hover, .rt-link:focus-visible { border-color: var(--accent); color: var(--accent); }
+.rt-target { animation: rtflash 2.6s ease-out; }
+@keyframes rtflash { 0%, 55% { box-shadow: 0 0 0 2px var(--accent), 0 0 22px rgba(166, 107, 255, .75); } 100% { box-shadow: none; } }
+@media (prefers-reduced-motion: reduce) { .rt-target { animation: none; outline: 2px solid var(--accent); } }
+@media (max-width: 420px) { .rt-links { padding-left: 110px; } }
+.rt-time { display: grid; gap: 1px; }
+.rt-time b { font-weight: 700; }
+.rt-end { font: 600 12px var(--font-display); color: var(--muted); letter-spacing: .02em; }
 </style>
 </head>
 <body data-view="home">
@@ -4366,7 +4381,6 @@ function renderHome() {
   document.getElementById("tabs").innerHTML = "";
   const main = document.getElementById("main"); main.innerHTML = "";
   main.appendChild(hexCard());
-  main.appendChild(rtHomeCard());
   const now = new Date();
   const head = el("div", "wk-head");
   head.append(el("h2", null, "Início"), el("p", null, WEEKDAYS[now.getDay()].replace(/^./, c => c.toUpperCase()) + ", " + now.getDate() + " de " + MONTHS[now.getMonth()] + ". Toque num módulo para entrar ou na seta para ver as pendências."));
@@ -4380,6 +4394,7 @@ function renderHome() {
   const grid = el("div", "mods");
   MODULES.filter(m => modAllowed(m.id)).forEach(m => grid.appendChild(buildModule(m)));
   main.appendChild(grid);
+  main.appendChild(rtHomeSection());
 }
 
 function buildModule(m) {
@@ -4825,7 +4840,7 @@ function rtDemand(iso, plan, sim) {
       if (need === 1 || k === 0) win = [d.wake, d.wake + 180];
       else if (k === need - 1) { win = [d.sleep - 180, d.sleep]; fromEnd = true; }
       else { const mid = d.wake + (d.sleep - d.wake) * k / (need - 1); win = [mid - 90, mid + 90]; }
-      add({ key: "gr-" + r.id + "-" + k, mod: "graca", title: r.name + (need > 1 ? " (" + (k + 1) + "ª vez)" : ""), sub: r.limit ? r.limit + " min" : "", dur, win, fromEnd, rank: 0, go: () => enterGraca("gr-hoje", r.id) });
+      add({ key: "gr-" + r.id + "-" + k, mod: "graca", title: r.name + (need > 1 ? " (" + (k + 1) + "ª vez)" : ""), sub: r.limit ? r.limit + " min" : "", dur, win, fromEnd, rank: 0, go: () => { enterGraca("gr-hoje"); rtFocus("gr-" + r.id); } });
     }
     if (did) done.push(r.name + (need > 1 ? " " + did + "/" + need : ""));
   });
@@ -4837,7 +4852,12 @@ function rtDemand(iso, plan, sim) {
       if (wo.w) { const dn = wo.w.ex.filter(x => exerciseDone(rec[x.id])).length; dur = dn >= wo.w.ex.length ? 0 : Math.round(wo.dur * (1 - dn / wo.w.ex.length)); }
       else if (hasEntries(iso)) dur = 0;
     }
-    if (dur > 0) add({ key: "forca", mod: "forca", title: "Treino: " + wo.name, sub: wo.w ? wo.w.focus : "", dur: Math.max(10, dur), win: tw, rank: 1, go: () => enterForca(wo.w ? wo.w.id : undefined) });
+    if (dur > 0) add({ key: "forca", mod: "forca", title: "Treino: " + wo.name, sub: wo.w ? wo.w.focus : "", dur: Math.max(10, dur), win: tw, rank: 1, go: () => {
+      // abre o treino do dia já no próximo exercício que falta
+      enterForca(wo.w ? wo.w.id : undefined); if (!wo.w) return;
+      const rec = (state.logs[todayISO()] && state.logs[todayISO()].e) || {}, nx = wo.w.ex.find(x => !exerciseDone(rec[x.id]));
+      if (nx) rtFocus("card-" + nx.id);
+    } });
     else done.push("Treino " + wo.name);
   }
   if (modAllowed("estamina")) {
@@ -4849,17 +4869,17 @@ function rtDemand(iso, plan, sim) {
     }
     const have = isT ? Math.floor(stKindSec(iso, "cardio") / 60) : 0, need = cp.target - have;
     if (sim && need > 0 && !cp.optional) { if (cp.pid === "x4") sim.x4[ws] = true; sim.eq[ws] = (sim.eq[ws] || 0) + need * (practice(cp.pid).factor || 1); }
-    if (need > 0) add({ key: "cardio", mod: "estamina", title: "Cardio: " + practice(cp.pid).name, sub: cp.optional ? "Opcional · " + cp.why : cp.why, dur: Math.max(10, need), optional: !!cp.optional, win: tw, afterForca: !!wo, rank: cp.optional ? 9 : 2, go: () => enterStamina("est-hoje", "cardio") });
+    if (need > 0) add({ key: "cardio", mod: "estamina", title: "Cardio: " + practice(cp.pid).name, sub: cp.optional ? "Opcional · " + cp.why : cp.why, dur: Math.max(10, need), optional: !!cp.optional, win: tw, afterForca: !!wo, rank: cp.optional ? 9 : 2, go: () => { enterStamina("est-hoje"); rtFocus("st-cardio"); } });
     else if (have) done.push("Cardio");
     const fg = Math.round(stam().goals.focusMin), fh = isT ? Math.floor(stKindSec(iso, "foco") / 60) : 0;
-    if (fg - fh > 0) add({ key: "foco", mod: "estamina", title: "Foco: meditação ou respiração", sub: "Logo antes de estudar.", dur: fg - fh, beforeStudy: true, rank: 5, go: () => enterStamina("est-hoje", "foco") });
+    if (fg - fh > 0) add({ key: "foco", mod: "estamina", title: "Foco: meditação ou respiração", sub: "Logo antes de estudar.", dur: fg - fh, beforeStudy: true, rank: 5, go: () => { enterStamina("est-hoje"); rtFocus("st-foco"); } });
     else if (fh) done.push("Foco");
   }
   if (modAllowed("missoes") && mis) {
     const goal = Math.round(msGoalSec(iso) / 60), have = isT ? Math.floor(msDaySec(iso) / 60) : 0, ms = (plan && plan.byDay[iso]) || [];
     const need = Math.max(goal - have, ms.reduce((s, x) => s + x.need, 0));
     const w = rt().work, ws = hmToMin(w.start) ?? 480, we = hmToMin(w.end) ?? 1080;
-    if (need > 0) add({ key: "trabalho", mod: "missoes", title: "Trabalho", dur: need, missions: ms, split: 120, minChunk: 30, gapAfter: 10, win: [ws, we > ws ? we : we + 1440], rank: 3, go: () => enterMissoes("ms-hoje") });
+    if (need > 0) add({ key: "trabalho", mod: "missoes", title: "Trabalho", dur: need, missions: ms, split: 120, minChunk: 30, gapAfter: 10, win: [ws, we > ws ? we : we + 1440], rank: 3, go: () => { enterMissoes("ms-hoje"); rtFocus("ms-work"); } });
     else if (goal && have) done.push("Trabalho " + rtDur(have));
   }
   if (modAllowed("inteligencia") && intel) {
@@ -4867,14 +4887,14 @@ function rtDemand(iso, plan, sim) {
     const subs = intel.subjects.map(s => {
       const p = planFor(s, iso); if (!p || p.doneAll) return null;
       if (isT) { const st = subjTask(s, iso); if (st && st.complete) return null; }
-      return s.name + (p.qty ? " (" + p.qty + " " + unitWord(s, p.qty) + ")" : "");
+      return { id: s.id, label: s.name + (p.qty ? " (" + p.qty + " " + unitWord(s, p.qty) + ")" : "") };
     }).filter(Boolean);
-    if (need > 0) add({ key: "estudo", mod: "inteligencia", title: "Estudo", sub: subs.join(" · "), dur: need, split: 50, minChunk: 25, gapAfter: 10, rank: 4, go: () => enterIntel("estudo") });
+    if (need > 0) add({ key: "estudo", mod: "inteligencia", title: "Estudo", sub: subs.map(x => x.label).join(" · "), subjects: subs, dur: need, split: 50, minChunk: 25, gapAfter: 10, rank: 4, go: () => rtGoSubj(subs.length ? subs[0].id : null) });
     else if (have) done.push("Estudo " + rtDur(have));
   }
   if (isT && modAllowed("financas") && fin) {
     const n = fin.tx.filter(t => t.status !== "done").length;
-    if (n) add({ key: "eco", mod: "financas", title: "Classificar " + n + (n === 1 ? " lançamento" : " lançamentos"), sub: "Pendentes da Economia.", dur: Math.min(30, Math.max(5, Math.ceil(n * 1.5 / 5) * 5)), win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6, go: () => enterFin("fin-pendentes") });
+    if (n) add({ key: "eco", mod: "financas", title: "Classificar " + n + (n === 1 ? " lançamento" : " lançamentos"), sub: "Pendentes da Economia.", dur: Math.min(30, Math.max(5, Math.ceil(n * 1.5 / 5) * 5)), win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6, go: () => rtGoFin() });
   }
   return { items, done, skipped, day: d };
 }
@@ -4948,8 +4968,8 @@ function rtPlan(iso, items, from) {
 // Sobrou mais de 20 min livres? Vira estudo (dá tempo de resolver exercícios).
 function rtFillExtra(r, iso) {
   if (!modAllowed("inteligencia") || !intel || !intel.subjects.length || (rt().skip[iso] || []).includes("extra")) return;
-  const subs = intel.subjects.filter(s => !(s.total && subjDoneUpTo(s) >= s.total)).map(s => s.name);
-  const it = { key: "extra", mod: "inteligencia", title: "Estudo extra", sub: subs.join(" · "), go: () => enterIntel("estudo"), extra: true };
+  const subs = intel.subjects.filter(s => !(s.total && subjDoneUpTo(s) >= s.total)).map(s => ({ id: s.id, label: s.name }));
+  const it = { key: "extra", mod: "inteligencia", title: "Estudo extra", sub: subs.map(x => x.label).join(" · "), subjects: subs, go: () => rtGoSubj(subs.length ? subs[0].id : null), extra: true };
   let part = 0;
   r.free.forEach(([a, b]) => {
     let s = a, len = b - a - (b < r.day.sleep ? 5 : 0);
@@ -4970,6 +4990,25 @@ function rtToday() {
   const iso = todayISO(), plan = rtMissionPlan(rtWeekDays()), dem = rtDemand(iso, plan);
   const from = Math.ceil(rtNow() / 5) * 5;
   return Object.assign(rtPlan(iso, dem.items, from), { dem, plan, from });
+}
+// leva até o item dentro do módulo e destaca por um instante
+function rtFocus(id) {
+  const t = id && document.getElementById(id);
+  if (!t) return false;
+  t.scrollIntoView({ block: "center" });
+  t.classList.remove("rt-target"); void t.offsetWidth; t.classList.add("rt-target");
+  setTimeout(() => t.classList.remove("rt-target"), 2600);
+  return true;
+}
+function rtGoMission(id) {
+  if (msDayList(todayISO()).some(t => t.id === id)) { enterMissoes("ms-hoje"); if (rtFocus("ms-" + id)) return; }
+  msUI.q = ""; msUI.proj = ""; msUI.open = id; enterMissoes("ms-lista"); rtFocus("ms-row-" + id);
+}
+function rtGoSubj(sid) { enterIntel("estudo"); if (sid) rtFocus("subj-" + sid); }
+function rtGoFin() {
+  enterFin("fin-pendentes");
+  const first = document.querySelector("#main section.card.tx"); if (!first) return;
+  finUI.open = first.id.slice(3); renderFin(); rtFocus(first.id);
 }
 function rtIcon(mod) { const s = el("span", "rt-ico"); s.innerHTML = ICONS[mod] || ""; return s; }
 
@@ -4999,41 +5038,57 @@ function rtDefaultsBanner(main) {
 }
 
 function renderRtHoje(main) {
-  const now = new Date(), nowMin = rtNow(), R = rtToday(), d = R.day;
-  head2(main, "Rotina de hoje", capFirst(WEEKDAYS[now.getDay()]) + ", " + now.getDate() + " de " + MONTHS[now.getMonth()] + ". Montada às " + minToHM(nowMin) + " com o que falta nos módulos. Ela se refaz quando você conclui, atrasa ou pula algo.");
+  const now = new Date(), nowMin = rtNow(), R = rtToday();
+  head2(main, "Rotina de hoje", capFirst(WEEKDAYS[now.getDay()]) + ", " + now.getDate() + " de " + MONTHS[now.getMonth()] + ". Montada às " + minToHM(nowMin) + " com o que falta nos módulos. Toque numa tarefa para ir direto a ela.");
   rtDefaultsBanner(main);
+  rtTodayNodes(R, nowMin).forEach(n => main.appendChild(n));
+}
+function rtTodayNodes(R, nowMin) {
+  const out = [], d = R.day;
   const ch = rtChanges(R);
-  if (ch.length) { const b = el("p", "banner rt-warn", "Para caber tudo hoje: " + ch.join(", ") + "."); b.id = "rt-changes"; main.appendChild(b); }
-  if (nowMin >= d.sleep) main.appendChild(el("p", "banner", "Pelo seu horário de dormir, o dia de hoje já acabou. Veja amanhã na aba Semana."));
+  if (ch.length) { const b = el("p", "banner rt-warn", "Para caber tudo hoje: " + ch.join(", ") + "."); b.id = "rt-changes"; out.push(b); }
+  if (nowMin >= d.sleep) out.push(el("p", "banner", "Pelo seu horário de dormir, o dia de hoje já acabou. Veja amanhã na aba Semana da Rotina."));
   const tl = el("ol", "rt-list"); tl.id = "rt-list";
   const rows = R.blocks.map(b => ({ s: b.s, e: b.e, b })).concat(d.fixed.filter(f => f.b > nowMin).map(f => ({ s: f.a, e: f.b, f }))).sort((x, y) => x.s - y.s);
   if (d.wake > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.wake) + " · Acordar" + (R.cfg.ws ? " (" + rtDur(R.cfg.ws) + " antes, para caber tudo)" : "")));
   rows.forEach(r => {
-    const li = el("li", "rt-row" + (r.f ? " fixed" : " mod-" + r.b.it.mod) + (nowMin >= r.s && nowMin < r.e ? " now" : "")); 
-    const time = el("span", "rt-time", minToHM(r.s) + "–" + minToHM(r.e));
+    const isNow = nowMin >= r.s && nowMin < r.e;
+    const li = el("li", "rt-row" + (r.f ? " fixed" : " mod-" + r.b.it.mod) + (isNow ? " now" : ""));
+    const time = el("span", "rt-time"); time.append(el("b", null, minToHM(r.s)), el("span", "rt-end", "até " + minToHM(r.e)));
+    time.setAttribute("aria-label", "das " + minToHM(r.s) + " às " + minToHM(r.e));
     if (r.f) {
       const fs = r.f.flex === "flex" ? (r.f.a !== r.f.ideal ? "Remanejado: o ideal era " + minToHM(r.f.ideal) : "Horário flexível") : r.f.flex === "wake" ? "Ao acordar" : r.f.flex === "sleep" ? "Antes de dormir" : "Compromisso fixo";
       li.append(time, el("span", "rt-title", r.f.name || "Compromisso"), el("span", "rt-sub", fs)); tl.appendChild(li); return;
     }
-    const it = r.b.it; li.id = "rt-" + it.key + (r.b.part ? "-" + r.b.part : "");
-    const btn = el("button", "rt-main"); btn.type = "button"; btn.id = "rt-go-" + it.key + (r.b.part ? "-" + r.b.part : "");
+    const it = r.b.it, suf = it.key + (r.b.part ? "-" + r.b.part : ""); li.id = "rt-" + suf;
+    const btn = el("button", "rt-main"); btn.type = "button"; btn.id = "rt-go-" + suf;
     btn.append(time, rtIcon(it.mod));
     const tx = el("span", "rt-txt"); tx.appendChild(el("span", "rt-title", it.title + ((it.split && it.dur > r.e - r.s) || it.extra ? " · " + rtDur(r.e - r.s) : "")));
-    let sub = it.sub || "";
-    if (r.b.missions) sub = r.b.missions.length ? r.b.missions.map(m => m.t.title + " (" + rtDur(m.min) + ")").join(" · ") : "Tempo de trabalho livre: escolha as missões do dia.";
-    if (sub) tx.appendChild(el("span", "rt-sub", sub));
-    if (nowMin >= r.s && nowMin < r.e) tx.appendChild(el("span", "st pend rt-now", "Agora"));
-    btn.appendChild(tx); btn.addEventListener("click", it.go); li.appendChild(btn);
+    // trabalho e estudo: cada missão / matéria vira um atalho próprio
+    let links = null, go = it.go;
+    if (r.b.missions) {
+      if (r.b.missions.length) { links = r.b.missions.map(m => ({ id: "rt-ms-" + suf + "-" + m.t.id, label: m.t.title + " · " + rtDur(m.min), go: () => rtGoMission(m.t.id) })); go = links[0].go; }
+      else tx.appendChild(el("span", "rt-sub", "Tempo de trabalho livre: escolha as missões do dia."));
+    } else if (it.subjects && it.subjects.length) {
+      links = it.subjects.map(x => ({ id: "rt-sb-" + suf + "-" + x.id, label: x.label, go: () => rtGoSubj(x.id) }));
+    } else if (it.sub) tx.appendChild(el("span", "rt-sub", it.sub));
+    if (isNow) tx.appendChild(el("span", "st pend rt-now", "Agora"));
+    btn.appendChild(tx); btn.addEventListener("click", go); li.appendChild(btn);
     if (!r.b.part) { const sk = el("button", "linkbtn rt-skip", "Pular hoje"); sk.type = "button"; sk.id = "rt-skip-" + it.key; sk.addEventListener("click", () => rtSkip(it.key, true)); li.appendChild(sk); }
+    if (links) {
+      const lc = el("div", "rt-links");
+      links.forEach(l => { const b = el("button", "rt-link", l.label); b.type = "button"; b.id = l.id; b.addEventListener("click", l.go); lc.appendChild(b); });
+      li.appendChild(lc);
+    }
     tl.appendChild(li);
   });
   if (d.sleep > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.sleep) + " · Dormir" + (R.cfg.ss ? " (" + rtDur(R.cfg.ss) + " depois, para caber tudo)" : "")));
-  if (!R.blocks.length && !R.left.length) main.appendChild(el("p", "guide note", "Nada pendente hoje nos seus módulos. Bom trabalho."));
-  else main.appendChild(tl);
+  if (!R.blocks.length && !R.left.length) out.push(el("p", "guide note", "Nada pendente hoje nos seus módulos. Bom trabalho."));
+  else out.push(tl);
   if (R.left.length) {
     const s = el("section", "guide rt-left"); s.id = "rt-left";
     s.append(el("h3", null, "Não coube hoje"), el("p", "note muted", "Não há tempo livre suficiente até a hora de dormir. Libere um horário, pule algo de menor prioridade ou deixe para amanhã."));
-    const ul = el("ul", "hist"); R.left.forEach(x => { const li = el("li"); li.append(el("span", null, x.it.title), el("span", null, rtDur(x.min))); ul.appendChild(li); }); s.appendChild(ul); main.appendChild(s);
+    const ul = el("ul", "hist"); R.left.forEach(x => { const li = el("li"); li.append(el("span", null, x.it.title), el("span", null, rtDur(x.min))); ul.appendChild(li); }); s.appendChild(ul); out.push(s);
   }
   const extra = el("div", "rt-foot");
   if (R.dem.done.length) extra.appendChild(el("p", "note muted", "Já feito hoje: " + R.dem.done.join(" · ") + "."));
@@ -5043,7 +5098,8 @@ function renderRtHoje(main) {
     R.dem.skipped.concat(skExtra).forEach((it, i) => { if (i) p.append(" · "); const b = el("button", "linkbtn", it.title + " (voltar)"); b.type = "button"; b.id = "rt-unskip-" + it.key; b.addEventListener("click", () => rtSkip(it.key, false)); p.appendChild(b); });
     extra.appendChild(p);
   }
-  if (extra.childNodes.length) main.appendChild(extra);
+  if (extra.childNodes.length) out.push(extra);
+  return out;
 }
 
 function renderRtSemana(main) {
@@ -5190,26 +5246,25 @@ function renderRtHorarios(main) {
   main.appendChild(s3);
 }
 
-function rtHomeCard() {
-  const R = rtToday(), nowMin = rtNow();
-  const card = el("section", "guide rt-home"); card.id = "rt-home";
-  const top = el("div", "hex-top"); top.appendChild(el("h3", null, "Rotina de hoje"));
-  const ob = el("button", "btn", "Abrir rotina"); ob.type = "button"; ob.id = "rt-open"; ob.addEventListener("click", () => enterRotina("rot-hoje")); top.appendChild(ob);
-  card.appendChild(top);
-  const cur = R.blocks.find(b => nowMin >= b.s && nowMin < b.e), next = R.blocks.find(b => b.s >= nowMin && b !== cur);
-  const p = el("div", "rt-home-l");
-  if (cur) { const l = el("p", "note"); l.append(el("b", null, "Agora: "), cur.it.title + " até " + minToHM(cur.e)); p.appendChild(l); }
-  if (next) { const l = el("p", "note"); l.append(el("b", null, (cur ? "Depois: " : "Próximo: ")), next.it.title + " às " + minToHM(next.s)); p.appendChild(l); }
-  if (!cur && !next) p.appendChild(el("p", "note muted", R.left.length ? "O tempo livre de hoje acabou." : "Nada pendente hoje nos seus módulos."));
-  const tot = R.blocks.reduce((s, b) => s + b.e - b.s, 0);
-  if (R.blocks.length) p.appendChild(el("p", "note muted", "Ainda hoje: " + R.blocks.length + (R.blocks.length === 1 ? " bloco" : " blocos") + " · " + rtDur(tot) + (R.left.length ? " · " + R.left.length + " " + (R.left.length === 1 ? "item não coube" : "itens não couberam") : "")));
-  card.appendChild(p);
-  return card;
+function rtHomeSection() {
+  const sec = el("section", "rt-homesec"); sec.id = "rt-home";
+  const nowMin = rtNow(), R = rtToday();
+  const head = el("div", "wk-head");
+  head.append(el("h2", null, "Rotina de hoje"), el("p", null, "Montada às " + minToHM(nowMin) + " com o que falta nos módulos. Toque numa tarefa para ir direto a ela."));
+  sec.appendChild(head);
+  rtDefaultsBanner(sec);
+  rtTodayNodes(R, nowMin).forEach(n => sec.appendChild(n));
+  const bb = el("div", "btns");
+  const w = el("button", "btn", "Ver a semana"); w.type = "button"; w.id = "rt-open"; w.addEventListener("click", () => enterRotina("rot-semana"));
+  const h = el("button", "btn ghost", "Horários"); h.type = "button"; h.id = "rt-open-hor"; h.addEventListener("click", () => enterRotina("rot-horarios"));
+  bb.append(w, h); sec.appendChild(bb);
+  return sec;
 }
 setInterval(() => {
   if (document.visibilityState !== "visible") return;
   const a = document.activeElement; if (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) return;
   if (state.view === "rotina" && state.rtab === "rot-hoje") renderRotina();
+  else if (state.view === "home") { const s = document.getElementById("rt-home"); if (s) s.replaceWith(rtHomeSection()); }
 }, 60000);
 
 /* ======================= Conta e nuvem ======================= */

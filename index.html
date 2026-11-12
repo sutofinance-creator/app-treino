@@ -427,6 +427,18 @@ ol.steps a { color: var(--accent); }
 .ms-row-t { font-weight: 600; }
 .ms-row.open .ms-row-t { color: var(--accent); }
 .ms-row-b { padding: 0 0 12px; display: grid; gap: 8px; }
+
+/* ---------- Missões: busca, tags, cronômetro por missão ---------- */
+.ms-search { margin: 4px 0 12px; }
+.ms-search input { width: 100%; }
+.st.tag { color: var(--ink); border-color: var(--line); background: rgba(166, 107, 255, .08); text-transform: none; letter-spacing: .02em; font-weight: 600; }
+.ms-timer { appearance: none; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+.ms-timer:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ms-rec { display: grid; gap: 6px; }
+.ms-rec .chips { margin: 0; }
+.tile.bad { border-color: var(--bad); }
+.tile.bad .tile-num { color: var(--bad); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 </style>
 </head>
 <body data-view="home">
@@ -2493,15 +2505,19 @@ const MS_TABS = [{ id: "ms-hoje", label: "Hoje" }, { id: "ms-lista", label: "Mis
 const MS_PRI = [["alta", "Alta"], ["media", "Média"], ["baixa", "Baixa"]];
 const MS_PRI_RANK = { alta: 0, media: 1, baixa: 2 };
 const MS_GERAL = "_geral";
+const MS_REC = [["", "Não repete"], ["util", "Todo dia útil"], ["diaria", "Todos os dias"], ["semanal", "Toda semana"], ["mensal", "Todo mês"]];
 let mis = null;
-const msUI = { open: null, closing: null, draft: null, period: "semana", proj: "", msg: "", confirm: null };
+const msUI = { open: null, closing: null, closeDraft: null, draft: null, period: "semana", proj: "", msg: "", confirm: null, q: "" };
 
 function loadMs() {
   try { const v = JSON.parse(localStorage.getItem(MS_KEY)); mis = v && Array.isArray(v.tasks) ? v : null; } catch (e) { mis = null; }
-  if (mis) { mis.goal = Object.assign({ hours: 4, days: [1, 2, 3, 4, 5] }, mis.goal); mis.days = mis.days || {}; }
+  if (mis) {
+    mis.goal = Object.assign({ hours: 4, days: [1, 2, 3, 4, 5] }, mis.goal); mis.days = mis.days || {};
+    if (mis.work == null) mis.work = !!mis.timer;
+  }
 }
-function msData() { return mis || { goal: { hours: 4, days: [1, 2, 3, 4, 5] }, tasks: [], days: {}, timer: null }; }
-function ensureMs() { if (!mis) mis = { version: 1, goal: { hours: 4, days: [1, 2, 3, 4, 5] }, tasks: [], days: {}, timer: null }; return mis; }
+function msData() { return mis || { goal: { hours: 4, days: [1, 2, 3, 4, 5] }, tasks: [], days: {}, timer: null, work: false }; }
+function ensureMs() { if (!mis) mis = { version: 1, goal: { hours: 4, days: [1, 2, 3, 4, 5] }, tasks: [], days: {}, timer: null, work: false }; return mis; }
 function saveMs() {
   try { localStorage.setItem(MS_KEY, JSON.stringify(mis)); setStatus("Salvo no celular", "ok"); }
   catch (e) { setStatus("Não foi possível salvar neste navegador", "err"); }
@@ -2537,17 +2553,52 @@ function msAddTime(a, b, tid) {
     const iso = ymd(dt); mis.days[iso] = mis.days[iso] || {}; mis.days[iso][tid] = (mis.days[iso][tid] || 0) + Math.round((e - x) / 1000); x = e;
   }
 }
-function msStart(tid) {
-  const g = ensureMs(); if (g.timer) msStop(true);
-  g.timer = { tid, startedAt: Date.now() };
-  const t = msTask(tid); if (t && !t.started) { t.started = todayISO(); t.upd = Date.now(); }
-  saveMs();
-}
+/* Cronômetros: só um roda por vez.
+   - Trabalho (geral) roda enquanto o expediente está ligado (mis.work) e nenhuma missão está rodando.
+   - Ao iniciar uma missão, o Trabalho pausa e o tempo passa a contar na missão; ao pausar ou concluir a missão, o Trabalho volta.
+   - Pausar o Trabalho encerra o expediente: para tudo até você iniciar de novo (ou iniciar uma missão). */
 function msStop(silent) {
   const t = mis && mis.timer; if (!t) return;
   msAddTime(t.startedAt, Date.now(), t.tid); mis.timer = null;
   if (!silent) saveMs();
 }
+function msResumeWork() { if (mis && mis.work && !mis.timer) mis.timer = { tid: MS_GERAL, startedAt: Date.now() }; }
+function msStartMission(tid) {
+  const g = ensureMs(); if (g.timer) msStop(true);
+  g.work = true; g.timer = { tid, startedAt: Date.now() };
+  const t = msTask(tid); if (t && !t.started) { t.started = todayISO(); t.upd = Date.now(); }
+  saveMs();
+}
+function msPauseMission() { msStop(true); msResumeWork(); saveMs(); }
+function msWorkStart() { const g = ensureMs(); g.work = true; msResumeWork(); saveMs(); }
+function msWorkPause() { const g = ensureMs(); msStop(true); g.work = false; saveMs(); }
+function msMissionRunning() { const t = msData().timer; return t && t.tid !== MS_GERAL ? t.tid : null; }
+
+/* ---------- recorrência ---------- */
+function msRecMatch(rec, iso) {
+  const w = msDow(iso);
+  if (rec.type === "util") return w >= 1 && w <= 5;
+  if (rec.type === "diaria") return true;
+  if (rec.type === "semanal") return (rec.days && rec.days.length ? rec.days : [1]).includes(w);
+  if (rec.type === "mensal") { const [y, m, d] = iso.split("-").map(Number); const last = new Date(y, m, 0).getDate(); return d === Math.min(rec.mday || 1, last); }
+  return false;
+}
+function msRecNext(rec, fromIso, inclusive) { let d = inclusive ? fromIso : addDaysISO(fromIso, 1); for (let i = 0; i < 800; i++, d = addDaysISO(d, 1)) if (msRecMatch(rec, d)) return d; return null; }
+function msRecLabel(rec) {
+  if (!rec || !rec.type) return "";
+  if (rec.type === "semanal") return "Toda " + [1, 2, 3, 4, 5, 6, 0].filter(w => (rec.days || [1]).includes(w)).map(w => DOW_SHORT[w]).join(", ");
+  if (rec.type === "mensal") return "Todo dia " + (rec.mday || 1);
+  return (MS_REC.find(r => r[0] === rec.type) || [, ""])[1];
+}
+// ao encerrar uma missão recorrente, cria a próxima
+function msSpawnNext(x) {
+  if (!x.rec || !x.rec.type) return null;
+  const base = x.due && x.due > todayISO() ? x.due : todayISO();
+  const due = msRecNext(x.rec, base, false); if (!due) return null;
+  const n = msNew({ title: x.title, proj: x.proj, setor: x.setor, sol: x.sol, pri: x.pri, est: x.est, notes: x.notes, rec: Object.assign({}, x.rec), due, prev: x.id }, true);
+  x.nextId = n.id; return n;
+}
+
 function msDueInfo(t, iso) {
   if (!t.due) return null;
   if (t.status === "nao") return null;
@@ -2555,11 +2606,11 @@ function msDueInfo(t, iso) {
     const late = daysBetween(t.due, t.closed || iso);
     return late > 0 ? { cls: "pend", text: "Entregue com " + late + (late === 1 ? " dia" : " dias") + " de atraso" } : { cls: "ok", text: "Entregue no prazo" };
   }
-  const dd = daysBetween(iso, t.due);
+  const dd = daysBetween(iso, t.due), rec = t.rec && t.rec.type;
   if (dd < 0) return { cls: "bad", text: "Atrasada " + (-dd) + (dd === -1 ? " dia" : " dias") };
-  if (dd === 0) return { cls: "pend", text: "Vence hoje" };
-  if (dd === 1) return { cls: "", text: "Vence amanhã" };
-  return { cls: "", text: "Prazo " + fmtDate(t.due).slice(0, 5) };
+  if (dd === 0) return { cls: "pend", text: rec ? "Executar hoje" : "Vence hoje" };
+  if (dd === 1) return { cls: "", text: rec ? "Executar amanhã" : "Vence amanhã" };
+  return { cls: "", text: (rec ? "Executar " : "Prazo ") + fmtDate(t.due).slice(0, 5) };
 }
 function msSort(a, b) {
   const da = a.due || "9999", db = b.due || "9999";
@@ -2569,17 +2620,34 @@ function msSort(a, b) {
 function msDayList(iso) {
   const today = todayISO();
   return msData().tasks.filter(t => {
-    if (t.status === "aberta") return (t.plan || []).includes(iso) || (iso >= today && t.due && t.due <= iso && iso === today) || (iso > today && t.due === iso);
+    if (t.status === "aberta") return (t.plan || []).includes(iso) || (iso === today && t.due && t.due <= iso) || (iso > today && t.due === iso);
     return t.closed === iso;
   }).sort((a, b) => (a.status === "aberta" ? 0 : 1) - (b.status === "aberta" ? 0 : 1) || msSort(a, b));
 }
-function msProjects() { return [...new Set(msData().tasks.map(t => (t.proj || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt")); }
-function msNew(v) {
+function msVals(k) { return [...new Set(msData().tasks.map(t => (t[k] || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt")); }
+function msProjects() { return msVals("proj"); }
+function msNorm(v) { return String(v || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
+function msMatch(x) {
+  const q = msNorm(msUI.q).trim(); if (!q) return true;
+  const hay = msNorm([x.title, x.proj, x.setor, x.sol, x.notes, x.closeNote].join(" "));
+  return q.split(/\s+/).every(w => hay.includes(w));
+}
+function msNew(v, silent) {
   const g = ensureMs(), now = Date.now();
   const t = Object.assign({ id: "m" + now.toString(36) + Math.random().toString(36).slice(2, 5), status: "aberta", created: todayISO(), plan: [], upd: now }, v);
-  g.tasks.push(t); saveMs(); return t;
+  if (t.rec && t.rec.type && !t.due) t.due = msRecNext(t.rec, todayISO(), true);
+  g.tasks.push(t); if (!silent) saveMs(); return t;
 }
 function msTouch(t) { t.upd = Date.now(); saveMs(); }
+function msClose(x, res, extra, iso) {
+  const g = ensureMs();
+  if (g.timer && g.timer.tid === x.id) { msStop(true); msResumeWork(); }
+  x.status = res; x.closed = iso && iso <= todayISO() ? iso : todayISO();
+  Object.assign(x, extra || {});
+  const n = msSpawnNext(x);
+  x.upd = Date.now(); saveMs();
+  return n;
+}
 
 /* ---------- pendências da tela inicial ---------- */
 function missoesTasks() {
@@ -2590,9 +2658,10 @@ function missoesTasks() {
   const list = msDayList(iso);
   list.slice(0, 6).forEach(t => {
     const di = msDueInfo(t, iso), done = t.status !== "aberta";
+    const pri = MS_PRI.find(p => p[0] === t.pri);
     tasks.push({ id: "task-ms-" + t.id, title: t.title, complete: done, pct: done ? 1 : 0,
-      label: done ? (t.status === "feita" ? "Entregue" : "Não resolvida") : di && di.cls === "bad" ? "Atrasada" : di && di.text === "Vence hoje" ? "Vence hoje" : "Hoje",
-      sub: [t.proj, (MS_PRI.find(p => p[0] === t.pri) || [, ""])[1] && "prioridade " + MS_PRI.find(p => p[0] === t.pri)[1].toLowerCase(), t.est ? "est. " + fmtHM(t.est * 60) : ""].filter(Boolean).join(" · "),
+      label: done ? (t.status === "feita" ? "Entregue" : "Não resolvida") : di && di.cls === "bad" ? "Atrasada" : di && di.cls === "pend" ? (t.rec && t.rec.type ? "Hoje" : "Vence hoje") : "Hoje",
+      sub: [t.proj, t.setor, t.sol, pri && "prioridade " + pri[1].toLowerCase(), t.est ? "est. " + fmtHM(t.est * 60) : ""].filter(Boolean).join(" · "),
       go: () => enterMissoes("ms-hoje", t.id) });
   });
   if (list.length > 6) tasks.push({ id: "task-ms-mais", title: "E mais " + (list.length - 6) + " missões hoje", optional: true, complete: false, pct: 0, label: "Ver", sub: "", go: () => enterMissoes("ms-hoje") });
@@ -2621,6 +2690,19 @@ function renderMissoes() {
 function msChip(text, cls) { return el("span", "st " + (cls || ""), text); }
 function msPriChip(t) { const p = MS_PRI.find(x => x[0] === t.pri); return p ? msChip(p[1], "pri-" + p[0]) : null; }
 function msStars(n) { return "★★★★★".slice(0, n || 0) + "☆☆☆☆☆".slice(0, 5 - (n || 0)); }
+function msTagChips(x, meta) {
+  if (x.proj) meta.appendChild(msChip(x.proj));
+  if (x.setor) meta.appendChild(msChip("Setor: " + x.setor, "tag"));
+  if (x.sol) meta.appendChild(msChip("Solic.: " + x.sol, "tag"));
+  if (x.rec && x.rec.type) meta.appendChild(msChip("↻ " + msRecLabel(x.rec), "run"));
+}
+// campo de busca: re-renderiza a lista e devolve o foco ao campo
+function msSearch(main, ph) {
+  const f = el("div", "field ms-search"); const l = el("label", "sr-only", "Pesquisar missões"); l.htmlFor = "ms-q";
+  const i = el("input"); i.id = "ms-q"; i.type = "search"; i.placeholder = ph; i.value = msUI.q; i.autocomplete = "off";
+  i.addEventListener("input", () => { msUI.q = i.value; const pos = i.selectionStart; renderMissoes(); const n = document.getElementById("ms-q"); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} } });
+  f.append(l, i); main.appendChild(f);
+}
 
 function renderMsHoje(main) {
   const iso = state.mdate, today = todayISO(), g = msData();
@@ -2634,7 +2716,7 @@ function renderMsHoje(main) {
   main.appendChild(bar);
 
   // tempo de trabalho
-  const sec = msDaySec(iso), goal = msGoalSec(iso), t = g.timer;
+  const sec = msDaySec(iso), goal = msGoalSec(iso), t = g.timer, runM = msMissionRunning();
   const w = el("section", "guide ms-work"); w.id = "ms-work";
   w.appendChild(el("h3", null, "Trabalho"));
   const tiles = el("div", "tiles tiles-3");
@@ -2646,26 +2728,32 @@ function renderMsHoje(main) {
   w.appendChild(tiles);
   const pb = el("div", "goalbar"); const pf = el("span"); pf.dataset.live = "ms-daybar"; pf.style.width = (goal ? Math.min(100, sec / goal * 100) : 0) + "%"; pb.appendChild(pf); w.appendChild(pb);
   if (iso === today) {
-    const trow = el("div", "timer-row" + (t ? " running" : ""));
-    const tt = t ? msTask(t.tid) : null;
-    const tdisp = el("span", "timer", fmtHMS(sec)); tdisp.dataset.live = "ms-total";
+    const trow = el("div", "timer-row" + (g.work ? " running" : ""));
+    const tdisp = el("span", "timer", fmtHMS(sec)); tdisp.dataset.live = "ms-total"; tdisp.id = "ms-total";
     const tb = el("div", "timer-btns");
-    const gb = el("button", "btn" + (t ? " stop" : ""), t ? "Pausar" : "Iniciar trabalho"); gb.type = "button"; gb.id = "ms-go";
-    gb.addEventListener("click", () => { if (t) msStop(); else msStart(MS_GERAL); renderMissoes(); });
+    const gb = el("button", "btn" + (g.work ? " stop" : ""), g.work ? "Pausar trabalho" : "Iniciar trabalho"); gb.type = "button"; gb.id = "ms-go";
+    gb.addEventListener("click", () => { if (g.work) msWorkPause(); else msWorkStart(); renderMissoes(); });
     tb.appendChild(gb); trow.append(tdisp, tb); w.appendChild(trow);
-    w.appendChild(el("p", "ex-note", t ? "Contando em: " + (tt ? tt.title : "trabalho geral (sem missão)") + ". Toque em ▶ numa missão para trocar." : "Use ▶ numa missão para contar o tempo nela, ou Iniciar trabalho para tempo geral."));
+    const rm = runM ? msTask(runM) : null;
+    let stt;
+    if (rm) stt = "Contando na missão “" + rm.title + "”. O trabalho geral está pausado e volta sozinho quando você pausar ou concluir a missão.";
+    else if (g.work && t) stt = "Contando como trabalho geral. Toque no cronômetro de uma missão para passar a contar nela.";
+    else stt = "Expediente pausado. Inicie o trabalho ou o cronômetro de uma missão.";
+    const sp = el("p", "ex-note", stt); sp.id = "ms-state"; w.appendChild(sp);
     if (goal && estLeft > Math.max(0, goal - sec) * 1.5 && open.length > 1) w.appendChild(el("p", "note muted", "O estimado das missões abertas (" + fmtHM(estLeft) + ") passa bem do que falta da meta. Vale priorizar as de prazo mais curto."));
   }
   main.appendChild(w);
   if (msUI.msg) { const f = el("p", "note"); flash(f, msUI.msg, "ok"); main.appendChild(f); msUI.msg = ""; }
 
-  // missões do dia
+  msSearch(main, "Pesquisar missões");
+  const shown = list.filter(msMatch);
   if (!list.length) main.appendChild(el("p", "note muted", "Nenhuma missão para este dia ainda. Escolha abaixo o que vai resolver ou crie uma nova."));
-  list.forEach((x, i) => main.appendChild(msCard(x, i + 1, iso)));
+  else if (!shown.length) main.appendChild(el("p", "note muted", "Nenhuma missão do dia bate com a pesquisa."));
+  shown.forEach((x, i) => main.appendChild(msCard(x, i + 1, iso)));
 
   // planejar
   if (iso >= today) {
-    const cand = g.tasks.filter(x => x.status === "aberta" && !list.includes(x)).sort((a, b) => {
+    const cand = g.tasks.filter(x => x.status === "aberta" && !list.includes(x) && msMatch(x)).sort((a, b) => {
       const da = a.due || "9999", db = b.due || "9999"; return (da < db ? -1 : da > db ? 1 : 0) || msSort(a, b);
     });
     const p = el("section", "guide"); p.id = "ms-plan";
@@ -2677,7 +2765,7 @@ function renderMsHoje(main) {
         const li = el("li"); const info = el("div", "ms-pick-i");
         info.appendChild(el("span", "ms-pick-t", x.title));
         const meta = el("div", "meta"); const dinf = msDueInfo(x, iso);
-        if (x.proj) meta.appendChild(msChip(x.proj)); const pc = msPriChip(x); if (pc) meta.appendChild(pc); if (dinf) meta.appendChild(msChip(dinf.text, dinf.cls)); if (x.est) meta.appendChild(el("span", "last", "est. " + fmtHM(x.est * 60)));
+        msTagChips(x, meta); const pc = msPriChip(x); if (pc) meta.appendChild(pc); if (dinf) meta.appendChild(msChip(dinf.text, dinf.cls)); if (x.est) meta.appendChild(el("span", "last", "est. " + fmtHM(x.est * 60)));
         info.appendChild(meta);
         const add = el("button", "step wide ms-add", iso === todayISO() ? "+ Hoje" : "+ " + fmtDate(iso).slice(0, 5)); add.type = "button"; add.id = "ms-plan-" + x.id; add.setAttribute("aria-label", "Colocar " + x.title + " no dia");
         add.addEventListener("click", () => { if (!(x.plan || []).includes(iso)) x.plan = (x.plan || []).concat(iso); msTouch(x); renderMissoes(); });
@@ -2687,29 +2775,41 @@ function renderMsHoje(main) {
       if (cand.length > 8) p.appendChild(el("p", "note muted", "+ " + (cand.length - 8) + " na aba Missões."));
     }
     p.appendChild(el("span", "field-l", "Nova missão para este dia"));
-    p.appendChild(msForm(msUI.draft || {}, v => { msNew(Object.assign(v, { plan: [iso] })); msUI.draft = null; msUI.msg = "Missão criada para o dia."; renderMissoes(); }, "msq-", true));
+    p.appendChild(msForm(msUI.draft || {}, v => { const n = msNew(Object.assign(v, { plan: [iso] })); if (n.rec && n.rec.type && n.due !== iso) n.plan = []; saveMs(); msUI.draft = null; msUI.msg = "Missão criada" + (n.rec && n.rec.type ? " (recorrente, próxima execução " + fmtDate(n.due).slice(0, 5) + ")." : " para o dia."); renderMissoes(); }, "msq-", true));
     main.appendChild(p);
   }
 }
 
 function msCard(x, n, iso) {
-  const today = todayISO(), t = msData().timer, open = x.status === "aberta";
-  const running = !!(t && t.tid === x.id);
+  const today = todayISO(), open = x.status === "aberta";
+  const running = msMissionRunning() === x.id;
   const card = el("section", "card ms-card" + (open ? "" : " ms-closed")); card.id = "ms-" + x.id;
   const top = el("div", "card-top"); const box = el("div");
   box.appendChild(el("p", "ex-name", x.title));
   const meta = el("div", "meta");
-  if (x.proj) meta.appendChild(msChip(x.proj)); const pc = msPriChip(x); if (pc && open) meta.appendChild(pc);
+  msTagChips(x, meta); const pc = msPriChip(x); if (pc && open) meta.appendChild(pc);
   const dinf = msDueInfo(x, open ? iso : x.closed); if (dinf) meta.appendChild(msChip(dinf.text, dinf.cls));
   if (!open) meta.appendChild(msChip(x.status === "feita" ? "Resolvida" : "Não resolvida", x.status === "feita" ? "ok" : "bad"));
-  else if (msTaskSec(x.id) > 0 || running) meta.appendChild(msChip("Em andamento", "run"));
   box.appendChild(meta);
   if (x.notes) box.appendChild(el("p", "ex-note", x.notes));
   top.append(el("div", "num", String(n).padStart(2, "0")), box); card.appendChild(top);
 
+  // cronômetro da missão
   const spent = msTaskSec(x.id);
+  if (open && iso === today) {
+    const trow = el("div", "timer-row" + (running ? " running" : ""));
+    const td = el("button", "timer ms-timer", fmtHMS(msSec(iso, x.id))); td.type = "button"; td.id = "ms-tmr-" + x.id; td.dataset.tid = x.id;
+    td.setAttribute("aria-label", (running ? "Pausar" : "Iniciar") + " o cronômetro de " + x.title);
+    if (running) td.dataset.live = "ms-mtime";
+    const toggle = () => { if (running) msPauseMission(); else msStartMission(x.id); renderMissoes(); };
+    td.addEventListener("click", toggle);
+    const tb = el("div", "timer-btns");
+    const go = el("button", "btn" + (running ? " stop" : ""), running ? "Pausar" : "▶ Iniciar"); go.type = "button"; go.id = "ms-go-" + x.id;
+    go.addEventListener("click", toggle);
+    tb.appendChild(go); trow.append(td, tb); card.appendChild(trow);
+  }
   const line = el("div", "meta");
-  const tv = el("span", "presc", fmtHM(spent) + (x.est ? " de " + fmtHM(x.est * 60) + " estimados" : " trabalhados"));
+  const tv = el("span", "presc", "Total " + fmtHM(spent) + (x.est ? " de " + fmtHM(x.est * 60) + " estimados" : ""));
   if (running) { tv.dataset.live = "ms-task"; tv.dataset.tid = x.id; tv.dataset.est = String(x.est || 0); }
   line.appendChild(tv);
   if (x.est && spent > x.est * 60) line.appendChild(msChip("Passou da estimativa", "pend"));
@@ -2720,11 +2820,6 @@ function msCard(x, n, iso) {
   if (open && msUI.closing === x.id) { card.appendChild(msCloseForm(x, iso)); return card; }
   const b = el("div", "btns");
   if (open) {
-    if (iso === today) {
-      const go = el("button", "btn" + (running ? " stop" : ""), running ? "Pausar" : "▶ Iniciar"); go.type = "button"; go.id = "ms-go-" + x.id;
-      go.addEventListener("click", () => { if (running) msStop(); else msStart(x.id); renderMissoes(); });
-      b.appendChild(go);
-    }
     if (iso <= today) {
       const fin = el("button", "btn", "Concluir"); fin.type = "button"; fin.id = "ms-fin-" + x.id;
       fin.addEventListener("click", () => { msUI.closing = x.id; renderMissoes(); const c = document.getElementById("ms-" + x.id); if (c) c.scrollIntoView({ block: "nearest" }); });
@@ -2737,11 +2832,21 @@ function msCard(x, n, iso) {
     }
   } else {
     const re = el("button", "btn ghost", "Reabrir"); re.type = "button"; re.id = "ms-reopen-" + x.id;
-    re.addEventListener("click", () => { x.status = "aberta"; delete x.closed; delete x.quality; delete x.rework; delete x.closeNote; if (!(x.plan || []).includes(today)) x.plan = (x.plan || []).concat(today); msTouch(x); renderMissoes(); });
+    re.addEventListener("click", () => msReopen(x));
     b.appendChild(re);
   }
   card.appendChild(b);
   return card;
+}
+function msReopen(x) {
+  const g = ensureMs(), today = todayISO();
+  // se a próxima ocorrência criada por ela ainda não foi mexida, sai junto
+  const nx = x.nextId && msTask(x.nextId);
+  if (nx && nx.status === "aberta" && !msTaskSec(nx.id) && !(nx.plan || []).length) g.tasks = g.tasks.filter(q => q.id !== nx.id);
+  delete x.nextId;
+  x.status = "aberta"; delete x.closed; delete x.quality; delete x.rework; delete x.closeNote;
+  if (!(x.plan || []).includes(today)) x.plan = (x.plan || []).concat(today);
+  msTouch(x); renderMissoes();
 }
 
 function msCloseForm(x, iso) {
@@ -2766,17 +2871,18 @@ function msCloseForm(x, iso) {
   const ni = el("input"); ni.id = "ms-note"; ni.value = dr.note; ni.placeholder = dr.res === "feita" ? "Ex.: cliente aprovou de primeira" : "Ex.: depende de retorno do cliente";
   ni.addEventListener("input", () => { dr.note = ni.value; });
   nf.append(nl, ni); f.appendChild(nf);
+  if (x.rec && x.rec.type) f.appendChild(el("p", "note muted", "Missão recorrente: ao salvar, a próxima (" + msRecLabel(x.rec).toLowerCase() + ") é criada sozinha."));
   const msg = el("p", "note");
   const b = el("div", "btns");
   const sv = el("button", "btn", "Salvar"); sv.type = "button"; sv.id = "ms-close-save";
   sv.addEventListener("click", () => {
     if (dr.res === "feita" && !dr.q) { flash(msg, "Dê uma nota de 1 a 5 para a qualidade.", "err"); return; }
-    if (mis.timer && mis.timer.tid === x.id) msStop(true);
-    x.status = dr.res; x.closed = iso <= todayISO() ? iso : todayISO();
-    if (dr.res === "feita") { x.quality = dr.q; x.rework = !!dr.rework; } else { delete x.quality; delete x.rework; }
-    x.closeNote = dr.note.trim(); msUI.closing = null; msUI.closeDraft = null;
-    msUI.msg = dr.res === "feita" ? "Missão entregue." : "Missão encerrada como não resolvida.";
-    msTouch(x); renderMissoes();
+    const extra = dr.res === "feita" ? { quality: dr.q, rework: !!dr.rework, closeNote: dr.note.trim() } : { closeNote: dr.note.trim() };
+    if (dr.res !== "feita") { delete x.quality; delete x.rework; }
+    const nx = msClose(x, dr.res, extra, iso);
+    msUI.closing = null; msUI.closeDraft = null;
+    msUI.msg = (dr.res === "feita" ? "Missão entregue." : "Missão encerrada como não resolvida.") + (nx ? " Próxima ocorrência: " + fmtDate(nx.due).slice(0, 5) + "." : "") + (mis.work ? " O cronômetro do trabalho voltou a contar." : "");
+    renderMissoes();
   });
   const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = "ms-close-cancel";
   cc.addEventListener("click", () => { msUI.closing = null; msUI.closeDraft = null; renderMissoes(); });
@@ -2787,24 +2893,59 @@ function msCloseForm(x, iso) {
 function msForm(v, onSave, idp, compact) {
   const form = el("div", "ms-form");
   const grid = el("div", "inputs two");
-  const fld = (k, label, type, ph) => { const f = el("div", "field" + (k === "title" || k === "notes" ? " span2" : "")); const l = el("label", null, label); l.htmlFor = idp + k; const i = el("input"); i.id = idp + k; if (type) i.type = type; if (ph) i.placeholder = ph; f.append(l, i); grid.appendChild(f); return i; };
+  const fld = (k, label, type, ph, list) => {
+    const f = el("div", "field" + (k === "title" || k === "notes" ? " span2" : "")); const l = el("label", null, label); l.htmlFor = idp + k;
+    const i = el("input"); i.id = idp + k; if (type) i.type = type; if (ph) i.placeholder = ph;
+    if (list) { i.setAttribute("list", idp + k + "-l"); const dl = el("datalist"); dl.id = idp + k + "-l"; list.forEach(p => { const o = el("option"); o.value = p; dl.appendChild(o); }); f.appendChild(dl); }
+    f.append(l, i); grid.appendChild(f); return i;
+  };
   const ti = fld("title", "Missão", null, "Ex.: Enviar relatório de campanha"); ti.value = v.title || "";
-  const pj = fld("proj", "Projeto ou cliente", null, "Ex.: V4"); pj.value = v.proj || ""; pj.setAttribute("list", idp + "projs");
-  const dl = el("datalist"); dl.id = idp + "projs"; msProjects().forEach(p => { const o = el("option"); o.value = p; dl.appendChild(o); }); form.appendChild(dl);
+  const pj = fld("proj", "Projeto ou cliente", null, "Ex.: V4", msVals("proj")); pj.value = v.proj || "";
+  const se = fld("setor", "Setor de origem", null, "Ex.: Comercial", msVals("setor")); se.value = v.setor || "";
+  const so = fld("sol", "Solicitante", null, "Ex.: Maria", msVals("sol")); so.value = v.sol || "";
   const pf = el("div", "field"); const pl = el("label", null, "Prioridade"); pl.htmlFor = idp + "pri";
   const ps = el("select"); ps.className = "sel"; ps.id = idp + "pri";
   MS_PRI.forEach(([k, t]) => { const o = el("option", null, t); o.value = k; if ((v.pri || "media") === k) o.selected = true; ps.appendChild(o); });
   pf.append(pl, ps); grid.appendChild(pf);
-  const du = fld("due", "Prazo", "date"); du.value = v.due || "";
   const es = fld("est", "Tempo estimado (min)", null, "Ex.: 90"); es.inputMode = "numeric"; es.value = v.est ? String(v.est) : "";
+  // recorrência
+  const rec = Object.assign({ type: "", days: [1], mday: 1 }, v.rec || {});
+  const rf = el("div", "field"); const rl = el("label", null, "Repetir"); rl.htmlFor = idp + "rec";
+  const rsel = el("select"); rsel.className = "sel"; rsel.id = idp + "rec";
+  MS_REC.forEach(([k, t]) => { const o = el("option", null, t); o.value = k; if (rec.type === k) o.selected = true; rsel.appendChild(o); });
+  rf.append(rl, rsel); grid.appendChild(rf);
+  const du = fld("due", rec.type ? "Executar em" : "Prazo", "date"); du.value = v.due || "";
+  const recBox = el("div", "ms-rec span2");
+  const drawRec = () => {
+    recBox.innerHTML = "";
+    du.parentNode.querySelector("label").textContent = rec.type ? "Próxima execução" : "Prazo";
+    if (rec.type === "semanal") {
+      recBox.appendChild(el("span", "field-l", "Dias da semana"));
+      const ch = el("div", "chips");
+      [1, 2, 3, 4, 5, 6, 0].forEach(w => { const c = el("button", "gchip", DOW_SHORT[w]); c.type = "button"; c.id = idp + "rd-" + w; c.setAttribute("aria-pressed", String(rec.days.includes(w)));
+        c.addEventListener("click", () => { if (rec.days.includes(w)) { if (rec.days.length > 1) rec.days = rec.days.filter(q => q !== w); } else rec.days = rec.days.concat(w); drawRec(); }); ch.appendChild(c); });
+      recBox.appendChild(ch);
+    } else if (rec.type === "mensal") {
+      const mf = el("div", "field"); const ml = el("label", null, "Dia do mês"); ml.htmlFor = idp + "mday";
+      const mi = el("input"); mi.id = idp + "mday"; mi.inputMode = "numeric"; mi.value = String(rec.mday || 1);
+      mi.addEventListener("change", () => { const n = Math.round(parseNum(mi.value) || 1); rec.mday = Math.min(31, Math.max(1, n)); mi.value = String(rec.mday); });
+      mf.append(ml, mi); recBox.appendChild(mf);
+    }
+    if (rec.type) recBox.appendChild(el("p", "note muted", "Deixe a data em branco para começar na próxima data que bate com a regra. A cada vez que você encerrar, a próxima é criada sozinha."));
+  };
+  rsel.addEventListener("change", () => { rec.type = rsel.value; drawRec(); });
+  grid.appendChild(recBox);
   let no = null; if (!compact) { no = fld("notes", "Detalhes (opcional)", null, "O que precisa ser entregue"); no.value = v.notes || ""; }
-  form.appendChild(grid);
+  form.appendChild(grid); drawRec();
   const msg = el("p", "note");
   const b = el("div", "btns"); const sv = el("button", "btn", v.id ? "Salvar" : "Criar missão"); sv.type = "button"; sv.id = idp + "save";
   sv.addEventListener("click", () => {
     const title = ti.value.trim(); if (!title) { flash(msg, "Escreva o que precisa ser feito.", "err"); return; }
     const est = Math.round(parseNum(es.value) || 0);
-    onSave({ title, proj: pj.value.trim(), pri: ps.value, due: du.value || null, est: est > 0 ? est : null, notes: no ? no.value.trim() : (v.notes || "") });
+    const r = rec.type ? { type: rec.type, days: rec.type === "semanal" ? rec.days.slice().sort() : undefined, mday: rec.type === "mensal" ? rec.mday : undefined } : null;
+    let due = du.value || null;
+    if (r && !due) due = msRecNext(r, todayISO(), true);
+    onSave({ title, proj: pj.value.trim(), setor: se.value.trim(), sol: so.value.trim(), pri: ps.value, due, est: est > 0 ? est : null, rec: r, notes: no ? no.value.trim() : (v.notes || "") });
   });
   ti.addEventListener("keydown", e => { if (e.key === "Enter") sv.click(); });
   b.appendChild(sv); form.append(b, msg);
@@ -2815,13 +2956,14 @@ function renderMsLista(main) {
   const g = msData(), today = todayISO();
   head2(main, "Missões", "Tudo o que está aberto, por prazo. Toque numa missão para editar.");
   if (msUI.msg) { const f = el("p", "note"); flash(f, msUI.msg, "ok"); main.appendChild(f); msUI.msg = ""; }
+  msSearch(main, "Pesquisar missões");
   const projs = msProjects();
   if (projs.length) {
     const ch = el("div", "chips"); ch.setAttribute("aria-label", "Filtrar por projeto");
     [["", "Todos"]].concat(projs.map(p => [p, p])).forEach(([k, t]) => { const c = el("button", "gchip", t); c.type = "button"; c.id = "ms-f-" + (k || "todos").replace(/\W+/g, "_"); c.setAttribute("aria-pressed", String(msUI.proj === k)); c.addEventListener("click", () => { msUI.proj = k; renderMissoes(); }); ch.appendChild(c); });
     main.appendChild(ch);
   }
-  const flt = x => !msUI.proj || (x.proj || "") === msUI.proj;
+  const flt = x => (!msUI.proj || (x.proj || "") === msUI.proj) && msMatch(x);
   const open = g.tasks.filter(x => x.status === "aberta" && flt(x));
   const in7 = addDaysISO(today, 7);
   const groups = [
@@ -2831,7 +2973,7 @@ function renderMsLista(main) {
     ["Mais adiante", open.filter(x => x.due && x.due > in7 && !(x.plan || []).includes(today))],
     ["Sem prazo", open.filter(x => !x.due && !(x.plan || []).includes(today))]
   ];
-  if (!open.length) main.appendChild(el("p", "note muted", "Nenhuma missão aberta" + (msUI.proj ? " em " + msUI.proj : "") + "."));
+  if (!open.length) main.appendChild(el("p", "note muted", msUI.q ? "Nenhuma missão aberta bate com a pesquisa." : "Nenhuma missão aberta" + (msUI.proj ? " em " + msUI.proj : "") + "."));
   groups.forEach(([title, arr]) => {
     if (!arr.length) return;
     const s = el("section", "guide"); s.appendChild(el("h3", null, title + " (" + arr.length + ")"));
@@ -2839,11 +2981,12 @@ function renderMsLista(main) {
     main.appendChild(s);
   });
   const add = el("section", "guide"); add.id = "ms-new"; add.appendChild(el("h3", null, "Nova missão"));
-  add.appendChild(msForm({ proj: msUI.proj }, v => { msNew(v); msUI.msg = "Missão criada."; renderMissoes(); }, "msn-"));
+  add.appendChild(msForm({ proj: msUI.proj }, v => { const n = msNew(v); msUI.msg = "Missão criada" + (n.rec && n.rec.type ? " (recorrente, próxima execução " + fmtDate(n.due).slice(0, 5) + ")." : "."); renderMissoes(); }, "msn-"));
   main.appendChild(add);
   const cl = g.tasks.filter(x => x.status !== "aberta" && flt(x)).sort((a, b) => (b.closed || "").localeCompare(a.closed || ""));
   if (cl.length) {
     const dt = el("details", "guide gr-others"); dt.appendChild(el("summary", null, "Encerradas (" + cl.length + ")"));
+    if (msUI.q) dt.open = true;
     cl.slice(0, 40).forEach(x => dt.appendChild(msRow(x)));
     main.appendChild(dt);
   }
@@ -2855,17 +2998,19 @@ function msRow(x) {
   const head = el("button", "ms-row-h"); head.type = "button"; head.id = "ms-rowbtn-" + x.id; head.setAttribute("aria-expanded", String(isOpen));
   head.appendChild(el("span", "ms-row-t", x.title));
   const meta = el("span", "meta");
-  if (x.proj) meta.appendChild(msChip(x.proj)); const pc = open ? msPriChip(x) : null; if (pc) meta.appendChild(pc);
+  msTagChips(x, meta); const pc = open ? msPriChip(x) : null; if (pc) meta.appendChild(pc);
   const dinf = msDueInfo(x, open ? today : x.closed); if (dinf) meta.appendChild(msChip(dinf.text, dinf.cls));
   if (!open) meta.appendChild(msChip(x.status === "feita" ? "Resolvida " + (x.quality ? msStars(x.quality) : "") : "Não resolvida", x.status === "feita" ? "ok" : "bad"));
   if (open && (x.plan || []).includes(today)) meta.appendChild(msChip("No dia de hoje", "run"));
+  if (msMissionRunning() === x.id) meta.appendChild(msChip("▶ rodando", "run"));
   head.appendChild(meta);
   head.addEventListener("click", () => { msUI.open = isOpen ? null : x.id; msUI.confirm = null; renderMissoes(); });
   row.appendChild(head);
   if (!isOpen) return row;
   const body = el("div", "ms-row-b");
   if (open) {
-    body.appendChild(msForm(x, v => { Object.assign(x, v); msUI.open = null; msUI.msg = "Missão salva."; msTouch(x); renderMissoes(); }, "mse-" + x.id + "-"));
+    body.appendChild(el("p", "ex-note", "Tempo total: " + fmtHM(msTaskSec(x.id)) + (x.est ? " de " + fmtHM(x.est * 60) + " estimados" : "")));
+    body.appendChild(msForm(x, v => { Object.assign(x, v); if (!v.rec) delete x.rec; msUI.open = null; msUI.msg = "Missão salva."; msTouch(x); renderMissoes(); }, "mse-" + x.id + "-"));
     const b = el("div", "btns");
     const inToday = (x.plan || []).includes(today);
     const pt = el("button", "btn ghost", inToday ? "Tirar de hoje" : "Fazer hoje"); pt.type = "button"; pt.id = "ms-today-" + x.id;
@@ -2873,11 +3018,15 @@ function msRow(x) {
     const fin = el("button", "btn", "Concluir"); fin.type = "button"; fin.id = "ms-lfin-" + x.id;
     fin.addEventListener("click", () => { if (!inToday) x.plan = (x.plan || []).concat(today); msUI.closing = x.id; msTouch(x); enterMissoes("ms-hoje", x.id); });
     b.append(pt, fin); body.appendChild(b);
-  } else if (x.closeNote) body.appendChild(el("p", "ex-note", x.closeNote));
+  } else {
+    if (x.closeNote) body.appendChild(el("p", "ex-note", x.closeNote));
+    body.appendChild(el("p", "ex-note", "Tempo total: " + fmtHM(msTaskSec(x.id)) + (x.est ? " de " + fmtHM(x.est * 60) + " estimados" : "")));
+    const b = el("div", "btns"); const re = el("button", "btn ghost", "Reabrir"); re.type = "button"; re.id = "ms-lreopen-" + x.id; re.addEventListener("click", () => msReopen(x)); b.appendChild(re); body.appendChild(b);
+  }
   const del = el("button", "btn danger", msUI.confirm === x.id ? "Confirmar exclusão" : "Excluir missão"); del.type = "button"; del.id = "ms-del-" + x.id;
   del.addEventListener("click", () => {
     if (msUI.confirm !== x.id) { msUI.confirm = x.id; renderMissoes(); return; }
-    const g = ensureMs(); if (g.timer && g.timer.tid === x.id) msStop(true);
+    const g = ensureMs(); if (g.timer && g.timer.tid === x.id) { msStop(true); msResumeWork(); }
     g.tasks = g.tasks.filter(q => q.id !== x.id); msUI.confirm = null; msUI.open = null; msUI.msg = "Missão excluída."; saveMs(); renderMissoes();
   });
   const bd = el("div", "btns"); bd.appendChild(del); body.appendChild(bd);
@@ -2908,10 +3057,48 @@ function msHoursSVG(rows) {
   rows.forEach((r, i) => { if (i % step === (n - 1) % step) g += '<text class="ax" x="' + xs(i) + '" y="' + (CH - 6) + '" text-anchor="middle">' + fmtDate(r.iso).slice(0, 5) + '</text>'; });
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Horas trabalhadas por dia">' + g + '</svg>';
 }
+// quadro "por projeto / setor / solicitante" do relatório
+function msGroupSection(title, keyFn, closed, days) {
+  const g = msData(), today = todayISO(), pct = (n, d) => d ? Math.round(n / d * 100) + "%" : "—";
+  const keys = [...new Set(closed.map(keyFn).concat(g.tasks.filter(x => x.status === "aberta").map(keyFn)))];
+  if (keys.length < 2 && keys[0] && keys[0].startsWith("Sem ")) return null;
+  const s = el("section", "guide"); s.appendChild(el("h3", null, title));
+  keys.map(k => {
+    const cl = closed.filter(x => keyFn(x) === k), so = cl.filter(x => x.status === "feita"), wd = so.filter(x => x.due), ot = wd.filter(x => x.closed <= x.due);
+    const rq = so.filter(x => x.quality), q = rq.length ? rq.reduce((a, x) => a + x.quality, 0) / rq.length : 0;
+    const ids = new Set(g.tasks.filter(x => keyFn(x) === k).map(x => x.id));
+    const sec = days.reduce((a, r) => a + Object.keys(g.days[r.iso] || {}).filter(id => ids.has(id)).reduce((y, id) => y + g.days[r.iso][id], 0), 0);
+    const opn = g.tasks.filter(x => x.status === "aberta" && keyFn(x) === k), late = opn.filter(x => x.due && x.due < today).length;
+    return { k, cl, so, wd, ot, q, rq, sec, op: opn.length, late };
+  }).sort((x, y) => (y.cl.length + y.op) - (x.cl.length + x.op) || y.sec - x.sec).forEach(r => {
+    const row = el("div", "subj-sum");
+    const top = el("div", "meta"); top.append(el("span", "presc", r.k), el("span", "last", fmtHM(r.sec)));
+    if (r.late) top.appendChild(msChip(r.late + (r.late === 1 ? " atrasada" : " atrasadas"), "bad"));
+    row.appendChild(top);
+    row.appendChild(el("p", "ex-note", r.so.length + " entregue" + (r.so.length === 1 ? "" : "s") + " de " + r.cl.length + " encerrada" + (r.cl.length === 1 ? "" : "s") + " · no prazo " + pct(r.ot.length, r.wd.length) + " · qualidade " + (r.rq.length ? r.q.toFixed(1).replace(".", ",") + "/5" : "—") + " · " + r.op + (r.op === 1 ? " pendente" : " pendentes")));
+    s.appendChild(row);
+  });
+  return s;
+}
 
 function renderMsRelatorio(main) {
   const g = msData(), today = todayISO();
   head2(main, "Relatório", "Como estão suas entregas: prazo, qualidade, resolução e horas de trabalho.");
+  // totais de agora
+  const openAll = g.tasks.filter(x => x.status === "aberta"), lateNow = openAll.filter(x => x.due && x.due < today);
+  const todayOpen = msDayList(today).filter(x => x.status === "aberta");
+  const allSolved = g.tasks.filter(x => x.status === "feita"), allNao = g.tasks.filter(x => x.status === "nao");
+  const s0 = el("section", "guide"); s0.appendChild(el("h3", null, "Totais"));
+  const t0 = el("div", "tiles tiles-3");
+  t0.append(stTile("Pendentes", openAll.length, "missões abertas agora", openAll.length ? "" : "good"),
+    stTile("Atrasadas", lateNow.length, "abertas fora do prazo", lateNow.length ? "bad" : "good"),
+    stTile("Para hoje", todayOpen.length, "abertas no dia de hoje"),
+    stTile("Entregues", allSolved.length, "resolvidas desde o início", allSolved.length ? "good" : ""),
+    stTile("Com atraso", allSolved.filter(x => x.due && x.closed > x.due).length, "entregues depois do prazo"),
+    stTile("Não resolvidas", allNao.length, "encerradas sem resolver"));
+  s0.appendChild(t0);
+  main.appendChild(s0);
+
   const ch = el("div", "chips"); ch.setAttribute("aria-label", "Período");
   [["semana", "Esta semana"], ["mes", "Este mês"], ["30", "30 dias"], ["mespass", "Mês passado"]].forEach(([k, t]) => { const c = el("button", "gchip", t); c.type = "button"; c.id = "ms-p-" + k; c.setAttribute("aria-pressed", String(msUI.period === k)); c.addEventListener("click", () => { msUI.period = k; renderMissoes(); }); ch.appendChild(c); });
   main.appendChild(ch);
@@ -2926,17 +3113,16 @@ function renderMsRelatorio(main) {
   const lateDays = withDue.filter(x => x.closed > x.due).map(x => daysBetween(x.due, x.closed));
   const rated = solved.filter(x => x.quality), qAvg = rated.length ? rated.reduce((s, x) => s + x.quality, 0) / rated.length : 0;
   const rework = solved.filter(x => x.rework).length;
-  const overdue = g.tasks.filter(x => x.status === "aberta" && x.due && x.due < today);
   const pct = (n, d) => d ? Math.round(n / d * 100) + "%" : "—";
 
   const s1 = el("section", "guide"); s1.appendChild(el("h3", null, label));
   const t1 = el("div", "tiles tiles-3");
   t1.append(stTile("Horas", fmtHM(totalSec), workDays.length ? "média " + fmtHM(Math.round(totalSec / workDays.length)) + " por dia útil" : "trabalhadas"),
     stTile("Meta " + fmtGoal(Math.round(g.goal.hours * 3600)), met + "/" + counted.length, counted.length ? "dias úteis com a meta" : "hoje ainda está valendo", counted.length && met === counted.length ? "good" : ""),
-    stTile("Entregas", solved.length + "/" + closed.length, "resolvidas (" + pct(solved.length, closed.length) + ")", closed.length && unsolved.length === 0 ? "good" : ""),
+    stTile("Entregues", solved.length, "de " + closed.length + " encerradas (" + pct(solved.length, closed.length) + ")", closed.length && unsolved.length === 0 ? "good" : ""),
     stTile("No prazo", pct(onTime.length, withDue.length), withDue.length ? onTime.length + " de " + withDue.length + " entregas com prazo" : "nenhuma entrega com prazo", withDue.length && onTime.length === withDue.length ? "good" : ""),
     stTile("Qualidade", rated.length ? qAvg.toFixed(1).replace(".", ",") : "—", rated.length ? "média de 5 · " + rework + " com retrabalho" : "sem avaliações", qAvg >= 4 ? "good" : ""),
-    stTile("Atrasadas", overdue.length, "abertas fora do prazo agora", overdue.length ? "" : "good"));
+    stTile("Não resolvidas", unsolved.length, "no período", unsolved.length ? "" : "good"));
   s1.appendChild(t1);
   s1.appendChild(el("p", "chart-t", "Horas por dia (traço = meta mínima)"));
   s1.appendChild(chartBox(msHoursSVG(days)));
@@ -2946,53 +3132,48 @@ function renderMsRelatorio(main) {
   const tips = [];
   if (counted.length) tips.push(met === counted.length ? "Meta de " + fmtGoal(Math.round(g.goal.hours * 3600)) + " batida em todos os dias úteis do período." : "Meta de horas batida em " + met + " de " + counted.length + " dias úteis; faltaram " + fmtHM(counted.reduce((x, r) => x + Math.max(0, r.goal - r.sec), 0)) + " no total.");
   if (lateDays.length) tips.push(lateDays.length + (lateDays.length === 1 ? " entrega saiu" : " entregas saíram") + " depois do prazo, com atraso médio de " + (lateDays.reduce((x, y) => x + y, 0) / lateDays.length).toFixed(1).replace(".", ",") + " dia(s).");
-  if (overdue.length) tips.push(overdue.length + (overdue.length === 1 ? " missão aberta está atrasada" : " missões abertas estão atrasadas") + ": " + overdue.slice(0, 3).map(x => x.title).join(", ") + (overdue.length > 3 ? "…" : "") + ". Planeje para hoje ou renegocie o prazo.");
+  if (lateNow.length) tips.push(lateNow.length + (lateNow.length === 1 ? " missão aberta está atrasada" : " missões abertas estão atrasadas") + ": " + lateNow.slice(0, 3).map(x => x.title).join(", ") + (lateNow.length > 3 ? "…" : "") + ". Planeje para hoje ou renegocie o prazo.");
   const estDone = solved.filter(x => x.est), estSum = estDone.reduce((s, x) => s + x.est * 60, 0), realSum = estDone.reduce((s, x) => s + msTaskSec(x.id), 0);
   if (estDone.length >= 2 && estSum) { const dev = (realSum - estSum) / estSum; tips.push(Math.abs(dev) < 0.15 ? "Suas estimativas estão boas: real " + fmtHM(realSum) + " para " + fmtHM(estSum) + " estimados." : "Nas missões com estimativa você gastou " + fmtHM(realSum) + " para " + fmtHM(estSum) + " estimados (" + (dev > 0 ? "+" : "") + Math.round(dev * 100) + "%). " + (dev > 0 ? "Vale estimar com mais folga." : "Dá para assumir mais coisa por dia.")); }
   if (solved.length && rework / solved.length >= 0.3) tips.push("Retrabalho em " + rework + " de " + solved.length + " entregas: vale alinhar o pedido antes de começar.");
   if (unsolved.length) tips.push(unsolved.length + " não " + (unsolved.length === 1 ? "resolvida" : "resolvidas") + (unsolved.some(x => x.closeNote) ? ": " + unsolved.filter(x => x.closeNote).slice(0, 2).map(x => x.closeNote).join("; ") : "") + ".");
+  const bySetor = {}; closed.concat(openAll).forEach(x => { if (x.setor) bySetor[x.setor] = (bySetor[x.setor] || 0) + 1; });
+  const topSetor = Object.keys(bySetor).sort((p, q) => bySetor[q] - bySetor[p])[0];
+  if (topSetor && Object.keys(bySetor).length > 1) tips.push("O setor que mais gera demandas é " + topSetor + " (" + bySetor[topSetor] + " missões entre abertas e encerradas no período).");
   const geral = days.reduce((x, r) => x + ((g.days[r.iso] && g.days[r.iso][MS_GERAL]) || 0), 0);
   if (totalSec && geral / totalSec > 0.4) tips.push(Math.round(geral / totalSec * 100) + "% do tempo foi como trabalho geral, sem missão: cronometrar nas missões deixa as estimativas e o relatório mais precisos.");
   if (tips.length) { const s2 = el("section", "guide"); s2.appendChild(el("h3", null, "Pontos de atenção")); const ul = el("ul", "insights"); tips.forEach(t => { const li = el("li"); li.textContent = t; ul.appendChild(li); }); s2.appendChild(ul); main.appendChild(s2); }
 
-  // por projeto
-  const projs = [...new Set(closed.map(x => x.proj || "Sem projeto").concat(g.tasks.filter(x => x.status === "aberta").map(x => x.proj || "Sem projeto")))];
-  if (projs.length) {
-    const s3 = el("section", "guide"); s3.appendChild(el("h3", null, "Por projeto"));
-    projs.map(p => {
-      const cl = closed.filter(x => (x.proj || "Sem projeto") === p), so = cl.filter(x => x.status === "feita"), wd = so.filter(x => x.due), ot = wd.filter(x => x.closed <= x.due);
-      const rq = so.filter(x => x.quality), q = rq.length ? rq.reduce((s, x) => s + x.quality, 0) / rq.length : 0;
-      const ids = new Set(g.tasks.filter(x => (x.proj || "Sem projeto") === p).map(x => x.id));
-      const sec = days.reduce((x, r) => x + Object.keys(g.days[r.iso] || {}).filter(k => ids.has(k)).reduce((y, k) => y + g.days[r.iso][k], 0), 0);
-      const op = g.tasks.filter(x => x.status === "aberta" && (x.proj || "Sem projeto") === p).length;
-      return { p, cl, so, wd, ot, q, rq, sec, op };
-    }).sort((x, y) => y.sec - x.sec || y.cl.length - x.cl.length).forEach(r => {
-      const row = el("div", "subj-sum");
-      const top = el("div", "meta"); top.append(el("span", "presc", r.p), el("span", "last", fmtHM(r.sec)));
-      row.appendChild(top);
-      row.appendChild(el("p", "ex-note", r.so.length + " de " + r.cl.length + " resolvidas · no prazo " + pct(r.ot.length, r.wd.length) + " · qualidade " + (r.rq.length ? r.q.toFixed(1).replace(".", ",") + "/5" : "—") + " · " + r.op + (r.op === 1 ? " aberta" : " abertas")));
-      s3.appendChild(row);
-    });
-    main.appendChild(s3);
+  [["Por projeto", x => x.proj || "Sem projeto"], ["Por setor de origem", x => x.setor || "Sem setor"], ["Por solicitante", x => x.sol || "Sem solicitante"]].forEach(([t, fn]) => { const sec = msGroupSection(t, fn, closed, days); if (sec) main.appendChild(sec); });
+
+  // horas por missão no período
+  const perTask = {}; days.forEach(r => Object.keys(g.days[r.iso] || {}).forEach(id => { if (id !== MS_GERAL) perTask[id] = (perTask[id] || 0) + g.days[r.iso][id]; }));
+  const ptKeys = Object.keys(perTask).filter(id => perTask[id] > 0).sort((p, q) => perTask[q] - perTask[p]);
+  if (ptKeys.length || geral) {
+    const s5 = el("section", "guide"); s5.appendChild(el("h3", null, "Horas por demanda"));
+    const ul = el("ul", "hist");
+    ptKeys.slice(0, 15).forEach(id => { const x = msTask(id); const li = el("li"); li.append(el("span", null, fmtHM(perTask[id])), el("span", null, (x ? x.title : "Missão excluída") + (x && x.proj ? " · " + x.proj : ""))); ul.appendChild(li); });
+    if (geral) { const li = el("li"); li.append(el("span", null, fmtHM(geral)), el("span", null, "Trabalho geral (sem missão)")); ul.appendChild(li); }
+    s5.appendChild(ul); main.appendChild(s5);
   }
 
   // entregas do período
   const s4 = el("section", "guide"); s4.appendChild(el("h3", null, "Entregas do período"));
   if (!closed.length) s4.appendChild(el("p", "note muted", "Nenhuma missão encerrada neste período."));
-  else { const ul = el("ul", "hist"); closed.sort((x, y) => y.closed.localeCompare(x.closed)).forEach(x => { const li = el("li"); const di = msDueInfo(x, x.closed); li.append(el("span", null, fmtDate(x.closed).slice(0, 5)), el("span", null, x.title + (x.proj ? " · " + x.proj : "") + " · " + (x.status === "feita" ? "resolvida" + (x.quality ? " " + msStars(x.quality) : "") : "não resolvida") + (di ? " · " + di.text.toLowerCase() : ""))); ul.appendChild(li); }); s4.appendChild(ul); }
+  else { const ul = el("ul", "hist"); closed.sort((x, y) => y.closed.localeCompare(x.closed)).forEach(x => { const li = el("li"); const di = msDueInfo(x, x.closed); li.append(el("span", null, fmtDate(x.closed).slice(0, 5)), el("span", null, x.title + [x.proj, x.setor, x.sol].filter(Boolean).map(v => " · " + v).join("") + " · " + (x.status === "feita" ? "resolvida" + (x.quality ? " " + msStars(x.quality) : "") : "não resolvida") + (di ? " · " + di.text.toLowerCase() : ""))); ul.appendChild(li); }); s4.appendChild(ul); }
   main.appendChild(s4);
 
   // ajustes
-  const s5 = el("section", "guide"); s5.appendChild(el("h3", null, "Meta de trabalho"));
+  const s6 = el("section", "guide"); s6.appendChild(el("h3", null, "Meta de trabalho"));
   const gr = el("div", "inputs two"); const f = el("div", "field"); const l = el("label", null, "Mínimo por dia (horas)"); l.htmlFor = "ms-goal-h";
   const i = el("input"); i.id = "ms-goal-h"; i.inputMode = "decimal"; i.value = fmtNum(g.goal.hours);
   i.addEventListener("change", () => { const v = parseNum(i.value); if (v && v > 0 && v <= 16) { ensureMs().goal.hours = v; saveMs(); renderMissoes(); } else i.value = fmtNum(msData().goal.hours); });
-  f.append(l, i); gr.appendChild(f); s5.appendChild(gr);
-  s5.appendChild(el("span", "field-l", "Dias de trabalho"));
+  f.append(l, i); gr.appendChild(f); s6.appendChild(gr);
+  s6.appendChild(el("span", "field-l", "Dias de trabalho"));
   const dch = el("div", "chips");
   [1, 2, 3, 4, 5, 6, 0].forEach(w => { const on = g.goal.days.includes(w); const c = el("button", "gchip", DOW_SHORT[w]); c.type = "button"; c.id = "ms-wd-" + w; c.setAttribute("aria-pressed", String(on)); c.addEventListener("click", () => { const gg = ensureMs(); const nd = on ? gg.goal.days.filter(x => x !== w) : gg.goal.days.concat(w); if (nd.length) { gg.goal.days = nd; saveMs(); renderMissoes(); } }); dch.appendChild(c); });
-  s5.appendChild(dch);
-  main.appendChild(s5);
+  s6.appendChild(dch);
+  main.appendChild(s6);
 }
 
 function updateMsLive() {
@@ -3001,8 +3182,9 @@ function updateMsLive() {
   document.querySelectorAll('[data-live="ms-total"]').forEach(n => { n.textContent = fmtHMS(sec); });
   document.querySelectorAll('[data-live="ms-daytime"]').forEach(n => { n.textContent = fmtHM(sec); });
   document.querySelectorAll('[data-live="ms-daybar"]').forEach(n => { n.style.width = (goal ? Math.min(100, sec / goal * 100) : 0) + "%"; });
-  document.querySelectorAll('[data-live="ms-task"]').forEach(n => { const est = Number(n.dataset.est) || 0; n.textContent = fmtHM(msTaskSec(n.dataset.tid)) + (est ? " de " + fmtHM(est * 60) + " estimados" : " trabalhados"); });
-  document.querySelectorAll('[data-live="ms-running"]').forEach(n => { const x = msTask(t.tid); n.textContent = "▶ " + (x ? x.title : "Trabalho") + " " + fmtHMS(msSec(today, t.tid)); });
+  document.querySelectorAll('[data-live="ms-mtime"]').forEach(n => { n.textContent = fmtHMS(msSec(today, n.dataset.tid)); });
+  document.querySelectorAll('[data-live="ms-task"]').forEach(n => { const est = Number(n.dataset.est) || 0; n.textContent = "Total " + fmtHM(msTaskSec(n.dataset.tid)) + (est ? " de " + fmtHM(est * 60) + " estimados" : ""); });
+  document.querySelectorAll('[data-live="ms-running"]').forEach(n => { const x = t.tid !== MS_GERAL ? msTask(t.tid) : null; n.textContent = "▶ " + (x ? x.title : "Trabalho") + " · " + fmtHMS(sec); });
   if (state.view === "home") { const n = document.querySelector('#task-ms-tempo [data-live="ms-home"]'); if (n && goal) n.textContent = fmtHM(sec) + " / " + fmtGoal(goal); }
 }
 setInterval(updateMsLive, 1000);

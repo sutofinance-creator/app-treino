@@ -362,6 +362,19 @@ body[data-view="conta"] header.top { padding-bottom: 8px; }
 /* ---------- Conexão com o banco ---------- */
 ol.steps { margin: 8px 0 4px; padding-left: 20px; display: grid; gap: 6px; font-size: 15px; }
 ol.steps a { color: var(--accent); }
+
+/* ---------- Treino do dia no calendário ---------- */
+.cal-d.done.sel { background: var(--ink); color: var(--bg); box-shadow: 0 0 14px rgba(166, 107, 255, .9); }
+.day-detail { margin-top: 14px; border: 1px solid var(--accent); background: var(--surface-2); padding: 12px 14px; box-shadow: 0 0 12px rgba(166, 107, 255, .25); }
+.dd-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.dd-t { font: 700 15px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.dd-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.dd-list li { display: grid; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.dd-list li:last-child { border-bottom: 0; padding-bottom: 0; }
+.dd-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.dd-ex { font-weight: 600; }
+.dd-g { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
+.dd-v { font-variant-numeric: tabular-nums; color: var(--ink); opacity: .9; }
 </style>
 </head>
 <body data-view="home">
@@ -793,6 +806,30 @@ function flashAuto(n, text) {
 }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 
+function dayDetail(iso) {
+  const l = state.logs[iso], ids = Object.keys(l.e);
+  const order = []; PLAN.forEach(w => w.ex.forEach(x => order.push(x.id)));
+  ids.sort((a, b) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
+  const workouts = PLAN.filter(w => w.ex.some(x => ids.includes(x.id))).map(w => w.name);
+  const [y, m, d] = iso.split("-").map(Number);
+  const box = el("div", "day-detail"); box.id = "cal-detail";
+  const head = el("div", "dd-head");
+  head.append(el("span", "dd-t", (workouts.join(" + ") || "Treino") + " · " + ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"][new Date(y, m - 1, d).getDay()] + ", " + fmtDate(iso).slice(0, 5)));
+  const close = el("button", "linkbtn", "Fechar"); close.type = "button"; close.id = "cal-detail-close";
+  close.addEventListener("click", () => { state.calSel = null; renderMain(); });
+  head.appendChild(close); box.appendChild(head);
+  const ul = el("ul", "dd-list");
+  ids.forEach(id => {
+    let ex = null; PLAN.forEach(w => w.ex.forEach(x => { if (x.id === id) ex = x; }));
+    const li = el("li");
+    const top = el("div", "dd-top"); top.append(el("span", "dd-ex", ex ? ex.name : id), el("span", "dd-g", GROUP[id] || ""));
+    li.append(top, el("span", "dd-v", entryText(l.e[id])));
+    ul.appendChild(li);
+  });
+  box.appendChild(ul);
+  return box;
+}
+
 function renderProgress(main) {
   const s = monthStats();
   const head = el("div", "wk-head");
@@ -836,7 +873,7 @@ function renderProgress(main) {
   else if (s.slack < 0) msg = "Restam " + s.remaining + " dias no mês e faltam " + s.need + " treinos: mesmo indo todos os dias, a meta não fecha. Ajuste a meta ou foque no próximo mês.";
   else msg = "Restam " + s.remaining + " dias no mês. Você precisa treinar em " + s.need + " deles, então pode faltar em até " + s.slack + ".";
   sec.appendChild(el("p", "note", msg));
-  sec.appendChild(el("p", "note muted", "Toque num dia do calendário para marcar ou desmarcar como dia de treino; a meta é o total de dias marcados. Um dia conta como treino quando você anota pelo menos um exercício nele."));
+  sec.appendChild(el("p", "note muted", "Toque num dia do calendário para marcar ou desmarcar como dia de treino; a meta é o total de dias marcados. Toque num dia em que você treinou para ver o treino. Um dia conta como treino quando você anota pelo menos um exercício nele."));
   if (s.custom) {
     const rs = el("p", "note muted"); rs.append("Este mês está com dias personalizados. ");
     const back = el("button", "linkbtn", "Voltar ao padrão (" + listPt(prof().dow.map(d => DOW_NAMES[d])) + ")"); back.type = "button"; back.id = "plan-reset";
@@ -857,7 +894,12 @@ function renderProgress(main) {
     else if (isPlan && iso >= s.today) cls += " plan";
     else if (isPlan) cls += " miss";
     if (iso === s.today) cls += " today";
-    if (trained) { cal.appendChild(el("span", cls, String(d))); continue; }
+    if (trained) {
+      const tb = el("button", cls + (state.calSel === iso ? " sel" : ""), String(d)); tb.type = "button"; tb.id = "cal-" + iso;
+      tb.setAttribute("aria-pressed", String(state.calSel === iso)); tb.setAttribute("aria-label", d + " de " + MONTHS[s.m] + ": treinei, ver o treino");
+      tb.addEventListener("click", () => { state.calSel = state.calSel === iso ? null : iso; renderMain(); const dd = document.getElementById("cal-detail"); if (dd) dd.scrollIntoView({ block: "nearest" }); });
+      cal.appendChild(tb); continue;
+    }
     const b = el("button", cls, String(d)); b.type = "button"; b.id = "cal-" + iso;
     b.setAttribute("aria-pressed", String(isPlan)); b.setAttribute("aria-label", d + " de " + MONTHS[s.m] + (isPlan ? ": dia de treino" : ": sem treino"));
     b.addEventListener("click", () => { setPlanDays(s.key, isPlan ? s.plan.filter(x => x !== iso) : s.plan.concat(iso)); renderMain(); });
@@ -867,14 +909,24 @@ function renderProgress(main) {
   const legend = el("div", "legend");
   [["done", "Treinei"], ["plan", "Dia planejado"], ["miss", "Planejado, não fui"]].forEach(([c, t]) => { const i = el("span", "lg"); i.append(el("span", "sw " + c), document.createTextNode(t)); legend.appendChild(i); });
   sec.appendChild(legend);
+  if (state.calSel && !(state.calSel.startsWith(s.key) && hasEntries(state.calSel))) state.calSel = null;
+  if (state.calSel) sec.appendChild(dayDetail(state.calSel));
   main.appendChild(sec);
 
   // evolução
   const ev = el("section", "guide");
   ev.appendChild(el("h3", null, "Evolução por grupo muscular"));
-  if (!state.group) state.group = GROUPS.find(g => groupSeries(g).length) || "Peito";
+  const dayGroups = state.calSel ? GROUPS.filter(g => Object.keys(state.logs[state.calSel].e).some(id => GROUP[id] === g)) : null;
+  const shown = dayGroups && dayGroups.length ? dayGroups : GROUPS;
+  if (!state.group || !shown.includes(state.group)) state.group = shown.find(g => groupSeries(g).length) || shown[0];
+  if (dayGroups && dayGroups.length) {
+    const nt = el("p", "note muted", "Mostrando só os grupos treinados em " + fmtDate(state.calSel).slice(0, 5) + ". ");
+    const all = el("button", "linkbtn", "Ver todos"); all.type = "button"; all.id = "grp-all";
+    all.addEventListener("click", () => { state.calSel = null; renderMain(); });
+    nt.appendChild(all); ev.appendChild(nt);
+  }
   const chips = el("div", "chips");
-  GROUPS.forEach(g => {
+  shown.forEach(g => {
     const b = el("button", "gchip", g); b.type = "button"; b.id = "grp-" + g;
     b.setAttribute("aria-pressed", String(g === state.group));
     b.addEventListener("click", () => { state.group = g; renderMain(); });
@@ -1580,7 +1632,6 @@ function stRun(iso, pid) {
 function stSec(iso, pid) { return stRec(iso, pid).sec + stRun(iso, pid); }
 function stKindSec(iso, kind) { return PRACTICES.filter(p => p.kind === kind).reduce((a, p) => a + stSec(iso, p.id), 0); }
 function stEqMin(iso) { return PRACTICES.reduce((a, p) => a + p.factor * stSec(iso, p.id) / 60, 0); }
-function weekStart(iso) { const [y, m, d] = iso.split("-").map(Number); const w = (new Date(y, m - 1, d).getDay() + 6) % 7; return ymd(new Date(y, m - 1, d - w)); }
 function weekDays(start) { const [y, m, d] = start.split("-").map(Number); return Array.from({ length: 7 }, (_, i) => ymd(new Date(y, m - 1, d + i))); }
 function weekEq(iso, onlyBefore) { return weekDays(weekStart(iso)).filter(d => !onlyBefore || d < iso).reduce((a, d) => a + stEqMin(d), 0); }
 function focusStreak(iso) {
@@ -3310,7 +3361,17 @@ history.replaceState(null, "", "#inicio");
 renderHome();
 updateAcct();
 cloudStartup();
-if ("serviceWorker" in navigator) { window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); }); }
+if ("serviceWorker" in navigator) {
+  // Atualização: confere se há versão nova ao abrir e ao voltar para o app; quando a nova assume, recarrega uma vez.
+  const hadController = !!navigator.serviceWorker.controller; let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(reg => {
+      reg.update().catch(() => {});
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(() => {}); });
+    }).catch(() => {});
+  });
+}
 </script>
 </body>
 </html>

@@ -5381,7 +5381,7 @@ let cloud = null, cloudApplying = false, cloudTimer = null, cloudBusy = false;
 const cloudUI = { mode: "login", msg: "", kind: "", pending: null, confirm: null };
 function loadCloud() {
   try { cloud = JSON.parse(localStorage.getItem(CLOUD_KEY)) || null; } catch (e) { cloud = null; }
-  if (cloud) { cloud.revs = cloud.revs || {}; cloud.dirty = cloud.dirty || {}; cloud.last = cloud.last || 0; }
+  if (cloud) { cloud.revs = cloud.revs || {}; cloud.dirty = cloud.dirty || {}; cloud.last = cloud.last || 0; if ((cloud.syncV || 0) < 2) { cloud.last = 0; cloud.syncV = 2; } }
 }
 function saveCloud() { try { if (cloud) _lsSet.call(localStorage, CLOUD_KEY, JSON.stringify(cloud)); else localStorage.removeItem(CLOUD_KEY); } catch (e) {} }
 function loggedIn() { return !!(cloud && cloud.token); }
@@ -5425,10 +5425,11 @@ async function cloudPush(force) {
   const stamps = {}; keys.forEach(k => { stamps[k] = cloud.dirty[k]; });
   try {
     const r = await cloudFetch("PUT", "/sync", { items: keys.map(k => ({ key: k, value: localStorage.getItem(k), base: cloud.revs[k] || 0, force: !!force })) });
-    (r.saved || []).forEach(s => { cloud.revs[s.key] = s.rev; cloud.last = Math.max(cloud.last, s.rev); if (cloud.dirty[s.key] === stamps[s.key]) delete cloud.dirty[s.key]; });
+    // só a leitura avança cloud.last: se o envio avançasse, o que outro aparelho salvou pouco antes seria pulado
+    (r.saved || []).forEach(s => { cloud.revs[s.key] = s.rev; if (cloud.dirty[s.key] === stamps[s.key]) delete cloud.dirty[s.key]; });
     if ((r.conflicts || []).length) {
       r.conflicts.forEach(c => { delete cloud.dirty[c.key]; });
-      applyRemote(r.conflicts);
+      applyRemote(r.conflicts, true);
       cloudUI.msg = "Esses dados foram alterados em outro aparelho e a versão mais nova foi carregada. Se a sua última alteração não aparecer, refaça."; cloudUI.kind = "err";
     }
     saveCloud(); cloudStatus("Sincronizado", "ok");
@@ -5446,6 +5447,8 @@ async function cloudPull() {
     const r = await cloudFetch("GET", "/sync?since=" + (cloud.last || 0));
     setModules(r.modules);
     const items = (r.items || []).filter(it => it.rev > (cloud.revs[it.key] || 0) && !cloud.dirty[it.key]);
+    const top = (r.items || []).reduce((m, it) => Math.max(m, it.rev || 0), 0);
+    if (top > cloud.last) { cloud.last = top; saveCloud(); }
     if (items.length) { applyRemote(items); cloudStatus("Sincronizado", "ok"); return true; }
     cloudStatus("Sincronizado", "ok"); return false;
   } catch (e) {
@@ -5453,9 +5456,9 @@ async function cloudPull() {
     return false;
   }
 }
-function applyRemote(items) {
+function applyRemote(items, keepLast) {
   cloudApplying = true;
-  try { items.forEach(it => { localStorage.setItem(it.key, it.value); cloud.revs[it.key] = it.rev; cloud.last = Math.max(cloud.last, it.rev); }); }
+  try { items.forEach(it => { localStorage.setItem(it.key, it.value); cloud.revs[it.key] = it.rev; if (!keepLast) cloud.last = Math.max(cloud.last, it.rev); }); }
   finally { cloudApplying = false; }
   saveCloud(); reloadAllState();
 }
@@ -5498,7 +5501,7 @@ async function passKey(user, pass) {
 async function doAuth(mode, server, user, pass, code) {
   const key = await passKey(user, pass);
   const data = await cloudFetch("POST", "/auth/" + mode, { user, key, code }, server, true);
-  cloud = { server, user: data.user, token: data.token, revs: {}, dirty: {}, last: 0, modules: Array.isArray(data.modules) ? data.modules : null };
+  cloud = { server, user: data.user, token: data.token, revs: {}, dirty: {}, last: 0, syncV: 2, modules: Array.isArray(data.modules) ? data.modules : null };
   saveCloud(); updateAcct();
   const remote = await cloudFetch("GET", "/sync?since=0");
   const items = remote.items || [];

@@ -1257,7 +1257,7 @@ function renderGuide(main) {
 }
 
 function renderChooser() {
-  fPublish();
+  fSerial(fPublish);
   document.getElementById("tabs").innerHTML = "";
   const main = document.getElementById("main"); main.innerHTML = "";
   const head = el("div", "wk-head");
@@ -1453,7 +1453,7 @@ function fApply() {
   r.workouts.forEach(w => { w.optional = !w.days.length; w.day = listPt(w.days.map(d => F_DAY[d])); });
   fplan = { upd: Date.now(), name: (fImp.name || "").trim() || r.name || "Meu plano", note: r.note || "", workouts: r.workouts };
   try { localStorage.setItem(FPLAN_KEY, JSON.stringify(fplan)); } catch (e) {}
-  fImp = null; loadFPlan(); fShared.list = null; fPublish();
+  fImp = null; loadFPlan(); fShared.list = null; fSerial(fPublish);
 }
 function fImportSection(rerender) {
   const s = el("section", "guide"); s.id = "fimp";
@@ -1534,9 +1534,10 @@ async function fLoadShared(force) {
   fShared.loading = true;
   try {
     const r = await cloudFetch("GET", "/plans?kind=treino");
-    fShared.list = (r.plans || []).map(p => { try { const plan = fClean(JSON.parse(p.data)); return plan.workouts.length ? { id: p.id, mine: !!p.mine, uses: Number(p.uses) || 0, plan } : null; } catch (e) { return null; } }).filter(Boolean);
+    const seen = new Set(); // o servidor já junta treinos iguais; aqui é só garantia
+    fShared.list = (r.plans || []).filter(p => !p.hash || !seen.has(p.hash) && seen.add(p.hash)).map(p => { try { const plan = fClean(JSON.parse(p.data)); return plan.workouts.length ? { id: p.id, mine: !!p.mine, uses: Number(p.uses) || 0, plan } : null; } catch (e) { return null; } }).filter(Boolean);
     fShared.canMod = !!r.canModerate; fShared.err = "";
-    if (localStorage.getItem("stek-cat-seed") !== "1") { fShared.loading = false; await fSeed(); if (fShared.list === null) return fLoadShared(true); }
+    if (localStorage.getItem("stek-cat-seed") !== "1") { fShared.loading = false; await fSerial(fSeed); await fSerial(fPublish); if (fShared.list === null) return fLoadShared(true); }
   } catch (e) {
     if (e.status === 401) cloudExpired();
     fShared.list = []; fShared.err = e.status === 404 ? "O catálogo ainda não está ativo no servidor: falta atualizar o Worker." : "Não deu para carregar os treinos importados agora. Tente de novo mais tarde.";
@@ -1545,6 +1546,9 @@ async function fLoadShared(force) {
   if (document.getElementById("fshared")) renderChooser();
 }
 // publica o plano importado (tenta de novo quando a pessoa entrar na conta ou abrir a escolha de plano)
+// envios ao catálogo um de cada vez, para o mesmo treino não entrar duas vezes
+let fChain = Promise.resolve();
+function fSerial(fn) { const p = fChain.then(() => fn()).catch(() => {}); fChain = p; return p; }
 async function fPublish() {
   if (!fplan || fplan.pubId || fplan.sharedFrom || fplan.unshared || !loggedIn() || fPublish.busy) return;
   fPublish.busy = true;
@@ -1667,7 +1671,7 @@ function fCatalogSection() {
       const b = el("button", "pick fshare-pick"); b.type = "button"; b.id = x.pid ? "pick-" + x.pid : "fsh-" + x.id;
       const meta = [x.days ? x.days + "× por semana" : "dias livres"].concat(x.pid ? ["plano do app"] : [x.uses ? "usado por " + x.uses + (x.uses === 1 ? " pessoa" : " pessoas") : ""]).filter(Boolean).join(" · ");
       b.append(el("b", null, x.name), el("span", "note muted", x.desc), el("span", "note", meta));
-      const isCur = x.pid ? profileId === "meu" && !!fplan && fplan.src === "app-" + x.pid && !cur : profileId === "meu" && (cur === x.id || (!!fplan && !!fplan.src && fplan.src === x.sp.plan.src && !cur));
+      const isCur = x.pid ? profileId === "meu" && !!fplan && fplan.src === "app-" + x.pid : profileId === "meu" && (cur === x.id || (!!fplan && !!fplan.src && fplan.src === x.sp.plan.src));
       if (isCur) b.appendChild(el("span", "chip", "Plano atual"));
       else if (x.mine && !(x.sp && x.sp.plan.src)) b.appendChild(el("span", "chip", "Você importou"));
       b.addEventListener("click", () => {
@@ -6481,7 +6485,7 @@ history.replaceState(null, "", "#inicio");
 renderHome();
 if (startHash.startsWith("#tarefa-")) rtGoTaskHash(startHash);
 updateAcct();
-cloudStartup().then(() => { fPublish(); fSeed(); });
+cloudStartup().then(() => { fSerial(fSeed); fSerial(fPublish); });
 if ("serviceWorker" in navigator) {
   // Atualização: confere se há versão nova ao abrir e ao voltar para o app; quando a nova assume, recarrega uma vez.
   const hadController = !!navigator.serviceWorker.controller; let reloaded = false;

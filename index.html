@@ -1177,6 +1177,10 @@ const fNm = t => String(t || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLow
 function loadFPlan() {
   try { const v = JSON.parse(localStorage.getItem(FPLAN_KEY)); fplan = v && Array.isArray(v.workouts) && v.workouts.length ? v : null; } catch (e) { fplan = null; }
   if (!fplan) { delete PROFILES.meu; return; }
+  if (/^app-/.test(fplan.src || "") || (fplan.from && fplan.from !== "legado")) { // rótulos antigos com nome viram genéricos
+    if (fplan.src) fplan.src = "app"; if (fplan.from) fplan.from = "legado"; fplan.upd = Date.now();
+    try { localStorage.setItem(FPLAN_KEY, JSON.stringify(fplan)); } catch (e) {}
+  }
   const dayTab = {}, dow = new Set();
   fplan.workouts.forEach(w => {
     (w.days || []).forEach(d => { if (dayTab[d] == null) dayTab[d] = w.id; if (!w.optional) dow.add(d); });
@@ -1418,7 +1422,7 @@ function fClean(p) {
     const name = str(w && w.name, 60) || "Treino " + "ABCDEFGHIJKL"[i], short = str(w && w.short, 14) || name.slice(0, 14);
     return { id: "tr-" + (i + 1), short, name, days, day: listPt(days.map(d => F_DAY[d])), focus: str(w && w.focus, 120), optional: !days.length || !!(w && w.optional), ex };
   }).filter(w => w.ex.length);
-  return { name: str(p && p.name, 80), note: String((p && p.note) || "").trim().slice(0, 800), workouts: ws, src: /^app-[a-z]+$/.test(p && p.src) ? p.src : "" };
+  return { name: str(p && p.name, 80), note: String((p && p.note) || "").trim().slice(0, 800), workouts: ws, src: /^app(-[a-z0-9]+)?$/.test(p && p.src) ? "app" : "" };
 }
 async function fLoadShared(force) {
   if (!loggedIn() || fShared.loading || (fShared.list && !force)) return;
@@ -1472,12 +1476,13 @@ async function fLateMigrate() {
   fLateMigrate.busy = true;
   try {
     const r = await cloudFetch("GET", "/plans?kind=treino");
-    // o plano antigo do catálogo que corresponde ao perfil antigo; sem perfil, o que mais tem exercícios com registro aqui
-    const ids = new Set(); fOldLogKeys().forEach(k => { try { const o = JSON.parse(localStorage.getItem(k)) || {}; Object.values(o).forEach(d => Object.keys((d && d.e) || {}).forEach(id => ids.add(id))); } catch (e) {} });
+    // o treino do catálogo (dos que vinham no app) com mais exercícios registrados no perfil antigo deste aparelho
+    const own = "treino-logs-" + p + "-v1", key = p !== "?" && localStorage.getItem(own) != null ? own : "treino-logs-v1";
+    const ids = new Set(); try { const o = JSON.parse(localStorage.getItem(key)) || {}; Object.values(o).forEach(d => Object.keys((d && d.e) || {}).forEach(id => ids.add(id))); } catch (e) {}
     let hit = null, best = 0;
     (r.plans || []).forEach(x => { try {
-      const d = JSON.parse(x.data); if (!d || !/^app-/.test(d.src || "")) return;
-      const n = (d.workouts || []).reduce((a, w) => a + (w.ex || []).filter(e => ids.has(e.id)).length, 0) + (d.src === "app-" + p ? 1e6 : 0);
+      const d = JSON.parse(x.data); if (!d || !/^app(-|$)/.test(d.src || "")) return;
+      const n = (d.workouts || []).reduce((a, w) => a + (w.ex || []).filter(e => ids.has(e.id)).length, 0);
       if (n > best) { best = n; hit = { id: x.id, d }; }
     } catch (e) {} });
     if (!hit || fLegacyId() !== p || (fplan && fplan.from)) return;
@@ -1495,7 +1500,7 @@ async function fLateMigrate() {
       return { id: okId(w.id) ? w.id : "tr-" + (i + 1), short: str(w.short, 14) || str(w.name, 14), name: str(w.name, 60), days, day: listPt(days.map(d => F_DAY[d])), focus: str(w.focus, 120), optional: !!w.optional || !days.length, ex };
     }).filter(w => w.ex.length);
     if (!workouts.length) return;
-    fplan = { upd: Date.now(), name: str(hit.d.name, 80) || "Meu plano", note: "", workouts, src: hit.d.src, from: "catalogo", migDay: todayISO(), pubId: hit.id };
+    fplan = { upd: Date.now(), name: str(hit.d.name, 80) || "Meu plano", note: "", workouts, src: "app", from: "legado", migDay: todayISO(), pubId: hit.id };
     localStorage.setItem(FPLAN_KEY, JSON.stringify(fplan));
     fMergeOld("");
     localStorage.setItem(PROFILE_KEY, "meu"); loadFPlan(); loadProfile("meu");
@@ -1547,6 +1552,7 @@ async function fUnshare(sp) {
   } catch (e) { fShared.err = "Não consegui tirar o treino do catálogo: " + e.message + "."; }
   renderChooser();
 }
+const fSig = p => (p && p.workouts || []).map(w => (w.ex || []).map(x => fNm(x.name)).join("|")).join("||");
 function fCatalogSection() {
   const s = el("section", "guide"); s.id = "fshared";
   const items = [];
@@ -1582,7 +1588,7 @@ function fCatalogSection() {
       const b = el("button", "pick fshare-pick"); b.type = "button"; b.id = "fsh-" + x.id;
       const meta = [x.days ? x.days + "× por semana" : "dias livres", x.uses ? "usado por " + x.uses + (x.uses === 1 ? " pessoa" : " pessoas") : ""].filter(Boolean).join(" · ");
       b.append(el("b", null, x.name), el("span", "note muted", x.desc), el("span", "note", meta));
-      const isCur = profileId === "meu" && (cur === x.id || (!!fplan && !!fplan.src && fplan.src === x.sp.plan.src));
+      const isCur = profileId === "meu" && !!fplan && (cur === x.id || fSig(fplan) === fSig(x.sp.plan));
       if (isCur) b.appendChild(el("span", "chip", "Plano atual"));
       else if (x.mine && !x.sp.plan.src) b.appendChild(el("span", "chip", "Você importou"));
       b.addEventListener("click", () => {

@@ -555,103 +555,17 @@ ol.steps a { color: var(--accent); }
 <main id="main"></main>
 
 <script>
-const PLAN_AKIO = [
-  { id: "sup-a", short: "Sup A", name: "Superior A", day: "Segunda", focus: "Largura de costas e peito inferior.", ex: [
-    { id: "a1", name: "Supino com halteres com quadril elevado", note: "Ponte no banco reto: cria o ângulo declinado. Carga por halter.", sets: "3", lo: 6, hi: 10 },
-    { id: "a2", name: "Barra fixa pegada aberta (ou puxada)", sets: "4", lo: 6, hi: 10 },
-    { id: "a3", name: "Paralelas com tronco inclinado à frente", note: "Sem carga: deixe o peso vazio e anote as repetições.", sets: "3", lo: 8, hi: 12 },
-    { id: "a4", name: "Remada unilateral com halter (serrote)", note: "Pegada neutra. Alternativa: remada sentada na polia baixa do cross-over.", sets: "3", lo: 8, hi: 12 },
-    { id: "a5", name: "Crucifixo no cabo, de cima para baixo", sets: "3", lo: 12, hi: 15 },
-    { id: "a6", name: "Elevação lateral no cabo", sets: "4", lo: 12, hi: 20 },
-    { id: "a7", name: "Face pull", sets: "3", lo: 12, hi: 15 }
-  ]},
-  { id: "inf-a", short: "Inf A", name: "Inferior A", day: "Terça", focus: "Quadríceps, com posterior e panturrilha.", ex: [
-    { id: "b1", name: "Agachamento livre ou hack", sets: "4", lo: 6, hi: 10 },
-    { id: "b2", name: "Leg press", sets: "3", lo: 10, hi: 15 },
-    { id: "b3", name: "Agachamento búlgaro", note: "Repetições por perna.", sets: "3", lo: 8, hi: 12 },
-    { id: "b4", name: "Cadeira extensora", sets: "3", lo: 12, hi: 15 },
-    { id: "b5", name: "Mesa flexora", sets: "3", lo: 10, hi: 12 },
-    { id: "b6", name: "Panturrilha em pé", sets: "4", lo: 10, hi: 15 }
-  ]},
-  { id: "sup-b", short: "Sup B", name: "Superior B", day: "Quinta", focus: "Ombros (lateral e posterior), com costas e peito.", ex: [
-    { id: "c1", name: "Desenvolvimento com halteres", sets: "3", lo: 6, hi: 10 },
-    { id: "c2", name: "Puxada frente aberta", sets: "3", lo: 8, hi: 12 },
-    { id: "c3", name: "Supino reto (halteres ou máquina)", sets: "3", lo: 8, hi: 12 },
-    { id: "c4", name: "Pullover no cabo", sets: "3", lo: 12, hi: 15 },
-    { id: "c5", name: "Elevação lateral com halteres", sets: "4", lo: 12, hi: 20 },
-    { id: "c6", name: "Crucifixo invertido (peck deck inverso)", sets: "4", lo: 12, hi: 20 },
-    { id: "c7", name: "Rosca no cabo", sets: "2–3", lo: 10, hi: 15 },
-    { id: "c8", name: "Tríceps no cabo", sets: "2–3", lo: 10, hi: 15 }
-  ]},
-  { id: "inf-b", short: "Inf B", name: "Inferior B", day: "Sexta", focus: "Posteriores de coxa e glúteos.", ex: [
-    { id: "d1", name: "Stiff / levantamento terra romeno", sets: "4", lo: 6, hi: 10 },
-    { id: "d2", name: "Hip thrust", sets: "3", lo: 8, hi: 12 },
-    { id: "d3", name: "Flexora sentada", sets: "3", lo: 10, hi: 15 },
-    { id: "d4", name: "Hack ou belt squat", sets: "3", lo: 10, hi: 12 },
-    { id: "d5", name: "Cadeira adutora", sets: "3", lo: 12, hi: 15 },
-    { id: "d6", name: "Panturrilha sentada", sets: "4", lo: 12, hi: 20 }
-  ]},
-  { id: "sabado", optional: true, short: "Sábado", name: "Sábado opcional", day: "Sábado", focus: "Volume extra de deltoides e braços. Se as pernas ficarem para trás, troque por um terceiro treino de inferiores.", ex: [
-    { id: "e1", name: "Elevação lateral", sets: "4", lo: 12, hi: 20 },
-    { id: "e2", name: "Crucifixo invertido", sets: "3", lo: 12, hi: 20 },
-    { id: "e3", name: "Rosca", sets: "3", lo: 8, hi: 12 },
-    { id: "e4", name: "Tríceps", sets: "3", lo: 8, hi: 12 }
-  ]}
-];
-const PLAN_IRMA = [
-  { id: "t1", short: "T1", name: "Treino 1", day: "Segunda", focus: "Posterior de coxa e glúteo.", ex: [
-    { id: "f1", name: "Cadeira flexora", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "f2", name: "Mesa flexora", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "f3", name: "Stiff com barra", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "f4", name: "Elevação pélvica", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "f5", name: "Cadeira extensora", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "f6", name: "Panturrilha", warm: "1 × 15", sets: "3", lo: 8, hi: 12 }
-  ]},
-  { id: "t2", short: "T2", name: "Treino 2", day: "Terça", focus: "Costas, posterior de ombro e bíceps.", ex: [
-    { id: "g1", name: "Puxada frente no pulley", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "g2", name: "Puxada triângulo", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "g3", name: "Remada pronada na máquina", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "g4", name: "Remada sentada triângulo", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "g5", name: "Crucifixo inverso", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "g6", name: "Rosca direta no cabo", warm: "1 × 15", sets: "3", lo: 8, hi: 12 }
-  ]},
-  { id: "t3", short: "T3", name: "Treino 3", day: "Quarta", focus: "Quadríceps, com estímulo em posterior de coxa e glúteo.", ex: [
-    { id: "h1", name: "Agachamento no Smith", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "h2", name: "Leg press", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "h3", name: "Cadeira extensora", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "h4", name: "Cadeira flexora", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "h5", name: "Elevação pélvica", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "h6", name: "Panturrilha", warm: "1 × 15", sets: "3", lo: 8, hi: 12 }
-  ]},
-  { id: "t4", short: "T4", name: "Treino 4", day: "Quinta", focus: "Ombro, peito e tríceps.", ex: [
-    { id: "i1", name: "Desenvolvimento com halteres", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "i2", name: "Elevação lateral", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "i3", name: "Elevação frontal na corda", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "i4", name: "Crucifixo na máquina", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "i5", name: "Tríceps no pulley", warm: "1 × 15", sets: "3", lo: 8, hi: 12 }
-  ]},
-  { id: "t5", short: "T5", name: "Treino 5", day: "Sexta", focus: "Glúteo, com estímulo em quadríceps e posterior de coxa.", ex: [
-    { id: "j1", name: "Levantamento terra", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "j2", name: "Búlgaro no Smith", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "j3", name: "Elevação pélvica", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "j4", name: "Stiff com barra", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "j5", name: "Cadeira extensora", warm: "1 × 15", sets: "3", lo: 8, hi: 12 },
-    { id: "j6", name: "Panturrilha sentada", warm: "1 × 15", sets: "3", lo: 8, hi: 12 }
-  ]}
-];
-const PROFILES = {
-  akio: { name: "Akio", desc: "Shape em V · Sup A, Inf A, Sup B, Inf B e sábado opcional", plan: PLAN_AKIO, dow: [1, 2, 4, 5], dayTab: { 1: "sup-a", 2: "inf-a", 4: "sup-b", 5: "inf-b", 6: "sabado" }, logsKey: "treino-logs-v1", setKey: "treino-settings-v1" },
-  irma: { name: "Paulo e esposa", desc: "Treinos 1 a 5 · segunda a sexta", plan: PLAN_IRMA, dow: [1, 2, 3, 4, 5], dayTab: { 1: "t1", 2: "t2", 3: "t3", 4: "t4", 5: "t5" }, logsKey: "treino-logs-irma-v1", setKey: "treino-settings-irma-v1" }
-};
+// Os planos de treino ficam na conta de cada pessoa ("Meu plano") e no catálogo do servidor; nada de plano no código.
+const PROFILES = {};
+const NO_PROFILE = { name: "", desc: "", plan: [], dow: [], dayTab: {}, logsKey: "treino-logs-meu-v1", setKey: "treino-settings-meu-v1" };
 const PROFILE_KEY = "treino-perfil";
 let profileId = null;
-let PLAN = PLAN_AKIO;
-function prof() { return PROFILES[profileId] || PROFILES.akio; }
+let PLAN = [];
+function prof() { return PROFILES[profileId] || NO_PROFILE; }
 function readProfile() {
   try {
     const v = localStorage.getItem(PROFILE_KEY);
     if (v && PROFILES[v]) return v;
-    if (localStorage.getItem("treino-logs-v1")) { localStorage.setItem(PROFILE_KEY, "akio"); return "akio"; }
   } catch (e) {}
   return null;
 }
@@ -660,7 +574,6 @@ function useProfile(id) {
   try { localStorage.setItem(PROFILE_KEY, id); } catch (e) {}
   buildTabs();
 }
-const HOWTO = {"a1": "supino com halteres em ponte de glúteo quadril elevado", "a2": "barra fixa pegada aberta execução", "a3": "paralelas para peito execução", "a4": "remada serrote com halter execução", "a5": "crossover polia alta para baixo peito inferior", "a6": "elevação lateral no cabo execução", "a7": "face pull execução", "b1": "agachamento livre execução", "b2": "leg press 45 execução", "b3": "agachamento búlgaro execução", "b4": "cadeira extensora execução", "b5": "mesa flexora execução", "b6": "panturrilha em pé execução", "c1": "desenvolvimento com halteres execução", "c2": "puxada frente aberta execução", "c3": "supino reto com halteres execução", "c4": "pullover no cabo execução", "c5": "elevação lateral com halteres execução", "c6": "crucifixo invertido peck deck execução", "c7": "rosca bíceps no cabo execução", "c8": "tríceps na polia execução", "d1": "stiff levantamento terra romeno execução", "d2": "hip thrust execução", "d3": "flexora sentada execução", "d4": "hack squat execução", "d5": "cadeira adutora execução", "d6": "panturrilha sentada execução", "e1": "elevação lateral com halteres execução", "e2": "crucifixo invertido execução", "e3": "rosca direta execução", "e4": "tríceps na polia execução", "f1": "cadeira flexora execução", "f2": "mesa flexora execução", "f3": "stiff com barra execução", "f4": "elevação pélvica execução", "f5": "cadeira extensora execução", "f6": "panturrilha em pé execução", "g1": "puxada frente no pulley execução", "g2": "puxada com triângulo execução", "g3": "remada pronada na máquina execução", "g4": "remada sentada com triângulo execução", "g5": "crucifixo inverso execução", "g6": "rosca direta no cabo execução", "h1": "agachamento no smith execução", "h2": "leg press 45 execução", "h3": "cadeira extensora execução", "h4": "cadeira flexora execução", "h5": "elevação pélvica execução", "h6": "panturrilha em pé execução", "i1": "desenvolvimento com halteres execução", "i2": "elevação lateral com halteres execução", "i3": "elevação frontal na corda polia execução", "i4": "crucifixo na máquina peck deck execução", "i5": "tríceps no pulley execução", "j1": "levantamento terra execução", "j2": "búlgaro no smith execução", "j3": "elevação pélvica execução", "j4": "stiff com barra execução", "j5": "cadeira extensora execução", "j6": "panturrilha sentada execução"};
 let TABS = [];
 function buildTabs() { TABS = PLAN.map(w => ({ id: w.id, label: w.short })).concat([{ id: "progresso", label: "Progresso" }, { id: "guia", label: "Guia" }]); }
 
@@ -767,7 +680,7 @@ function buildCard(ex, n) {
   box.appendChild(name);
   if (ex.note) { const nt = document.createElement("p"); nt.className = "ex-note"; nt.textContent = ex.note; box.appendChild(nt); }
   const how = document.createElement("a"); how.className = "howto";
-  how.href = "https://www.youtube.com/results?search_query=" + encodeURIComponent(ex.howto || HOWTO[ex.id] || (ex.name + " execução")) + "&sp=EgIQAQ%253D%253D";
+  how.href = "https://www.youtube.com/results?search_query=" + encodeURIComponent(ex.howto || (ex.name + " execução")) + "&sp=EgIQAQ%253D%253D";
   how.target = "_blank"; how.rel = "noopener"; how.textContent = "Ver como fazer ↗";
   box.appendChild(how);
   top.append(num, box);
@@ -926,18 +839,7 @@ function importBackup(file, msg) {
 
 
 /* ---------- Aba Progresso ---------- */
-const GROUP = {
-  a1: "Peito", a2: "Costas", a3: "Peito", a4: "Costas", a5: "Peito", a6: "Ombros", a7: "Ombros",
-  b1: "Quadríceps", b2: "Quadríceps", b3: "Quadríceps", b4: "Quadríceps", b5: "Posteriores", b6: "Panturrilhas",
-  c1: "Ombros", c2: "Costas", c3: "Peito", c4: "Costas", c5: "Ombros", c6: "Ombros", c7: "Bíceps", c8: "Tríceps",
-  d1: "Posteriores", d2: "Glúteos", d3: "Posteriores", d4: "Quadríceps", d5: "Glúteos", d6: "Panturrilhas",
-  e1: "Ombros", e2: "Ombros", e3: "Bíceps", e4: "Tríceps",
-  f1: "Posteriores", f2: "Posteriores", f3: "Posteriores", f4: "Glúteos", f5: "Quadríceps", f6: "Panturrilhas",
-  g1: "Costas", g2: "Costas", g3: "Costas", g4: "Costas", g5: "Ombros", g6: "Bíceps",
-  h1: "Quadríceps", h2: "Quadríceps", h3: "Quadríceps", h4: "Posteriores", h5: "Glúteos", h6: "Panturrilhas",
-  i1: "Ombros", i2: "Ombros", i3: "Ombros", i4: "Peito", i5: "Tríceps",
-  j1: "Posteriores", j2: "Glúteos", j3: "Glúteos", j4: "Posteriores", j5: "Quadríceps", j6: "Panturrilhas"
-};
+const GROUP = {}; // preenchido pelo plano da conta (cada exercício traz o seu grupo muscular)
 const GROUPS = ["Peito", "Costas", "Ombros", "Bíceps", "Tríceps", "Quadríceps", "Posteriores", "Glúteos", "Panturrilhas"];
 const MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 const DOW_NAMES = ["domingos", "segundas", "terças", "quartas", "quintas", "sextas", "sábados"];
@@ -1197,19 +1099,8 @@ const GUIDE_COMMON = [
   ["Nível", "Você sobe de nível a cada 5 dias de treino registrados. A barra no topo mostra quanto falta para o próximo."],
   ["Seus registros", "As cargas e repetições ficam salvas no aparelho e, se você entrar na sua conta, na nuvem. Cada pessoa tem os próprios registros. Sem conta, faça um backup de vez em quando."]
 ];
-// ETAPA 2: GUIDE_AKIO, GUIDE_IRMA, PLAN_AKIO, PLAN_IRMA, HOWTO e os ids a1..j6 de GROUP saem do código depois que as contas migrarem
-const GUIDE_AKIO = [["Como cada objetivo foi atendido", [
-  ["Shape em V", "O V vem de dorsais largos e deltoides laterais grandes contra uma cintura estreita. Por isso há elevação lateral 2 a 3 vezes por semana e puxadas em pegada aberta."],
-  ["Oblíquos", "Não há treino direto de abdome, porque os compostos já trabalham o core. Evite flexão lateral com carga. A largura da cintura depende mais do percentual de gordura e da estrutura óssea do que dos oblíquos."],
-  ["Ombros projetados para frente", "Face pull, crucifixo invertido e remadas fortalecem o deltoide posterior e a parte média das costas. Inclua alongamento de peitoral e mobilidade torácica no aquecimento. Se houver dor, procure um fisioterapeuta."],
-  ["Peito inferior", "Supino com quadril elevado, paralelas e crucifixo de cima para baixo seguem a direção das fibras da porção inferior do peitoral."],
-  ["Pernas", "São 2 treinos completos por semana, com volume igual ao dos superiores."]]]];
-const GUIDE_IRMA = [
-  ["Aquecimento", "Antes das séries de trabalho de cada exercício, faça 1 série de aquecimento de 15 repetições com carga leve. Ela não entra nas séries que você anota."],
-  ["Progressão", "Leve cada série de trabalho até 0–2 repetições da falha. Quando bater 12 repetições em todas as séries, aumente a carga. O app mostra \"Suba a carga\" quando isso acontece. Anote também quantas séries fez: elas alimentam o gráfico da aba Progresso."]];
 function renderGuide(main) {
-  let sections = profileId === "irma" ? [["Semana", null, PLAN_IRMA.map(w => [w.day, w.name + ": " + w.focus.replace(/\.$/, "")]).concat([["Sábado", "Descanso"], ["Domingo", "Descanso"]])]].concat(GUIDE_IRMA, GUIDE_COMMON.filter(x => x[0] !== "Progressão"))
-    : [["Semana", null, [["Segunda", "Superior A: largura de costas + peito inferior"], ["Terça", "Inferior A: quadríceps"], ["Quarta", "Descanso ou aeróbico"], ["Quinta", "Superior B: ombros + costas + peito"], ["Sexta", "Inferior B: posteriores e glúteos"], ["Sábado", "Opcional: deltoides e braços"], ["Domingo", "Descanso"]]]].concat(GUIDE_AKIO, GUIDE_COMMON);
+  let sections = GUIDE_COMMON.slice();
   if (profileId === "meu" && fplan) {
     const order = [1, 2, 3, 4, 5, 6, 0], rows = [];
     const wl = w => { const f = (w.focus || "").replace(/\.$/, ""); return w.name + (f && !fNm(w.name).includes(fNm(f)) ? ": " + f : ""); };
@@ -1257,7 +1148,7 @@ function renderGuide(main) {
 }
 
 function renderChooser() {
-  fSerial(fPublish);
+  fSerial(fPublish); fLateMigrate();
   document.getElementById("tabs").innerHTML = "";
   const main = document.getElementById("main"); main.innerHTML = "";
   const head = el("div", "wk-head");
@@ -1537,7 +1428,7 @@ async function fLoadShared(force) {
     const seen = new Set(); // o servidor já junta treinos iguais; aqui é só garantia
     fShared.list = (r.plans || []).filter(p => !p.hash || !seen.has(p.hash) && seen.add(p.hash)).map(p => { try { const plan = fClean(JSON.parse(p.data)); return plan.workouts.length ? { id: p.id, mine: !!p.mine, uses: Number(p.uses) || 0, plan } : null; } catch (e) { return null; } }).filter(Boolean);
     fShared.canMod = !!r.canModerate; fShared.err = "";
-    if (localStorage.getItem("stek-cat-seed") !== "1") { fShared.loading = false; await fSerial(fSeed); await fSerial(fPublish); if (fShared.list === null) return fLoadShared(true); }
+
   } catch (e) {
     if (e.status === 401) cloudExpired();
     fShared.list = []; fShared.err = e.status === 404 ? "O catálogo ainda não está ativo no servidor: falta atualizar o Worker." : "Não deu para carregar os treinos importados agora. Tente de novo mais tarde.";
@@ -1560,30 +1451,48 @@ async function fPublish() {
   fPublish.busy = false;
 }
 
-// Planos que antes ficavam no código (Akio e Paulo e esposa): viram o "Meu plano" de quem usa, com os mesmos ids de
-// exercício (o histórico continua) e entram no catálogo. Depois que as contas migrarem, os dados saem do código (etapa 2).
-const F_LEGACY = { akio: { name: "Shape em V", catName: "Shape em V – superior e inferior", logs: "treino-logs-v1", set: "treino-settings-v1", guide: () => GUIDE_AKIO },
-  irma: { name: "Paulo e esposa", catName: "Treinos 1 a 5 – segunda a sexta", logs: "treino-logs-irma-v1", set: "treino-settings-irma-v1", guide: () => GUIDE_IRMA } };
-function fBuiltinPlan(id, mine) {
-  const P = PROFILES[id], L = F_LEGACY[id];
-  const workouts = P.plan.map(w => {
-    const days = Object.keys(P.dayTab).filter(d => P.dayTab[d] === w.id).map(Number).sort((a, b) => a - b);
-    return { id: w.id, short: w.short, name: w.name, days, day: listPt(days.map(d => F_DAY[d])), focus: w.focus, optional: !!w.optional,
-      ex: w.ex.map(x => ({ id: x.id, name: x.name, note: x.note || "", sets: x.sets, lo: x.lo, hi: x.hi, reps: x.lo + " a " + x.hi, rest: "", warm: x.warm || "", group: GROUP[x.id] || fGroup(x.name), howto: HOWTO[x.id] || "" })) };
-  });
-  const out = { upd: Date.now(), name: mine ? L.name : L.catName, catName: L.catName, note: "", workouts, src: "app-" + id };
-  if (mine) { out.from = id; out.guide = JSON.parse(JSON.stringify(L.guide())); out.migDay = todayISO(); }
-  return out;
+// Contas que ainda usavam um dos planos que antes vinham no código: o plano vem do catálogo (com os mesmos ids de
+// exercício, então o histórico continua) e os registros antigos são juntados no "Meu plano".
+const F_LEGACY = { akio: { logs: "treino-logs-v1", set: "treino-settings-v1", src: "app-akio" }, irma: { logs: "treino-logs-irma-v1", set: "treino-settings-irma-v1", src: "app-irma" } };
+function fLegacyId() {
+  let p = null; try { p = localStorage.getItem(PROFILE_KEY); if (!p && localStorage.getItem("treino-logs-v1")) p = "akio"; } catch (e) {}
+  return F_LEGACY[p] ? p : null;
 }
 function fMigrateLegacy() {
-  let p = null; try { p = localStorage.getItem(PROFILE_KEY); } catch (e) {}
-  let changed = false;
-  if (F_LEGACY[p]) {
-    if (!(fplan && fplan.from === p)) { fplan = fBuiltinPlan(p, true); try { localStorage.setItem(FPLAN_KEY, JSON.stringify(fplan)); } catch (e) {} changed = true; }
-    try { localStorage.setItem(PROFILE_KEY, "meu"); } catch (e) {}
-    loadFPlan();
-  }
-  if (fplan && F_LEGACY[fplan.from]) fMergeOld(fplan.from, changed ? "" : fplan.migDay || "");
+  const p = fLegacyId();
+  if (p && fplan && fplan.from === p) { try { localStorage.setItem(PROFILE_KEY, "meu"); } catch (e) {} loadFPlan(); }
+  if (fplan && F_LEGACY[fplan.from]) fMergeOld(fplan.from, fplan.migDay || "");
+}
+async function fLateMigrate() {
+  const p = fLegacyId();
+  if (!p || (fplan && fplan.from === p) || !loggedIn() || fLateMigrate.busy) return;
+  fLateMigrate.busy = true;
+  try {
+    const r = await cloudFetch("GET", "/plans?kind=treino");
+    let hit = null; (r.plans || []).some(x => { try { const d = JSON.parse(x.data); if (d && d.src === F_LEGACY[p].src) { hit = { id: x.id, d }; return true; } } catch (e) {} return false; });
+    if (!hit || fLegacyId() !== p || (fplan && fplan.from === p)) return;
+    const str = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n), okId = v => /^[a-z0-9-]{1,40}$/.test(String(v || ""));
+    const workouts = (hit.d.workouts || []).slice(0, 12).map((w, i) => {
+      const used = new Set(), days = [...new Set((w.days || []).map(Number).filter(d => d >= 0 && d <= 6))].sort((a, b) => a - b);
+      const ex = (w.ex || []).slice(0, 40).map(x => {
+        const e = fMakeEx({ name: str(x.name, 80), sets: str(x.sets, 10), reps: str(x.reps, 30), rest: str(x.rest, 20), obs: str(x.note, 160) }, used);
+        if (okId(x.id)) e.id = x.id;
+        if (GROUPS.includes(x.group)) e.group = x.group;
+        if (x.warm) e.warm = str(x.warm, 20);
+        if (x.howto) e.howto = str(x.howto, 120);
+        return e;
+      }).filter(e => e.name);
+      return { id: okId(w.id) ? w.id : "tr-" + (i + 1), short: str(w.short, 14) || str(w.name, 14), name: str(w.name, 60), days, day: listPt(days.map(d => F_DAY[d])), focus: str(w.focus, 120), optional: !!w.optional || !days.length, ex };
+    }).filter(w => w.ex.length);
+    if (!workouts.length) return;
+    fplan = { upd: Date.now(), name: str(hit.d.name, 80) || "Meu plano", note: "", workouts, src: F_LEGACY[p].src, from: p, migDay: todayISO(), pubId: hit.id };
+    localStorage.setItem(FPLAN_KEY, JSON.stringify(fplan));
+    fMergeOld(p, "");
+    localStorage.setItem(PROFILE_KEY, "meu"); loadFPlan(); loadProfile("meu");
+    cloudFetch("POST", "/plans/" + hit.id + "/use", {}).catch(() => {});
+    if (state.view === "forca") enterForca();
+  } catch (e) {}
+  finally { fLateMigrate.busy = false; }
 }
 // junta os registros do plano antigo no plano novo; o que já está no plano novo prevalece. Depois da migração,
 // só traz dias a partir dela (registros feitos num aparelho que ainda estava com a versão anterior do app).
@@ -1602,22 +1511,6 @@ function fMergeOld(from, minDay) {
   let cs = false; sn.goals = sn.goals || {};
   ["days", "goals"].forEach(k => { Object.keys(so[k] || {}).forEach(m => { sn[k] = sn[k] || {}; if (!(m in sn[k])) { sn[k][m] = so[k][m]; cs = true; } }); });
   if (cs) try { localStorage.setItem("treino-settings-meu-v1", JSON.stringify(sn)); } catch (e) {}
-}
-// coloca os dois planos antigos no catálogo (uma vez por aparelho; não conta como uso)
-async function fSeed() {
-  if (!loggedIn() || fSeed.busy) return;
-  try { if (localStorage.getItem("stek-cat-seed") === "1") return; } catch (e) { return; }
-  fSeed.busy = true;
-  try {
-    for (const id of Object.keys(F_LEGACY)) { const b = fBuiltinPlan(id, false); await cloudFetch("POST", "/plans", { kind: "treino", name: b.catName, seed: true, data: JSON.stringify({ name: b.catName, note: "", workouts: b.workouts, src: b.src }) }); }
-    localStorage.setItem("stek-cat-seed", "1"); fShared.list = null;
-  } catch (e) {}
-  fSeed.busy = false;
-}
-function fAdoptBuiltin(id) {
-  fplan = fBuiltinPlan(id, false);
-  try { localStorage.setItem(FPLAN_KEY, JSON.stringify(fplan)); } catch (e) {}
-  loadFPlan(); startProfile("meu");
 }
 function fAdopt(sp) {
   const c = fClean(sp.plan);
@@ -1640,12 +1533,10 @@ function fCatalogSection() {
   (fShared.list || []).forEach(sp => items.push({ sp, id: sp.id, name: sp.plan.name || "Plano", desc: fDesc(sp.plan.workouts), uses: sp.uses || 0, mine: sp.mine,
     days: new Set(sp.plan.workouts.flatMap(w => w.optional ? [] : w.days)).size,
     text: fNm([sp.plan.name].concat(sp.plan.workouts.map(w => w.name + " " + w.focus + " " + w.ex.map(x => x.name).join(" "))).join(" ")) }));
-  ["akio", "irma"].filter(id => !(fShared.list || []).some(sp => sp.plan.src === "app-" + id)).forEach(id => { const P = PROFILES[id]; items.push({ pid: id, id, name: F_LEGACY[id].catName, desc: P.desc.replace(/^Shape em V · /, ""), uses: null, days: P.dow.length,
-    text: fNm([P.name, P.desc].concat(P.plan.map(w => w.name + " " + w.focus + " " + w.ex.map(x => x.name).join(" "))).join(" ")) }); });
   s.appendChild(el("h3", null, "Catálogo de treinos"));
-  s.appendChild(el("p", "note muted", items.length + " treinos para escolher. Todo treino que alguém importa entra aqui, e escolher um copia o plano para você, com os seus próprios registros."));
-  if (!loggedIn()) s.appendChild(el("p", "note muted", "Entre na sua conta para ver também os treinos que as outras pessoas importaram."));
-  else if (!fShared.list) { s.appendChild(el("p", "note muted", "Carregando os treinos importados…")); fLoadShared(); }
+  if (!loggedIn()) { s.appendChild(el("p", "note muted", "Entre na sua conta para ver os treinos do catálogo. Todo treino que alguém importa entra aqui, e escolher um copia o plano para você, com os seus próprios registros.")); return s; }
+  s.appendChild(el("p", "note muted", (fShared.list ? items.length + (items.length === 1 ? " treino para escolher. " : " treinos para escolher. ") : "") + "Todo treino que alguém importa entra aqui, e escolher um copia o plano para você, com os seus próprios registros."));
+  if (!fShared.list) { s.appendChild(el("p", "note muted", "Carregando os treinos do catálogo…")); fLoadShared(); }
   if (fShared.err) { const m = el("p"); flash(m, fShared.err, "err"); s.appendChild(m); }
   // busca e filtro por dias de treino na semana
   const q = el("input"); q.id = "fcat-q"; q.type = "search"; q.placeholder = "Buscar por nome ou exercício (ex.: glúteo, supino)"; q.value = fShared.q || "";
@@ -1668,21 +1559,20 @@ function fCatalogSection() {
     if (!shown.length) { box.appendChild(el("p", "note muted", "Nenhum treino com esse filtro.")); return; }
     shown.forEach(x => {
       const row = el("div", "fshare");
-      const b = el("button", "pick fshare-pick"); b.type = "button"; b.id = x.pid ? "pick-" + x.pid : "fsh-" + x.id;
-      const meta = [x.days ? x.days + "× por semana" : "dias livres"].concat(x.pid ? ["plano do app"] : [x.uses ? "usado por " + x.uses + (x.uses === 1 ? " pessoa" : " pessoas") : ""]).filter(Boolean).join(" · ");
+      const b = el("button", "pick fshare-pick"); b.type = "button"; b.id = "fsh-" + x.id;
+      const meta = [x.days ? x.days + "× por semana" : "dias livres", x.uses ? "usado por " + x.uses + (x.uses === 1 ? " pessoa" : " pessoas") : ""].filter(Boolean).join(" · ");
       b.append(el("b", null, x.name), el("span", "note muted", x.desc), el("span", "note", meta));
-      const isCur = x.pid ? profileId === "meu" && !!fplan && fplan.src === "app-" + x.pid : profileId === "meu" && (cur === x.id || (!!fplan && !!fplan.src && fplan.src === x.sp.plan.src));
+      const isCur = profileId === "meu" && (cur === x.id || (!!fplan && !!fplan.src && fplan.src === x.sp.plan.src));
       if (isCur) b.appendChild(el("span", "chip", "Plano atual"));
-      else if (x.mine && !(x.sp && x.sp.plan.src)) b.appendChild(el("span", "chip", "Você importou"));
+      else if (x.mine && !x.sp.plan.src) b.appendChild(el("span", "chip", "Você importou"));
       b.addEventListener("click", () => {
-        if (x.pid) { fAdoptBuiltin(x.pid); return; }
         if (isCur) { startProfile("meu"); return; }
         if (fplan && fShared.confirm !== x.id) { fShared.confirm = x.id; draw(); return; }
         fAdopt(x.sp);
       });
       row.appendChild(b);
       if (fShared.confirm === x.id) row.appendChild(el("p", "note", "Seu plano atual (" + fplan.name + ") será trocado por este. Os registros continuam salvos, e exercício com o mesmo nome mantém o histórico. Toque de novo no treino para confirmar."));
-      if (!x.pid && fShared.canMod) {
+      if (fShared.canMod) {
         const rm = el("button", "linkbtn", fShared.rm === x.id ? "Confirmar: tirar do catálogo" : "Tirar do catálogo"); rm.type = "button"; rm.id = "fsh-rm-" + x.id;
         rm.addEventListener("click", () => { if (fShared.rm !== x.id) { fShared.rm = x.id; draw(); return; } fUnshare(x.sp); });
         row.appendChild(rm);
@@ -6213,7 +6103,7 @@ function applyRemote(items, keepLast) {
   saveCloud(); reloadAllState();
 }
 function reloadAllState() {
-  loadIntel(); loadFin(); loadStamina(); loadGraca(); loadMs(); loadPerfil(); loadRotina(); loadFPlan(); fMigrateLegacy();
+  loadIntel(); loadFin(); loadStamina(); loadGraca(); loadMs(); loadPerfil(); loadRotina(); loadFPlan(); fMigrateLegacy(); fLateMigrate();
   const p = readProfile();
   if (p) { if (p !== profileId || p === "meu") useProfile(p); state.logs = {}; loadLogs(); loadSettings(); }
   rerenderView();
@@ -6485,7 +6375,7 @@ history.replaceState(null, "", "#inicio");
 renderHome();
 if (startHash.startsWith("#tarefa-")) rtGoTaskHash(startHash);
 updateAcct();
-cloudStartup().then(() => { fSerial(fSeed); fSerial(fPublish); });
+cloudStartup().then(() => { fLateMigrate(); fSerial(fPublish); });
 if ("serviceWorker" in navigator) {
   // Atualização: confere se há versão nova ao abrir e ao voltar para o app; quando a nova assume, recarrega uma vez.
   const hadController = !!navigator.serviceWorker.controller; let reloaded = false;

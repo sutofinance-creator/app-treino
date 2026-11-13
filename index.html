@@ -1253,100 +1253,6 @@ function renderChooser() {
 }
 
 
-/* ---------- Inteligência: plano de estudos importado (PDFs de 11/11/2026) ---------- */
-/* plano: data -> [quantidade, o que fazer, teoria do dia] */
-const STUDY_PRESET = [
-  { id: "an2", name: "Análise 2", unit: "exercicios", total: 152, base: 7, exams: ["2026-12-04", "2026-12-11"],
-    note: "Meta: terminar as listas até 27/11. 28/11 a 03/12: revisão e simulado. Perdeu um dia: espalhe os exercícios dele pelos 3 dias seguintes (cerca de +3 por dia).",
-    plan: {
-      "2026-11-11": [9, "§3.1: 24, 23, 1, 2(a), 2(b), 3, 4, 5, 6(a)", ""],
-      "2026-11-12": [9, "§3.1: 6(b), 10, 11, 12, 13, 14, 19, 20, 21", ""],
-      "2026-11-13": [9, "§3.1: 25, 26 · AE2 (1) · Lista 1: (1), (2), (3), (4), (9a), (9b)", ""],
-      "2026-11-14": [9, "Lista 1: (5), (6), (7), (8), (10a), (10b), (11), (12a), (12b)", ""],
-      "2026-11-15": [8, "Lista 1: (12c), (12d), (14) · Lipschitz: afirmações 1 a 5", "Def. 4 (Lipschitz)"],
-      "2026-11-16": [7, "Exerc. 12, 13, 18, 19 · Props. 23, 24, 25", "Lema 14; Props. 20, 21, 22"],
-      "2026-11-17": [10, "§3.3: 1(a), 1(b), 1(c) · Lista 1, parte 2: (2), (3), (4), (5), (7), (8) · AE2 (9)", ""],
-      "2026-11-18": [8, "Exerc. 36: 1 a 4 · Exerc. 38: 1 a 4", "Defs. 35/37; Props. 40, 42, 43"],
-      "2026-11-19": [10, "Exerc. 38: 5, 6 · §4.1: 1 a 4 · Exerc. 34: 1, 2 · Lista 2: (4), (5)", "Lema 30; Cor. 33"],
-      "2026-11-20": [8, "AE item 6 (cos xyz) · AE item 7 (xⁿyᵐ/(x²+y²)) · Lista 2: (6), (7a), (7b), (7c) · AE2 (6), (8)", "Props. 45, 50"],
-      "2026-11-21": [8, "Lista 2: (1), (2), (3) · Exerc. 62: 1 a 5", "Props. 51, 54, 57 (regra da cadeia)"],
-      "2026-11-22": [8, "Provas dos Teoremas 1 e 2 · \"Selecione os candidatos\" 1 a 6", "Prop. 78 (Taylor); Teorema 92"],
-      "2026-11-23": [9, "Exemplo 4 (x³+y³−3x−3y+4) · Ex. 1: (a) a (h)", ""],
-      "2026-11-24": [8, "Ex. 1: (i), (j), (l), (m) · Teo. 92, caso fₓₓ = 0 (2 funções) · Ex. 2 · Ex. 20", ""],
-      "2026-11-25": [9, "Ex. 3: (a) a (e) · Ex. 15: (a) a (d)", ""],
-      "2026-11-26": [7, "Ex. 16: (a), (b) · Compactos: Exemplo 1, Exemplo 2, itens 2, 3, 4", ""],
-      "2026-11-27": [9, "Ex. 10, Ex. 11, caixa sem tampa · Afirmações (1) a (6)", ""],
-      "2026-11-28": [0, "", "Revisão e simulado"],
-      "2026-11-29": [0, "", "Revisão e simulado"],
-      "2026-11-30": [0, "", "Revisão e simulado"],
-      "2026-12-01": [0, "", "Revisão e simulado"],
-      "2026-12-02": [0, "", "Revisão e simulado"],
-      "2026-12-03": [0, "", "Revisão e simulado"]
-    } },
-  { id: "calc2", name: "Cálculo 2", unit: "exercicios", total: 139, base: 27, countFrom: "2026-11-13", planRev: 2, exams: ["2026-12-08"],
-    note: "Plano refeito em 13/11: 112 questões selecionadas das Listas 1 a 12, todas cobertas até 29/11; matéria toda vista até 01/12 e revisão de 02/12 a 07/12. Dias com teoria nova têm menos questões. Se atrasar: use a folga de 29/11 a 01/12 (cabe cerca de 25 questões); se ainda faltar, corte as últimas questões de cada lista, mas nunca pule a teoria. Reserva (se sobrar tempo): L1: 13(c), 13(e) · L2: 9(k), 17(b), 20 · L3: 2(b), 9 · L4: 6(d), 12 · L5: 13(c), 17 · L6: 8(b), 14(b), 21 · L8: 3(f), 9(b) · L9: 6(g), 21, 26(b) · L10: 2(g), 6(e) · L11: 12, 15(b) · L12: 21(b), 22, 24.",
-    plan: {
-      "2026-11-13": [6, "L1: 8(d), 9(d), 10(a), 10(c), 12, 14 (fecha L1)", ""],
-      "2026-11-14": [15, "L2: 1, 2(b), 2(d), 2(e), 2(f), 4, 6(d), 7, 12, 14, 16, 19 (fecha L2) · L3: 1(d), 2(a), 2(c)", ""],
-      "2026-11-15": [15, "L3: 4(a), 5(c), 6, 10, 12 (fecha L3) · L4: 2(a), 3, 10(b), 11(b), 14, 15(a), 15(b), 17(a), 17(b), 18 (fecha L4)", ""],
-      "2026-11-16": [3, "L5: 2, 4(a), 5(a)", "L5"],
-      "2026-11-17": [5, "L5: 5(b), 10, 15, 19, 20 (fecha L5)", "L6 (Taylor)"],
-      "2026-11-18": [3, "L6: 1(c), 3(a), 6(b)", "L6 (máximos, mínimos, compactos)"],
-      "2026-11-19": [6, "L6: 6(e), 7, 13, 15(b), 16(c), 19", ""],
-      "2026-11-20": [3, "L6: 24 (fecha L6) · L7: 1(b), 1(d)", "L7"],
-      "2026-11-21": [10, "L7: 2, 4, 6, 7 (fecha L7) · L8: 3(d), 6(a), 6(c), 7(f), 8(c), 10", "L8"],
-      "2026-11-22": [10, "L8: 12(c), 13(d), 14(b), 15 (fecha L8) · L9: 3(c), 4(b), 4(d), 8, 9(b), 14", "L9"],
-      "2026-11-23": [6, "L9: 17, 19, 23, 24, 28(c), 30 (fecha L9)", ""],
-      "2026-11-24": [3, "L10: 3, 5(c), 9(c)", "L10"],
-      "2026-11-25": [6, "L10: 10(a), 11, 13, 15, 16, 18(a) (fecha L10)", ""],
-      "2026-11-26": [3, "L11: 5(b), 6(a), 7", "L11"],
-      "2026-11-27": [6, "L11: 8(c), 9(a), 10(d), 10(e), 11(b), 16 (fecha L11)", ""],
-      "2026-11-28": [10, "L12: 1(a), 3(d), 5(c), 6, 9, 11(b), 13(d), 14(b), 18(c), 18(i)", "L12"],
-      "2026-11-29": [2, "L12: 19, 20 (fecha L12) · resto do dia é folga", ""],
-      "2026-11-30": [0, "", "Folga: recuperar atrasos ou fazer questões da reserva"],
-      "2026-12-01": [0, "", "Folga: recuperar atrasos ou fazer questões da reserva"],
-      "2026-12-02": [0, "", "Revisão: resolução da P1 (Resolução P1-MAN-2026.pdf)"],
-      "2026-12-03": [0, "", "Revisão: refazer as questões do plano em que houve dúvida, Listas 1 a 6"],
-      "2026-12-04": [0, "", "Revisão: refazer as questões em que houve dúvida, Listas 7 a 9"],
-      "2026-12-05": [0, "", "Revisão: refazer as questões em que houve dúvida, Listas 10 a 12"],
-      "2026-12-06": [0, "", "Revisão: teoremas e demonstrações mais usados nas listas"],
-      "2026-12-07": [0, "", "Revisão leve e descanso"]
-    } },
-  { id: "fvc", name: "FVC", unit: "exercicios", total: 50, base: 38, exams: ["2026-12-11"],
-    note: "Lista 3 - Variáveis Complexas: 1 item a cada 2 dias, com o dia entre eles para a teoria. Se um dia falhar, use o dia de teoria seguinte para recuperar.",
-    plan: {
-      "2026-11-11": [1, "Ex. 7 (fechar dúvidas): integrais em duas curvas encaixadas", ""],
-      "2026-11-12": [0, "", "Séries de potências: raio de convergência"],
-      "2026-11-13": [1, "Ex. 1a: soma de (n+1)zⁿ, |z| < 1", ""],
-      "2026-11-14": [0, "", "Derivação termo a termo"],
-      "2026-11-15": [1, "Ex. 1b: soma de nzⁿ, |z| < 1", ""],
-      "2026-11-16": [0, "", "Derivação termo a termo"],
-      "2026-11-17": [1, "Ex. 1c: soma de z^(n−1)/4^(n+1), 0 < |z| < 4", ""],
-      "2026-11-18": [0, "", "Série de Laurent: expansão num anel e unicidade"],
-      "2026-11-19": [1, "Ex. 2a: série de (z+1)/(z−1) em torno de 0", ""],
-      "2026-11-20": [0, "", "Série de Laurent: expansão num anel e unicidade"],
-      "2026-11-21": [1, "Ex. 2b: série de z/((z−1)(z−3)) em potências de (z−3), no anel", ""],
-      "2026-11-22": [0, "", "Integral sobre caminhos, primitiva e ramos do logaritmo"],
-      "2026-11-23": [1, "Ex. 4a: integral de dz/z de −2i a 2i, caminho em x > 0", ""],
-      "2026-11-24": [0, "", "Teorema de Cauchy e fórmula integral de Cauchy"],
-      "2026-11-25": [1, "Ex. 4b: a mesma integral, caminho em x < 0", ""],
-      "2026-11-26": [0, "", "Teorema de Cauchy e fórmula integral de Cauchy"],
-      "2026-11-27": [1, "Ex. 6a: integral de 1/(z²+4) em |z−i| = 2", ""],
-      "2026-11-28": [0, "", "Fórmula integral de Cauchy para derivadas"],
-      "2026-11-29": [1, "Ex. 6b: integral de 1/(z²+4)² em |z−i| = 2", ""],
-      "2026-11-30": [0, "", "Curvas com dois pontos singulares no interior; frações parciais"],
-      "2026-12-01": [1, "Ex. 6c: integral de e^(iz)/(z+i) em |z−1| = 2", ""],
-      "2026-12-02": [0, "", "Curvas com dois pontos singulares no interior; frações parciais"],
-      "2026-12-03": [1, "Ex. 6d: integral de (sen πz² + cos πz²)/((z−1)(z−2)) em |z| = 3", ""],
-      "2026-12-05": [0, "", "Revisão: refazer sem consulta um item de cada bloco da Lista 1 (módulo, raízes, Cauchy-Riemann)"],
-      "2026-12-06": [0, "", "Revisão: refazer sem consulta um item de cada bloco da Lista 1 (módulo, raízes, Cauchy-Riemann)"],
-      "2026-12-07": [0, "", "Revisão: refazer um item de cada bloco da Lista 2 (funções elementares, logaritmo, ramos)"],
-      "2026-12-08": [0, "", "Revisão: refazer um item de cada bloco da Lista 2 (funções elementares, logaritmo, ramos)"],
-      "2026-12-09": [0, "", "Revisão: refazer os exercícios 5 e 6 da Lista 3 (fórmula integral de Cauchy)"],
-      "2026-12-10": [0, "", "Revisão: dúvidas que se repetiram (módulo, argumento, derivadas parciais) e descanso"]
-    } }
-];
-
 /* ---------- Inteligência: dados ---------- */
 const INTEL_KEY = "stek-intel-v1";
 const UNITS = { exercicios: ["exercício", "exercícios"], modulos: ["módulo", "módulos"], aulas: ["aula", "aulas"], licoes: ["lição", "lições"], paginas: ["página", "páginas"], capitulos: ["capítulo", "capítulos"] };
@@ -1359,20 +1265,14 @@ function loadIntel() {
   try { const v = JSON.parse(localStorage.getItem(INTEL_KEY)); intel = v && Array.isArray(v.subjects) ? v : null; } catch (e) { intel = null; }
   if (intel) { intel.days = intel.days || {}; intel.goals = intel.goals || { week: 2, weekend: 4 }; migrateIntelPlans(); }
 }
-// Planos refeitos: substitui o cronograma de quem já tinha a matéria do preset (o histórico de dias fica intacto)
-function migrateIntelPlans() {
-  if (!intel) return false;
-  const nm = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-  let changed = false;
-  STUDY_PRESET.filter(p => p.planRev).forEach(p => {
-    const s = intel.subjects.find(x => x.id === p.id) || intel.subjects.find(x => x.plan && !x.src && nm(x.name) === nm(p.name));
-    if (!s || s.src === "pdf" || (s.planRev || 1) >= p.planRev) return; // plano que a pessoa importou de um PDF nunca é trocado
-    // countFrom: o que foi feito antes do novo plano já está em "base" (ex.: 27 de 139); dali em diante conta o registrado no app
-    Object.assign(s, { total: p.total, base: p.base, countFrom: p.countFrom, exams: p.exams.slice(), note: p.note, plan: JSON.parse(JSON.stringify(p.plan)), planRev: p.planRev });
-    delete s.goal; changed = true;
+// O plano pronto saiu do código (cada um importa o próprio PDF). Se um aparelho ainda tiver o Cálculo 2 no cronograma antigo
+// (de antes de 13/11) e a sincronização não trouxer o novo, o app avisa para importar o PDF dele.
+function migrateIntelPlans() { return false; }
+function intelStale() { return intel ? intel.subjects.filter(x => x.id === "calc2" && !x.src && (x.planRev || 1) < 2) : []; }
+function intelStaleNote(main) {
+  intelStale().forEach(x => {
+    const m = el("p"); flash(m, "O cronograma de " + x.name + " ainda é o antigo. Para usar o novo, importe o PDF dele em Matérias, no quadro “Importar plano de um PDF”. O que você já registrou continua salvo.", "err"); m.id = "intel-stale"; main.appendChild(m);
   });
-  if (changed) saveIntel();
-  return changed;
 }
 /* ---------- Inteligência: ler o cronograma de um PDF (feito no aparelho, sem enviar o arquivo) ---------- */
 // Entrada: páginas com os pedaços de texto e suas posições (como o pdf.js entrega). Saída: plano por dia.
@@ -1578,7 +1478,7 @@ function pdfExamDates(txt, ref) {
 }
 function pdfApply() {
   const P = pdfImp, r = P.res;
-  if (!intel) createIntel(false);
+  if (!intel) createIntel();
   const data = { name: (P.name || "").trim() || r.name, unit: P.unit, base: P.base, total: P.total ? Math.max(P.total, P.base + r.sum) : 0,
     countFrom: r.days[0], exams: P.exams.slice(), note: r.note || "", plan: JSON.parse(JSON.stringify(r.plan)), src: "pdf" };
   let s = P.target !== "new" && intel.subjects.find(x => x.id === P.target);
@@ -1674,8 +1574,8 @@ function saveIntel() {
   try { localStorage.setItem(INTEL_KEY, JSON.stringify(intel)); setStatus("Salvo no celular", "ok"); }
   catch (e) { setStatus("Não foi possível salvar neste navegador", "err"); }
 }
-function createIntel(withPreset) {
-  intel = { version: 1, goals: { week: 2, weekend: 4 }, subjects: withPreset ? JSON.parse(JSON.stringify(STUDY_PRESET)) : [], days: {}, timer: null };
+function createIntel() {
+  intel = { version: 1, goals: { week: 2, weekend: 4 }, subjects: [], days: {}, timer: null };
   saveIntel();
 }
 function unitWord(sub, n) { const u = UNITS[sub.unit] || UNITS.exercicios; return n === 1 ? u[0] : u[1]; }
@@ -1814,13 +1714,10 @@ function renderIntelSetup() {
   head.append(el("h2", null, "Inteligência"), el("p", null, "Como você quer começar? Dá para editar as matérias depois, na aba Matérias."));
   main.appendChild(head);
   main.appendChild(pdfImportSection(renderIntelSetup, sub => enterIntel("estudo", sub.id)));
-  (isOwner() ? [["preset", "Importar meu plano de estudos", "Análise 2, Cálculo 2 e FVC, com o cronograma diário até as provas de dezembro."]] : []).concat([
-   ["empty", "Começar do zero", "Cadastre as próprias matérias e use os cronômetros e contadores."]]).forEach(([k, t, d]) => {
-    const b = el("button", "guide pick"); b.type = "button"; b.id = "intel-" + k;
-    b.append(el("h3", null, t), el("p", "note muted", d));
-    b.addEventListener("click", () => { createIntel(k === "preset"); enterIntel(k === "preset" ? "estudo" : "materias"); });
-    main.appendChild(b);
-  });
+  const b = el("button", "guide pick"); b.type = "button"; b.id = "intel-empty";
+  b.append(el("h3", null, "Começar do zero"), el("p", "note muted", "Cadastre as próprias matérias e use os cronômetros e contadores."));
+  b.addEventListener("click", () => { createIntel(); enterIntel("materias"); });
+  main.appendChild(b);
 }
 
 function renderEstudo(main) {
@@ -1830,6 +1727,7 @@ function renderEstudo(main) {
   head.append(el("h2", null, iso === today ? "Estudo de hoje" : "Estudo do dia"),
     el("p", null, WEEKDAYS[dt.getDay()].replace(/^./, c => c.toUpperCase()) + ", " + d + " de " + MONTHS[m - 1] + ". Meta de " + fmtGoal(goalSec(iso)) + (isWeekend(iso) ? " (fim de semana)." : " (dia útil).")));
   main.appendChild(head);
+  intelStaleNote(main);
 
   const bar = el("div", "datebar");
   const lab = el("label", null, "Dia"); lab.htmlFor = "study-date";
@@ -2091,6 +1989,7 @@ function renderMaterias(main) {
   const head = el("div", "wk-head");
   head.append(el("h2", null, "Matérias"), el("p", null, "Metas diárias e matérias. As mudanças são salvas na hora."));
   main.appendChild(head);
+  intelStaleNote(main);
   main.appendChild(pdfImportSection(renderIntel, sub => { state.itab = "estudo"; enterIntel("estudo", sub.id); }));
 
   const gs = el("section", "guide");

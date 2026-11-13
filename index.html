@@ -767,7 +767,7 @@ function buildCard(ex, n) {
   box.appendChild(name);
   if (ex.note) { const nt = document.createElement("p"); nt.className = "ex-note"; nt.textContent = ex.note; box.appendChild(nt); }
   const how = document.createElement("a"); how.className = "howto";
-  how.href = "https://www.youtube.com/results?search_query=" + encodeURIComponent(HOWTO[ex.id] || (ex.name + " execução")) + "&sp=EgIQAQ%253D%253D";
+  how.href = "https://www.youtube.com/results?search_query=" + encodeURIComponent(ex.howto || HOWTO[ex.id] || (ex.name + " execução")) + "&sp=EgIQAQ%253D%253D";
   how.target = "_blank"; how.rel = "noopener"; how.textContent = "Ver como fazer ↗";
   box.appendChild(how);
   top.append(num, box);
@@ -1191,32 +1191,32 @@ function lineSVG(data) {
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Carga em relação ao primeiro registro">' + g + xLabels(data, xs) + '</svg>';
 }
 
+// Textos do Guia que valem para qualquer plano
+const GUIDE_COMMON = [
+  ["Progressão", "Leve cada série até 0–2 repetições da falha. Quando bater o topo da faixa de repetições em todas as séries, aumente a carga. O app mostra \"Suba a carga\" quando as repetições do último treino chegaram ao topo da faixa. Anote também quantas séries fez: elas alimentam o gráfico da aba Progresso."],
+  ["Nível", "Você sobe de nível a cada 5 dias de treino registrados. A barra no topo mostra quanto falta para o próximo."],
+  ["Seus registros", "As cargas e repetições ficam salvas no aparelho e, se você entrar na sua conta, na nuvem. Cada pessoa tem os próprios registros. Sem conta, faça um backup de vez em quando."]
+];
+// ETAPA 2: GUIDE_AKIO, GUIDE_IRMA, PLAN_AKIO, PLAN_IRMA, HOWTO e os ids a1..j6 de GROUP saem do código depois que as contas migrarem
+const GUIDE_AKIO = [["Como cada objetivo foi atendido", [
+  ["Shape em V", "O V vem de dorsais largos e deltoides laterais grandes contra uma cintura estreita. Por isso há elevação lateral 2 a 3 vezes por semana e puxadas em pegada aberta."],
+  ["Oblíquos", "Não há treino direto de abdome, porque os compostos já trabalham o core. Evite flexão lateral com carga. A largura da cintura depende mais do percentual de gordura e da estrutura óssea do que dos oblíquos."],
+  ["Ombros projetados para frente", "Face pull, crucifixo invertido e remadas fortalecem o deltoide posterior e a parte média das costas. Inclua alongamento de peitoral e mobilidade torácica no aquecimento. Se houver dor, procure um fisioterapeuta."],
+  ["Peito inferior", "Supino com quadril elevado, paralelas e crucifixo de cima para baixo seguem a direção das fibras da porção inferior do peitoral."],
+  ["Pernas", "São 2 treinos completos por semana, com volume igual ao dos superiores."]]]];
+const GUIDE_IRMA = [
+  ["Aquecimento", "Antes das séries de trabalho de cada exercício, faça 1 série de aquecimento de 15 repetições com carga leve. Ela não entra nas séries que você anota."],
+  ["Progressão", "Leve cada série de trabalho até 0–2 repetições da falha. Quando bater 12 repetições em todas as séries, aumente a carga. O app mostra \"Suba a carga\" quando isso acontece. Anote também quantas séries fez: elas alimentam o gráfico da aba Progresso."]];
 function renderGuide(main) {
-  let sections = profileId === "irma" ? [
-    ["Semana", null, PLAN_IRMA.map(w => [w.day, w.name + ": " + w.focus.replace(/\.$/, "")]).concat([["Sábado", "Descanso"], ["Domingo", "Descanso"]])],
-    ["Aquecimento", "Antes das séries de trabalho de cada exercício, faça 1 série de aquecimento de 15 repetições com carga leve. Ela não entra nas séries que você anota."],
-    ["Progressão", "Leve cada série de trabalho até 0–2 repetições da falha. Quando bater 12 repetições em todas as séries, aumente a carga. O app mostra \"Suba a carga\" quando isso acontece. Anote também quantas séries fez: elas alimentam o gráfico da aba Progresso."],
-    ["Nível", "Você sobe de nível a cada 5 dias de treino registrados. A barra no topo mostra quanto falta para o próximo."],
-    ["Seus registros", "As cargas e repetições ficam salvas só neste celular. Se você limpar os dados do navegador ou trocar de celular, os registros somem: faça um backup de vez em quando."]
-  ] : [
-    ["Semana", null, [["Segunda", "Superior A: largura de costas + peito inferior"], ["Terça", "Inferior A: quadríceps"], ["Quarta", "Descanso ou aeróbico"], ["Quinta", "Superior B: ombros + costas + peito"], ["Sexta", "Inferior B: posteriores e glúteos"], ["Sábado", "Opcional: deltoides e braços"], ["Domingo", "Descanso"]]],
-    ["Como cada objetivo foi atendido", [
-      ["Shape em V", "O V vem de dorsais largos e deltoides laterais grandes contra uma cintura estreita. Por isso há elevação lateral 2 a 3 vezes por semana e puxadas em pegada aberta."],
-      ["Oblíquos", "Não há treino direto de abdome, porque os compostos já trabalham o core. Evite flexão lateral com carga. A largura da cintura depende mais do percentual de gordura e da estrutura óssea do que dos oblíquos."],
-      ["Ombros projetados para frente", "Face pull, crucifixo invertido e remadas fortalecem o deltoide posterior e a parte média das costas. Inclua alongamento de peitoral e mobilidade torácica no aquecimento. Se houver dor, procure um fisioterapeuta."],
-      ["Peito inferior", "Supino com quadril elevado, paralelas e crucifixo de cima para baixo seguem a direção das fibras da porção inferior do peitoral."],
-      ["Pernas", "São 2 treinos completos por semana, com volume igual ao dos superiores."]
-    ]],
-    ["Progressão", "Leve cada série até 0–2 repetições da falha. Quando bater o topo da faixa de repetições em todas as séries, aumente a carga. O app mostra \"Suba a carga\" quando as repetições do último treino chegaram ao topo da faixa. Anote também quantas séries fez: elas alimentam o gráfico da aba Progresso."],
-    ["Nível", "Você sobe de nível a cada 5 dias de treino registrados. A barra no topo mostra quanto falta para o próximo."],
-    ["Seus registros", "As cargas e repetições ficam salvas só neste celular. Cada pessoa que instala o app tem os próprios registros. Se você limpar os dados do navegador ou trocar de celular, os registros somem: faça um backup de vez em quando."]
-  ];
+  let sections = profileId === "irma" ? [["Semana", null, PLAN_IRMA.map(w => [w.day, w.name + ": " + w.focus.replace(/\.$/, "")]).concat([["Sábado", "Descanso"], ["Domingo", "Descanso"]])]].concat(GUIDE_IRMA, GUIDE_COMMON.filter(x => x[0] !== "Progressão"))
+    : [["Semana", null, [["Segunda", "Superior A: largura de costas + peito inferior"], ["Terça", "Inferior A: quadríceps"], ["Quarta", "Descanso ou aeróbico"], ["Quinta", "Superior B: ombros + costas + peito"], ["Sexta", "Inferior B: posteriores e glúteos"], ["Sábado", "Opcional: deltoides e braços"], ["Domingo", "Descanso"]]]].concat(GUIDE_AKIO, GUIDE_COMMON);
   if (profileId === "meu" && fplan) {
     const order = [1, 2, 3, 4, 5, 6, 0], rows = [];
     const wl = w => { const f = (w.focus || "").replace(/\.$/, ""); return w.name + (f && !fNm(w.name).includes(fNm(f)) ? ": " + f : ""); };
     order.forEach(d => { const ws = fplan.workouts.filter(w => !w.optional && (w.days || []).includes(d)); rows.push([F_DAY[d], ws.length ? ws.map(wl).join(" + ") : "Descanso"]); });
     fplan.workouts.filter(w => w.optional).forEach(w => rows.push(["Opcional", wl(w)]));
-    sections = [["Semana", null, rows]].concat(fplan.note ? [["Observações do plano", fplan.note]] : [], sections.filter(x => ["Progressão", "Nível", "Seus registros"].includes(x[0])));
+    const own = Array.isArray(fplan.guide) ? fplan.guide : [];
+    sections = [["Semana", null, rows]].concat(own, fplan.note ? [["Observações do plano", fplan.note]] : [], GUIDE_COMMON.filter(x => !own.some(g => g[0] === x[0])));
   }
   sections.forEach(([title, body, rows]) => {
     const s = document.createElement("section"); s.className = "guide";
@@ -1519,13 +1519,15 @@ function fClean(p) {
     const used = new Set();
     const ex = (Array.isArray(w && w.ex) ? w.ex : []).slice(0, 40).map(x => {
       const e = fMakeEx({ name: str(x && x.name, 80), sets: str(x && x.sets, 10), reps: str(x && x.reps, 30) || [x && x.lo, x && x.hi].filter(v => v != null).join(" a "), rest: str(x && x.rest, 20), obs: str(x && x.note, 160) }, used);
+      if (x && x.warm) e.warm = str(x.warm, 20);
+      if (x && x.howto) e.howto = str(x.howto, 120);
       return e;
     }).filter(e => e.name);
     const days = [...new Set((Array.isArray(w && w.days) ? w.days : []).map(Number).filter(d => d >= 0 && d <= 6))].sort((a, b) => a - b);
     const name = str(w && w.name, 60) || "Treino " + "ABCDEFGHIJKL"[i], short = str(w && w.short, 14) || name.slice(0, 14);
-    return { id: "tr-" + (i + 1), short, name, days, day: listPt(days.map(d => F_DAY[d])), focus: str(w && w.focus, 120), optional: !days.length, ex };
+    return { id: "tr-" + (i + 1), short, name, days, day: listPt(days.map(d => F_DAY[d])), focus: str(w && w.focus, 120), optional: !days.length || !!(w && w.optional), ex };
   }).filter(w => w.ex.length);
-  return { name: str(p && p.name, 80), note: String((p && p.note) || "").trim().slice(0, 800), workouts: ws };
+  return { name: str(p && p.name, 80), note: String((p && p.note) || "").trim().slice(0, 800), workouts: ws, src: /^app-[a-z]+$/.test(p && p.src) ? p.src : "" };
 }
 async function fLoadShared(force) {
   if (!loggedIn() || fShared.loading || (fShared.list && !force)) return;
@@ -1534,6 +1536,7 @@ async function fLoadShared(force) {
     const r = await cloudFetch("GET", "/plans?kind=treino");
     fShared.list = (r.plans || []).map(p => { try { const plan = fClean(JSON.parse(p.data)); return plan.workouts.length ? { id: p.id, mine: !!p.mine, uses: Number(p.uses) || 0, plan } : null; } catch (e) { return null; } }).filter(Boolean);
     fShared.canMod = !!r.canModerate; fShared.err = "";
+    if (localStorage.getItem("stek-cat-seed") !== "1") { fShared.loading = false; await fSeed(); if (fShared.list === null) return fLoadShared(true); }
   } catch (e) {
     if (e.status === 401) cloudExpired();
     fShared.list = []; fShared.err = e.status === 404 ? "O catálogo ainda não está ativo no servidor: falta atualizar o Worker." : "Não deu para carregar os treinos importados agora. Tente de novo mais tarde.";
@@ -1546,11 +1549,71 @@ async function fPublish() {
   if (!fplan || fplan.pubId || fplan.sharedFrom || fplan.unshared || !loggedIn() || fPublish.busy) return;
   fPublish.busy = true;
   try {
-    const plan = { name: fplan.name, note: fplan.note || "", workouts: fplan.workouts };
-    const r = await cloudFetch("POST", "/plans", { kind: "treino", name: fplan.name, data: JSON.stringify(plan) });
+    const nm = fplan.catName || fplan.name, plan = { name: nm, note: fplan.note || "", workouts: fplan.workouts, src: fplan.src || "" };
+    const r = await cloudFetch("POST", "/plans", { kind: "treino", name: nm, data: JSON.stringify(plan) });
     if (r && r.id && fplan && !fplan.sharedFrom) { fplan.pubId = r.id; fplan.upd = Date.now(); localStorage.setItem(FPLAN_KEY, JSON.stringify(fplan)); fShared.list = null; if (document.getElementById("fshared")) fLoadShared(true); }
   } catch (e) {}
   fPublish.busy = false;
+}
+
+// Planos que antes ficavam no código (Akio e Paulo e esposa): viram o "Meu plano" de quem usa, com os mesmos ids de
+// exercício (o histórico continua) e entram no catálogo. Depois que as contas migrarem, os dados saem do código (etapa 2).
+const F_LEGACY = { akio: { name: "Shape em V", catName: "Shape em V – superior e inferior", logs: "treino-logs-v1", set: "treino-settings-v1", guide: () => GUIDE_AKIO },
+  irma: { name: "Paulo e esposa", catName: "Treinos 1 a 5 – segunda a sexta", logs: "treino-logs-irma-v1", set: "treino-settings-irma-v1", guide: () => GUIDE_IRMA } };
+function fBuiltinPlan(id, mine) {
+  const P = PROFILES[id], L = F_LEGACY[id];
+  const workouts = P.plan.map(w => {
+    const days = Object.keys(P.dayTab).filter(d => P.dayTab[d] === w.id).map(Number).sort((a, b) => a - b);
+    return { id: w.id, short: w.short, name: w.name, days, day: listPt(days.map(d => F_DAY[d])), focus: w.focus, optional: !!w.optional,
+      ex: w.ex.map(x => ({ id: x.id, name: x.name, note: x.note || "", sets: x.sets, lo: x.lo, hi: x.hi, reps: x.lo + " a " + x.hi, rest: "", warm: x.warm || "", group: GROUP[x.id] || fGroup(x.name), howto: HOWTO[x.id] || "" })) };
+  });
+  const out = { upd: Date.now(), name: mine ? L.name : L.catName, catName: L.catName, note: "", workouts, src: "app-" + id };
+  if (mine) { out.from = id; out.guide = JSON.parse(JSON.stringify(L.guide())); out.migDay = todayISO(); }
+  return out;
+}
+function fMigrateLegacy() {
+  let p = null; try { p = localStorage.getItem(PROFILE_KEY); } catch (e) {}
+  let changed = false;
+  if (F_LEGACY[p]) {
+    if (!(fplan && fplan.from === p)) { fplan = fBuiltinPlan(p, true); try { localStorage.setItem(FPLAN_KEY, JSON.stringify(fplan)); } catch (e) {} changed = true; }
+    try { localStorage.setItem(PROFILE_KEY, "meu"); } catch (e) {}
+    loadFPlan();
+  }
+  if (fplan && F_LEGACY[fplan.from]) fMergeOld(fplan.from, changed ? "" : fplan.migDay || "");
+}
+// junta os registros do plano antigo no plano novo; o que já está no plano novo prevalece. Depois da migração,
+// só traz dias a partir dela (registros feitos num aparelho que ainda estava com a versão anterior do app).
+function fMergeOld(from, minDay) {
+  const L = F_LEGACY[from]; let lo, ln, so, sn;
+  try { lo = JSON.parse(localStorage.getItem(L.logs)) || {}; ln = JSON.parse(localStorage.getItem("treino-logs-meu-v1")) || {}; } catch (e) { return; }
+  let ch = false;
+  Object.keys(lo).forEach(d => {
+    const o = lo[d]; if (!o || !o.e || (minDay && d < minDay) || !Object.keys(o.e).length) return;
+    const n = ln[d] || { date: d, e: {} }; n.e = n.e || {};
+    Object.keys(o.e).forEach(id => { if (!(id in n.e)) { n.e[id] = o.e[id]; ch = true; } });
+    ln[d] = n;
+  });
+  if (ch) try { localStorage.setItem("treino-logs-meu-v1", JSON.stringify(ln)); } catch (e) {}
+  try { so = JSON.parse(localStorage.getItem(L.set)) || {}; sn = JSON.parse(localStorage.getItem("treino-settings-meu-v1")) || {}; } catch (e) { return; }
+  let cs = false; sn.goals = sn.goals || {};
+  ["days", "goals"].forEach(k => { Object.keys(so[k] || {}).forEach(m => { sn[k] = sn[k] || {}; if (!(m in sn[k])) { sn[k][m] = so[k][m]; cs = true; } }); });
+  if (cs) try { localStorage.setItem("treino-settings-meu-v1", JSON.stringify(sn)); } catch (e) {}
+}
+// coloca os dois planos antigos no catálogo (uma vez por aparelho; não conta como uso)
+async function fSeed() {
+  if (!loggedIn() || fSeed.busy) return;
+  try { if (localStorage.getItem("stek-cat-seed") === "1") return; } catch (e) { return; }
+  fSeed.busy = true;
+  try {
+    for (const id of Object.keys(F_LEGACY)) { const b = fBuiltinPlan(id, false); await cloudFetch("POST", "/plans", { kind: "treino", name: b.catName, seed: true, data: JSON.stringify({ name: b.catName, note: "", workouts: b.workouts, src: b.src }) }); }
+    localStorage.setItem("stek-cat-seed", "1"); fShared.list = null;
+  } catch (e) {}
+  fSeed.busy = false;
+}
+function fAdoptBuiltin(id) {
+  fplan = fBuiltinPlan(id, false);
+  try { localStorage.setItem(FPLAN_KEY, JSON.stringify(fplan)); } catch (e) {}
+  loadFPlan(); startProfile("meu");
 }
 function fAdopt(sp) {
   const c = fClean(sp.plan);
@@ -1573,7 +1636,7 @@ function fCatalogSection() {
   (fShared.list || []).forEach(sp => items.push({ sp, id: sp.id, name: sp.plan.name || "Plano", desc: fDesc(sp.plan.workouts), uses: sp.uses || 0, mine: sp.mine,
     days: new Set(sp.plan.workouts.flatMap(w => w.optional ? [] : w.days)).size,
     text: fNm([sp.plan.name].concat(sp.plan.workouts.map(w => w.name + " " + w.focus + " " + w.ex.map(x => x.name).join(" "))).join(" ")) }));
-  ["akio", "irma"].forEach(id => { const P = PROFILES[id]; items.push({ pid: id, id, name: P.name, desc: P.desc, uses: null, days: P.dow.length,
+  ["akio", "irma"].filter(id => !(fShared.list || []).some(sp => sp.plan.src === "app-" + id)).forEach(id => { const P = PROFILES[id]; items.push({ pid: id, id, name: F_LEGACY[id].catName, desc: P.desc.replace(/^Shape em V · /, ""), uses: null, days: P.dow.length,
     text: fNm([P.name, P.desc].concat(P.plan.map(w => w.name + " " + w.focus + " " + w.ex.map(x => x.name).join(" "))).join(" ")) }); });
   s.appendChild(el("h3", null, "Catálogo de treinos"));
   s.appendChild(el("p", "note muted", items.length + " treinos para escolher. Todo treino que alguém importa entra aqui, e escolher um copia o plano para você, com os seus próprios registros."));
@@ -1604,11 +1667,11 @@ function fCatalogSection() {
       const b = el("button", "pick fshare-pick"); b.type = "button"; b.id = x.pid ? "pick-" + x.pid : "fsh-" + x.id;
       const meta = [x.days ? x.days + "× por semana" : "dias livres"].concat(x.pid ? ["plano do app"] : [x.uses ? "usado por " + x.uses + (x.uses === 1 ? " pessoa" : " pessoas") : ""]).filter(Boolean).join(" · ");
       b.append(el("b", null, x.name), el("span", "note muted", x.desc), el("span", "note", meta));
-      const isCur = x.pid ? profileId === x.pid : profileId === "meu" && cur === x.id;
+      const isCur = x.pid ? profileId === "meu" && !!fplan && fplan.src === "app-" + x.pid && !cur : profileId === "meu" && (cur === x.id || (!!fplan && !!fplan.src && fplan.src === x.sp.plan.src && !cur));
       if (isCur) b.appendChild(el("span", "chip", "Plano atual"));
-      else if (x.mine) b.appendChild(el("span", "chip", "Você importou"));
+      else if (x.mine && !(x.sp && x.sp.plan.src)) b.appendChild(el("span", "chip", "Você importou"));
       b.addEventListener("click", () => {
-        if (x.pid) { startProfile(x.pid); return; }
+        if (x.pid) { fAdoptBuiltin(x.pid); return; }
         if (isCur) { startProfile("meu"); return; }
         if (fplan && fShared.confirm !== x.id) { fShared.confirm = x.id; draw(); return; }
         fAdopt(x.sp);
@@ -6146,7 +6209,7 @@ function applyRemote(items, keepLast) {
   saveCloud(); reloadAllState();
 }
 function reloadAllState() {
-  loadIntel(); loadFin(); loadStamina(); loadGraca(); loadMs(); loadPerfil(); loadRotina(); loadFPlan();
+  loadIntel(); loadFin(); loadStamina(); loadGraca(); loadMs(); loadPerfil(); loadRotina(); loadFPlan(); fMigrateLegacy();
   const p = readProfile();
   if (p) { if (p !== profileId || p === "meu") useProfile(p); state.logs = {}; loadLogs(); loadSettings(); }
   rerenderView();
@@ -6410,6 +6473,7 @@ loadMs();
 loadPerfil();
 loadRotina();
 loadFPlan();
+fMigrateLegacy();
 const savedProfile = readProfile();
 if (savedProfile) loadProfile(savedProfile);
 const startHash = location.hash;
@@ -6417,7 +6481,7 @@ history.replaceState(null, "", "#inicio");
 renderHome();
 if (startHash.startsWith("#tarefa-")) rtGoTaskHash(startHash);
 updateAcct();
-cloudStartup();
+cloudStartup().then(() => { fPublish(); fSeed(); });
 if ("serviceWorker" in navigator) {
   // Atualização: confere se há versão nova ao abrir e ao voltar para o app; quando a nova assume, recarrega uma vez.
   const hadController = !!navigator.serviceWorker.controller; let reloaded = false;

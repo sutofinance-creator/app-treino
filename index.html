@@ -112,6 +112,9 @@ details summary { cursor: pointer; font: 600 14px var(--font-display); letter-sp
 .week td { padding: 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
 .week td:first-child { font-family: var(--font-display); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); width: 96px; }
 .btns { display: flex; flex-wrap: wrap; gap: 10px; }
+a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+.pdf-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pdf-btns .btn { justify-content: center; text-align: center; font-size: 13px; letter-spacing: .05em; padding: 10px 8px; display: flex; align-items: center; }
 .btn { font: 600 15px var(--font-display); letter-spacing: .08em; text-transform: uppercase; padding: 10px 14px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); cursor: pointer; }
 .pick { text-align: left; color: var(--ink); font: inherit; cursor: pointer; width: 100%; }
 .pick .chip::before { content: ""; }
@@ -1385,7 +1388,8 @@ function pdfPlanParse(pages, title, todayIso) {
     if (/reserva|se atrasar|observa/i.test(heading)) notes.push({ h: heading, t: L.text });
   }
   // quantidade a partir do acumulado quando não há coluna de quantidade
-  const doneRe = [/j[áa]\s+feit\w*[^\n]*?(\d+)\s*(?:quest|exerc|ite)/i, /(?:itens\s+)?feit[oa]s?\s*(?:at[ée]\s+\S+\s*)?:\s*(\d+)/i];
+  const doneRe = [/j[áa]\s+feit\w*\s+antes\s+do\s+plano\s*:\s*(\d+)/i, /j[áa]\s+feit\w*[^\n]*?(\d+)\s*(?:quest|exerc|ite)/i, /(?:itens\s+)?feit[oa]s?\s*(?:at[ée]\s+\S+\s*)?:\s*(\d+)/i];
+  { const tm = /\btotal\s*:\s*(\d+)/i.exec(fullText); if (tm) totals.push(Number(tm[1])); }
   let base = null;
   if (firstRow && firstRow.qty != null && firstRow.cum != null) base = firstRow.cum - firstRow.qty;
   if (base == null) for (const re of doneRe) { const m = re.exec(fullText); if (m) { base = Number(m[1]); break; } }
@@ -1402,9 +1406,9 @@ function pdfPlanParse(pages, title, todayIso) {
   const tabDays = new Set(); entries.forEach(e => { if (e.tab) e.dates.forEach(d => tabDays.add(d)); });
   entries.forEach(e => e.dates.forEach((d, k) => {
     if (!e.tab && tabDays.has(d)) return;
-    const q = k === 0 ? e.qty : 0; // a quantidade fica no primeiro dia de uma faixa
+    const n = e.dates.length, q = Math.floor(e.qty / n) + (k < e.qty % n ? 1 : 0); // faixa de dias: a quantidade é dividida entre eles
     let theory = e.theory;
-    if (!q && !theory && e.text) theory = e.text;
+    if (!q && e.text) theory = [theory, e.text].filter(Boolean).join(" · ");
     if (theory && e.revis && !/^(revis|folga)/i.test(theory)) theory = "Revisão: " + theory;
     const items = q ? e.text : "";
     const cur = plan[d] || [0, "", ""];
@@ -1413,10 +1417,13 @@ function pdfPlanParse(pages, title, todayIso) {
   const sum = Object.values(plan).reduce((a, x) => a + x[0], 0);
   const total = Math.max(base + sum, ...totals, 0);
   const exams = [];
-  const em = /provas?\b[^0-9]{0,40}?(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)(?:\s*e\s*(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?))?/i.exec(fullText);
-  if (em) [em[1], em[2]].filter(Boolean).forEach(s => exams.push(...datesIn(s)));
-  const unit = /quest[õo]es|exerc[íi]cios|itens/i.test(fullText) ? "exercicios" : /p[áa]ginas/i.test(fullText) ? "paginas" : /aulas/i.test(fullText) ? "aulas" : "exercicios";
-  const name = (title || (lines.find(isHead) || {}).text || "Nova matéria").trim();
+  const em = /provas?\b[^0-9]{0,40}?((?:\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)(?:\s*(?:,|;|e)\s*\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)*)/i.exec(fullText);
+  if (em) exams.push(...datesIn(em[1]));
+  const cp = /contar por\s*:\s*([a-zà-ú]+)/i.exec(fullText), cu = cp ? cp[1].normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
+  const unit = cu ? (/^mod/.test(cu) ? "modulos" : /^aula/.test(cu) ? "aulas" : /^lic/.test(cu) ? "licoes" : /^pag/.test(cu) ? "paginas" : /^cap/.test(cu) ? "capitulos" : "exercicios")
+    : /quest[õo]es|exerc[íi]cios|itens/i.test(fullText) ? "exercicios" : /p[áa]ginas/i.test(fullText) ? "paginas" : /aulas/i.test(fullText) ? "aulas" : "exercicios";
+  const ml = lines.find(l => /^mat[ée]ria\s*:\s*\S/i.test(l.text));
+  const name = ((ml && ml.text.replace(/^mat[ée]ria\s*:\s*/i, "")) || title || (lines.find(isHead) || {}).text || "Nova matéria").trim();
   const noteTxt = [...new Set(notes.map(n => n.h))].map(h => h + ": " + notes.filter(n => n.h === h).map(n => n.t).join(" ")).join(" ");
   const days = Object.keys(plan).sort();
   return { name, unit, base, total, exams: [...new Set(exams)].sort(), plan, days, sum, note: noteTxt };
@@ -1439,25 +1446,66 @@ async function pdfReadItems(file) {
   const lib = await loadPdfLib();
   const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, disableFontFace: true }).promise;
   const meta = await doc.getMetadata().catch(() => ({}));
-  const pages = [];
+  const pages = [], fields = {};
   for (let i = 1; i <= Math.min(doc.numPages, 40); i++) {
-    const tc = await (await doc.getPage(i)).getTextContent();
+    const pg = await doc.getPage(i);
+    const tc = await pg.getTextContent();
     pages.push(tc.items.filter(t => t.str && t.str.trim()).map(t => ({ s: t.str, x: t.transform[4], y: t.transform[5], h: Math.abs(t.transform[3]) || t.height })));
+    // campos preenchíveis (o modelo do STEK): o valor digitado fica no campo, não no texto da página
+    (await pg.getAnnotations().catch(() => [])).forEach(an => { if (an.fieldName && typeof an.fieldValue === "string") fields[an.fieldName] = an.fieldValue; });
   }
   try { doc.destroy(); } catch (e) {}
   let title = String((meta.info && meta.info.Title) || "").trim();
-  if (title.length > 60 || /^microsoft|\.(docx?|pdf|tex|odt|pages)$|untitled|sem t[íi]tulo|^documento?\d*$/i.test(title)) title = "";
-  return { pages, title };
+  if (title.length > 60 || /^microsoft|\.(docx?|pdf|tex|odt|pages)$|untitled|sem t[íi]tulo|^documento?\d*$|^stek\b/i.test(title)) title = "";
+  return { pages, title, fields };
+}
+// Modelo do STEK (modelo-plano-de-estudos.pdf): lê os campos pelo nome, sem depender do layout
+function pdfTemplateParse(f, todayIso) {
+  const g = k => String(f[k] == null ? "" : f[k]).replace(/\s+/g, " ").trim();
+  const int = t => { const m = /\d+/.exec(String(t).replace(/\./g, "")); return m ? Number(m[0]) : 0; };
+  const ym = /\b\d{1,2}\/\d{1,2}\/(\d{4})\b/.exec(Object.values(f).join(" ")), yr = ym ? Number(ym[1]) : Number(todayIso.slice(0, 4));
+  const iso = (d, m, y) => {
+    let Y = y ? (String(y).length === 2 ? 2000 + Number(y) : Number(y)) : yr;
+    const t = Y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+    if (!y) { const diff = (Date.parse(t) - Date.parse(todayIso)) / 864e5; if (diff < -200) Y++; else if (diff > 200) Y--; }
+    return Y + t.slice(4);
+  };
+  const dates = t => { const out = [], re = /(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/g; let m; while ((m = re.exec(t))) { if (+m[2] >= 1 && +m[2] <= 12 && +m[1] >= 1 && +m[1] <= 31) out.push(iso(m[1], m[2], m[3])); } return out; };
+  const days = t => { const ds = dates(t); if (ds.length === 2 && ds[0] < ds[1] && /\d\s*(?:a|at[ée]|-|–|—)\s*\d/i.test(t)) { const out = []; for (let d = ds[0]; d <= ds[1] && out.length < 120; d = addDaysISO(d, 1)) out.push(d); return out; } return ds; };
+  const join = (a, b) => [a, b].filter(Boolean).join(" · ");
+  const rows = [...new Set(Object.keys(f).map(k => (/^stek_d(\d+)_/.exec(k) || [])[1]).filter(Boolean).map(Number))].sort((a, b) => a - b);
+  const plan = {}; let last = null;
+  rows.forEach(i => {
+    const [dt, qt, fz, th] = ["data", "qtd", "fazer", "teoria"].map(k => g("stek_d" + i + "_" + k));
+    if (!dt && !qt && !fz && !th) return;
+    const ds = days(dt);
+    if (!ds.length) { if (last && (fz || th)) { const c = plan[last]; plan[last] = [c[0] + int(qt), join(c[1], fz), join(c[2], th)]; } return; } // linha sem data continua o dia de cima
+    const q = int(qt), per = Math.floor(q / ds.length), rest = q % ds.length;
+    ds.forEach((d, k) => {
+      const qd = per + (k < rest ? 1 : 0), c = plan[d] || [0, "", ""];
+      plan[d] = [c[0] + qd, join(c[1], qd ? fz : ""), join(c[2], q ? th : join(th, fz))];
+    });
+    last = ds[0];
+  });
+  const list = Object.keys(plan).sort(), sum = list.reduce((a, d) => a + plan[d][0], 0);
+  const base = int(g("stek_feitos")), tIn = int(g("stek_total")), u = pdfNm(g("stek_unidade"));
+  const unit = /^(exerc|quest|ite)/.test(u) ? "exercicios" : /^mod/.test(u) ? "modulos" : /^aula/.test(u) ? "aulas" : /^lic/.test(u) ? "licoes" : /^pag/.test(u) ? "paginas" : /^cap/.test(u) ? "capitulos" : "exercicios";
+  return { name: g("stek_materia") || "Nova matéria", unit, base, total: tIn ? Math.max(tIn, base + sum) : base + sum,
+    exams: [...new Set(dates(g("stek_provas")))].sort(), plan, days: list, sum, note: g("stek_obs"), tpl: true };
 }
 const pdfNm = t => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 async function pdfPick(file, rerender) {
   pdfImp = { busy: true, fname: file.name }; rerender();
   try {
     if (file.size > 20e6) throw new Error("o arquivo passa de 20 MB");
-    const { pages, title } = await pdfReadItems(file);
-    if (pages.every(p => !p.length)) throw new Error("o PDF não tem texto, parece ser uma foto ou um escaneado");
-    const r = pdfPlanParse(pages, title, todayISO());
-    if (!r.days.length) throw new Error("não encontrei datas de cronograma (como 13/11) no PDF");
+    const { pages, title, fields } = await pdfReadItems(file);
+    const isTpl = Object.keys(fields).some(k => /^stek_/.test(k));
+    let r = isTpl ? pdfTemplateParse(fields, todayISO()) : null;
+    if (!r || !r.days.length) { // modelo vazio ou "impresso" em PDF (campos viraram texto): lê pelo layout
+      if (pages.every(p => !p.length)) throw new Error("o PDF não tem texto, parece ser uma foto ou um escaneado");
+      r = pdfPlanParse(pages, title, todayISO());
+    }
+    if (!r.days.length) throw new Error(isTpl ? "o modelo está sem nenhuma linha com data. Preencha a coluna Data (ex.: 13/11) e salve o PDF antes de enviar" : "não encontrei datas de cronograma (como 13/11) no PDF");
     if (!title && (!r.name || r.name === "Nova matéria")) r.name = file.name.replace(/\.pdf$/i, "").replace(/[_]+/g, " ").trim() || "Nova matéria";
     const same = intel && intel.subjects.find(x => pdfNm(x.name) === pdfNm(r.name));
     pdfImp = { fname: file.name, res: r, name: same ? same.name : r.name, target: same ? same.id : "new", unit: r.unit, base: r.base, total: r.total, exams: r.exams.slice() };
@@ -1508,18 +1556,19 @@ function pdfImportSection(rerender, after) {
     return [lab, fi];
   };
   if (!pdfImp || pdfImp.err) {
-    s.appendChild(el("p", "note muted", "Escolha o PDF do seu cronograma de estudos. O app procura as datas (como 13/11), quantos exercícios caem em cada dia, a teoria e as provas, e monta o plano da matéria para você conferir antes de salvar. O arquivo é lido aqui no aparelho e não é enviado para nenhum lugar."));
-    const b = el("div", "btns"); b.append(...pick("Escolher PDF")); s.appendChild(b);
+    s.appendChild(el("p", "note muted", "Baixe o modelo, preencha direto no PDF (no celular ou no computador), salve e envie aqui. O app monta o plano da matéria para você conferir antes de salvar. Também dá para enviar um cronograma em outro formato, desde que tenha as datas (como 13/11). O arquivo é lido aqui no aparelho e não é enviado para nenhum lugar."));
+    const dl = el("a", "btn ghost", "Baixar modelo"); dl.href = "modelo-plano-de-estudos.pdf"; dl.download = "modelo-plano-de-estudos.pdf"; dl.id = "pdf-model";
+    const b = el("div", "pdf-btns"); b.append(...pick("Escolher PDF"), dl); s.appendChild(b);
     if (pdfImp && pdfImp.err) {
       const m = el("p"); flash(m, pdfImp.err, "err"); s.appendChild(m);
-      s.appendChild(el("p", "note muted", "Funciona melhor com PDF feito no computador (Word, Google Docs, LaTeX) que tenha uma tabela com a coluna de data, ou linhas como “28/11 a 03/12: revisão”."));
+      s.appendChild(el("p", "note muted", "O jeito mais certeiro é usar o modelo (botão “Baixar modelo”). Fora dele, funciona melhor PDF feito no computador (Word, Google Docs, LaTeX) com uma tabela que tenha a coluna de data."));
     }
     return s;
   }
   if (pdfImp.busy) { s.appendChild(el("p", "note", "Lendo " + pdfImp.fname + "…")); return s; }
 
   const P = pdfImp, r = P.res;
-  s.appendChild(el("p", "note muted", "Confira o que o app entendeu de " + P.fname + ". Dá para ajustar antes de salvar."));
+  s.appendChild(el("p", "note muted", (r.tpl ? "Modelo do STEK reconhecido. " : "") + "Confira o que o app entendeu de " + P.fname + ". Dá para ajustar antes de salvar."));
   const grid = el("div", "inputs two");
   const fld = (id, label, node) => { const f = el("div", "field"); const l = el("label", null, label); l.htmlFor = id; node.id = id; f.append(l, node); grid.appendChild(f); return node; };
   const nmI = fld("pdf-name", "Nome da matéria", el("input")); nmI.value = P.name;

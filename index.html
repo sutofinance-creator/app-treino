@@ -1280,36 +1280,34 @@ const STUDY_PRESET = [
       "2026-12-02": [0, "", "Revisão e simulado"],
       "2026-12-03": [0, "", "Revisão e simulado"]
     } },
-  { id: "calc2", name: "Cálculo 2", unit: "exercicios", total: 511, base: 20, exams: ["2026-12-08"],
-    note: "Meta: terminar as 12 listas até 01/12. De 02/12 a 07/12: revisão. Cada item com letra conta como 1 questão.",
+  { id: "calc2", name: "Cálculo 2", unit: "exercicios", total: 139, base: 27, countFrom: "2026-11-13", planRev: 2, exams: ["2026-12-08"],
+    note: "Plano refeito em 13/11: 112 questões selecionadas das Listas 1 a 12, todas cobertas até 29/11; matéria toda vista até 01/12 e revisão de 02/12 a 07/12. Dias com teoria nova têm menos questões. Se atrasar: use a folga de 29/11 a 01/12 (cabe cerca de 25 questões); se ainda faltar, corte as últimas questões de cada lista, mas nunca pule a teoria. Reserva (se sobrar tempo): L1: 13(c), 13(e) · L2: 9(k), 17(b), 20 · L3: 2(b), 9 · L4: 6(d), 12 · L5: 13(c), 17 · L6: 8(b), 14(b), 21 · L8: 3(f), 9(b) · L9: 6(g), 21, 26(b) · L10: 2(g), 6(e) · L11: 12, 15(b) · L12: 21(b), 22, 24.",
     plan: {
-      "2026-11-11": [24, "L1: Ex. 6h a 13a", ""],
-      "2026-11-12": [24, "L1: Ex. 13b a 14 (fecha L1) · L2: Ex. 1 a 8", ""],
-      "2026-11-13": [24, "L2: Ex. 9 a 15c", ""],
-      "2026-11-14": [24, "L2: Ex. 15d a 20 (fecha L2) · L3: Ex. 1 a 5b", ""],
-      "2026-11-15": [24, "L3: Ex. 5c a 12 (fecha L3) · L4: Ex. 1 a 6", ""],
-      "2026-11-16": [24, "L4: Ex. 7 a 18 (fecha L4)", ""],
-      "2026-11-17": [24, "L5: Ex. 1 a 14c", "Teoria L5"],
-      "2026-11-18": [24, "L5: Ex. 14d a 20 (fecha L5) · L6: Ex. 1 a 6b", "Teoria L6"],
-      "2026-11-19": [23, "L6: Ex. 6c a 17", ""],
-      "2026-11-20": [23, "L6: Ex. 18 a 24 (fecha L6) · L7 inteira · L8: Ex. 1a a 1c", "Teoria L7 e L8"],
-      "2026-11-21": [23, "L8: Ex. 1d a 8b", ""],
-      "2026-11-22": [23, "L8: Ex. 8c a 16 (fecha L8) · L9: Ex. 1 a 2", "Teoria L9"],
-      "2026-11-23": [23, "L9: Ex. 3 a 6", ""],
-      "2026-11-24": [23, "L9: Ex. 7 a 25", ""],
-      "2026-11-25": [23, "L9: Ex. 26 a 30 (fecha L9) · L10: Ex. 1 a 2k", "Teoria L10"],
-      "2026-11-26": [23, "L10: Ex. 2l a 9c", ""],
-      "2026-11-27": [23, "L10: Ex. 9d a 20 (fecha L10) · L11: Ex. 1", "Teoria L11"],
-      "2026-11-28": [23, "L11: Ex. 2 a 10c", ""],
-      "2026-11-29": [23, "L11: Ex. 10d a 19 (fecha L11) · L12: Ex. 1", "Teoria L12"],
-      "2026-11-30": [23, "L12: Ex. 2 a 13", ""],
-      "2026-12-01": [23, "L12: Ex. 14 a 24 (fecha L12)", ""],
-      "2026-12-02": [0, "", "Revisão"],
-      "2026-12-03": [0, "", "Revisão"],
-      "2026-12-04": [0, "", "Revisão"],
-      "2026-12-05": [0, "", "Revisão"],
-      "2026-12-06": [0, "", "Revisão"],
-      "2026-12-07": [0, "", "Revisão"]
+      "2026-11-13": [6, "L1: 8(d), 9(d), 10(a), 10(c), 12, 14 (fecha L1)", ""],
+      "2026-11-14": [15, "L2: 1, 2(b), 2(d), 2(e), 2(f), 4, 6(d), 7, 12, 14, 16, 19 (fecha L2) · L3: 1(d), 2(a), 2(c)", ""],
+      "2026-11-15": [15, "L3: 4(a), 5(c), 6, 10, 12 (fecha L3) · L4: 2(a), 3, 10(b), 11(b), 14, 15(a), 15(b), 17(a), 17(b), 18 (fecha L4)", ""],
+      "2026-11-16": [3, "L5: 2, 4(a), 5(a)", "L5"],
+      "2026-11-17": [5, "L5: 5(b), 10, 15, 19, 20 (fecha L5)", "L6 (Taylor)"],
+      "2026-11-18": [3, "L6: 1(c), 3(a), 6(b)", "L6 (máximos, mínimos, compactos)"],
+      "2026-11-19": [6, "L6: 6(e), 7, 13, 15(b), 16(c), 19", ""],
+      "2026-11-20": [3, "L6: 24 (fecha L6) · L7: 1(b), 1(d)", "L7"],
+      "2026-11-21": [10, "L7: 2, 4, 6, 7 (fecha L7) · L8: 3(d), 6(a), 6(c), 7(f), 8(c), 10", "L8"],
+      "2026-11-22": [10, "L8: 12(c), 13(d), 14(b), 15 (fecha L8) · L9: 3(c), 4(b), 4(d), 8, 9(b), 14", "L9"],
+      "2026-11-23": [6, "L9: 17, 19, 23, 24, 28(c), 30 (fecha L9)", ""],
+      "2026-11-24": [3, "L10: 3, 5(c), 9(c)", "L10"],
+      "2026-11-25": [6, "L10: 10(a), 11, 13, 15, 16, 18(a) (fecha L10)", ""],
+      "2026-11-26": [3, "L11: 5(b), 6(a), 7", "L11"],
+      "2026-11-27": [6, "L11: 8(c), 9(a), 10(d), 10(e), 11(b), 16 (fecha L11)", ""],
+      "2026-11-28": [10, "L12: 1(a), 3(d), 5(c), 6, 9, 11(b), 13(d), 14(b), 18(c), 18(i)", "L12"],
+      "2026-11-29": [2, "L12: 19, 20 (fecha L12) · resto do dia é folga", ""],
+      "2026-11-30": [0, "", "Folga: recuperar atrasos ou fazer questões da reserva"],
+      "2026-12-01": [0, "", "Folga: recuperar atrasos ou fazer questões da reserva"],
+      "2026-12-02": [0, "", "Revisão: resolução da P1 (Resolução P1-MAN-2026.pdf)"],
+      "2026-12-03": [0, "", "Revisão: refazer as questões do plano em que houve dúvida, Listas 1 a 6"],
+      "2026-12-04": [0, "", "Revisão: refazer as questões em que houve dúvida, Listas 7 a 9"],
+      "2026-12-05": [0, "", "Revisão: refazer as questões em que houve dúvida, Listas 10 a 12"],
+      "2026-12-06": [0, "", "Revisão: teoremas e demonstrações mais usados nas listas"],
+      "2026-12-07": [0, "", "Revisão leve e descanso"]
     } },
   { id: "fvc", name: "FVC", unit: "exercicios", total: 50, base: 38, exams: ["2026-12-11"],
     note: "Lista 3 - Variáveis Complexas: 1 item a cada 2 dias, com o dia entre eles para a teoria. Se um dia falhar, use o dia de teoria seguinte para recuperar.",
@@ -1356,7 +1354,22 @@ const intelConfirm = new Set();
 
 function loadIntel() {
   try { const v = JSON.parse(localStorage.getItem(INTEL_KEY)); intel = v && Array.isArray(v.subjects) ? v : null; } catch (e) { intel = null; }
-  if (intel) { intel.days = intel.days || {}; intel.goals = intel.goals || { week: 2, weekend: 4 }; }
+  if (intel) { intel.days = intel.days || {}; intel.goals = intel.goals || { week: 2, weekend: 4 }; migrateIntelPlans(); }
+}
+// Planos refeitos: substitui o cronograma de quem já tinha a matéria do preset (o histórico de dias fica intacto)
+function migrateIntelPlans() {
+  if (!intel) return false;
+  const nm = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  let changed = false;
+  STUDY_PRESET.filter(p => p.planRev).forEach(p => {
+    const s = intel.subjects.find(x => x.id === p.id) || intel.subjects.find(x => nm(x.name) === nm(p.name));
+    if (!s || (s.planRev || 1) >= p.planRev) return;
+    // countFrom: o que foi feito antes do novo plano já está em "base" (ex.: 27 de 139); dali em diante conta o registrado no app
+    Object.assign(s, { total: p.total, base: p.base, countFrom: p.countFrom, exams: p.exams.slice(), note: p.note, plan: JSON.parse(JSON.stringify(p.plan)), planRev: p.planRev });
+    delete s.goal; changed = true;
+  });
+  if (changed) saveIntel();
+  return changed;
 }
 function loadIntelDefaults() { if (intel) { intel.days = intel.days || {}; intel.goals = intel.goals || { week: 2, weekend: 4 }; } }
 function saveIntel() {
@@ -1380,7 +1393,7 @@ function runningSec(iso, sid) {
 }
 function subjSec(iso, sid) { return getRec(iso, sid).sec + runningSec(iso, sid); }
 function daySec(iso) { return intel.subjects.reduce((a, s) => a + subjSec(iso, s.id), 0); }
-function subjDoneUpTo(sub, iso) { let n = sub.base || 0; Object.keys(intel.days).forEach(d => { if (!iso || d <= iso) n += getRec(d, sub.id).count || 0; }); return n; }
+function subjDoneUpTo(sub, iso) { let n = sub.base || 0; Object.keys(intel.days).forEach(d => { if ((!iso || d <= iso) && (!sub.countFrom || d >= sub.countFrom)) n += getRec(d, sub.id).count || 0; }); return n; }
 /* Plano de estudo de cada matéria: cronograma importado (sub.plan) ou meta própria (sub.goal):
    - prazo: terminar o total até uma data, nos dias da semana escolhidos (a meta do dia se ajusta ao que falta);
    - diaria: quantidade fixa por dia de estudo. */
@@ -1454,10 +1467,10 @@ function subjTask(sub, iso) {
   const done = (needCount ? Math.min(r.count, p.qty) : 0) + (needTheory && r.theory ? 1 : 0);
   const total = (needCount ? p.qty : 0) + (needTheory ? 1 : 0);
   const complete = (!needCount || r.count >= p.qty) && (!needTheory || r.theory);
-  let label = needCount ? Math.min(r.count, p.qty) + "/" + p.qty : (r.theory ? "Feita" : "Teoria");
+  let label = needCount ? Math.min(r.count, p.qty) + "/" + p.qty : (r.theory ? "Feita" : (p.theory.match(/^(Folga|Revisão)/) || ["Teoria"])[0]);
   if (complete) label = "Concluído";
   const parts = [];
-  if (p.theory) parts.push("Teoria: " + p.theory + (r.theory ? " (feita)" : ""));
+  if (p.theory) parts.push((/^(Folga|Revisão)/.test(p.theory) ? p.theory : "Teoria: " + p.theory) + (r.theory ? " (feita)" : ""));
   if (needCount) parts.push(sub.plan ? p.qty + " " + unitWord(sub, p.qty) + ": " + p.items : p.items);
   return { done, total, complete, label, sub: parts.join(" · ") };
 }
@@ -1594,7 +1607,7 @@ function buildSubjCard(s, n, iso) {
       const lab = el("label", "theory"); lab.htmlFor = "th-" + s.id;
       const cb = el("input"); cb.type = "checkbox"; cb.id = "th-" + s.id; cb.checked = !!r.theory;
       cb.addEventListener("change", () => { dayRec(iso, s.id).theory = cb.checked; saveIntel(); renderIntel(); });
-      lab.append(cb, el("span", null, "Teoria: " + p.theory));
+      lab.append(cb, el("span", null, /^(Folga|Revisão)/.test(p.theory) ? p.theory : "Teoria: " + p.theory));
       pl.appendChild(lab);
     }
     card.appendChild(pl);

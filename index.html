@@ -113,6 +113,10 @@ details summary { cursor: pointer; font: 600 14px var(--font-display); letter-sp
 .week td:first-child { font-family: var(--font-display); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); width: 96px; }
 .btns { display: flex; flex-wrap: wrap; gap: 10px; }
 a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+.fimp-w { border: 1px solid var(--line); padding: 10px 12px; margin: 10px 0; display: grid; gap: 6px; }
+.fimp-w > b { color: var(--accent); font-family: var(--font-display); letter-spacing: .05em; }
+.fimp-w .note { margin: 0; }
+.fimp-ex { margin: 0; padding-left: 18px; font-size: 13px; display: grid; gap: 3px; }
 .pdf-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .pdf-btns .btn { justify-content: center; text-align: center; font-size: 13px; letter-spacing: .05em; padding: 10px 8px; display: flex; align-items: center; }
 .btn { font: 600 15px var(--font-display); letter-spacing: .08em; text-transform: uppercase; padding: 10px 14px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); cursor: pointer; }
@@ -735,7 +739,7 @@ function renderMain() {
   const w = PLAN.find(p => p.id === state.tab);
   const head = document.createElement("div"); head.className = "wk-head";
   const h2 = document.createElement("h2"); h2.textContent = w.name;
-  const p = document.createElement("p"); p.textContent = w.focus;
+  const p = document.createElement("p"); p.textContent = w.focus && !fNm(w.name).includes(fNm(w.focus.replace(/\.$/, ""))) ? w.focus : "";
   head.append(h2, p); main.appendChild(head);
 
   const bar = document.createElement("div"); bar.className = "datebar";
@@ -764,7 +768,7 @@ function buildCard(ex, n) {
   top.append(num, box);
 
   const meta = document.createElement("div"); meta.className = "meta";
-  const pr = document.createElement("span"); pr.className = "presc"; pr.textContent = (ex.warm ? "Aquec. " + ex.warm + " · " : "") + ex.sets + " séries × " + ex.lo + "–" + ex.hi + " reps";
+  const pr = document.createElement("span"); pr.className = "presc"; pr.textContent = prescText(ex);
   meta.appendChild(pr);
   const chip = document.createElement("span"); chip.className = "chip"; chip.textContent = "Suba a carga"; chip.hidden = true; chip.dataset.role = "chip";
   meta.appendChild(chip);
@@ -808,7 +812,7 @@ function fillCard(card, ex) {
   } else {
     last.textContent = state.loaded === true ? "Sem registro anterior." : "";
   }
-  card.querySelector('[data-role="chip"]').hidden = !(prev && prev.e.reps != null && prev.e.reps >= ex.hi);
+  card.querySelector('[data-role="chip"]').hidden = !(prev && prev.e.reps != null && ex.hi != null && prev.e.reps >= ex.hi);
   const sum = card.querySelector('[data-role="sum"]');
   sum.textContent = "Histórico (" + all.length + ")";
   const ul = card.querySelector('[data-role="hist"]');
@@ -843,7 +847,7 @@ function onEdit(ex, field, raw) {
 }
 
 function exportBackup() {
-  const blob = new Blob([JSON.stringify({ app: "plano-treino", version: 7, plan: profileId, logs: state.logs, intel: intel, fin: fin, stamina: stamina, graca: graca, missoes: mis, perfil: perfil, rotina: rotina }, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify({ app: "plano-treino", version: 7, plan: profileId, fplan: fplan, logs: state.logs, intel: intel, fin: fin, stamina: stamina, graca: graca, missoes: mis, perfil: perfil, rotina: rotina }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "backup-stek-" + todayISO() + ".json";
@@ -857,6 +861,7 @@ function importBackup(file, msg) {
     try {
       const data = JSON.parse(r.result);
       const logs = (data && data.logs) || {};
+      if (data.fplan && Array.isArray(data.fplan.workouts) && data.fplan.workouts.length && (!fplan || (data.fplan.upd || 0) > (fplan.upd || 0))) { localStorage.setItem(FPLAN_KEY, JSON.stringify(data.fplan)); loadFPlan(); }
       if (typeof logs !== "object" || (!data.logs && !data.intel && !data.fin && !data.stamina && !data.graca && !data.missoes && !data.perfil && !data.rotina)) throw new Error();
       let n = 0;
       Object.keys(logs).forEach(date => {
@@ -1182,7 +1187,7 @@ function lineSVG(data) {
 }
 
 function renderGuide(main) {
-  const sections = profileId === "irma" ? [
+  let sections = profileId === "irma" ? [
     ["Semana", null, PLAN_IRMA.map(w => [w.day, w.name + ": " + w.focus.replace(/\.$/, "")]).concat([["Sábado", "Descanso"], ["Domingo", "Descanso"]])],
     ["Aquecimento", "Antes das séries de trabalho de cada exercício, faça 1 série de aquecimento de 15 repetições com carga leve. Ela não entra nas séries que você anota."],
     ["Progressão", "Leve cada série de trabalho até 0–2 repetições da falha. Quando bater 12 repetições em todas as séries, aumente a carga. O app mostra \"Suba a carga\" quando isso acontece. Anote também quantas séries fez: elas alimentam o gráfico da aba Progresso."],
@@ -1201,6 +1206,13 @@ function renderGuide(main) {
     ["Nível", "Você sobe de nível a cada 5 dias de treino registrados. A barra no topo mostra quanto falta para o próximo."],
     ["Seus registros", "As cargas e repetições ficam salvas só neste celular. Cada pessoa que instala o app tem os próprios registros. Se você limpar os dados do navegador ou trocar de celular, os registros somem: faça um backup de vez em quando."]
   ];
+  if (profileId === "meu" && fplan) {
+    const order = [1, 2, 3, 4, 5, 6, 0], rows = [];
+    const wl = w => { const f = (w.focus || "").replace(/\.$/, ""); return w.name + (f && !fNm(w.name).includes(fNm(f)) ? ": " + f : ""); };
+    order.forEach(d => { const ws = fplan.workouts.filter(w => !w.optional && (w.days || []).includes(d)); rows.push([F_DAY[d], ws.length ? ws.map(wl).join(" + ") : "Descanso"]); });
+    fplan.workouts.filter(w => w.optional).forEach(w => rows.push(["Opcional", wl(w)]));
+    sections = [["Semana", null, rows]].concat(fplan.note ? [["Observações do plano", fplan.note]] : [], sections.filter(x => ["Progressão", "Nível", "Seus registros"].includes(x[0])));
+  }
   sections.forEach(([title, body, rows]) => {
     const s = document.createElement("section"); s.className = "guide";
     const h = document.createElement("h3"); h.textContent = title; s.appendChild(h);
@@ -1233,7 +1245,7 @@ function renderGuide(main) {
   main.appendChild(s);
   const ps = el("section", "guide");
   ps.append(el("h3", null, "Plano"), el("p", "note", "Plano ativo neste celular: " + prof().name + ". Cada plano guarda os próprios registros, e trocar não apaga nada."));
-  const sw = el("button", "btn", "Trocar de plano"); sw.type = "button"; sw.id = "btn-switch";
+  const sw = el("button", "btn", "Trocar ou importar plano"); sw.type = "button"; sw.id = "btn-switch";
   sw.addEventListener("click", () => { renderChooser(); });
   const sb = el("div", "btns"); sb.appendChild(sw); ps.appendChild(sb);
   main.appendChild(ps);
@@ -1243,16 +1255,258 @@ function renderChooser() {
   document.getElementById("tabs").innerHTML = "";
   const main = document.getElementById("main"); main.innerHTML = "";
   const head = el("div", "wk-head");
-  head.append(el("h2", null, "Escolha seu plano"), el("p", null, "Você verá só os treinos do plano escolhido. Dá para trocar depois na aba Guia."));
+  head.append(el("h2", null, "Escolha seu plano"), el("p", null, "Importe o seu treino em PDF ou use um dos planos prontos. Dá para trocar depois na aba Guia."));
   main.appendChild(head);
-  Object.keys(PROFILES).forEach(id => {
+  const ids = Object.keys(PROFILES).sort((a, b) => (a === "meu" ? -1 : 0) - (b === "meu" ? -1 : 0));
+  if (PROFILES.meu) main.appendChild(el("p", "chart-t", "Seu plano"));
+  ids.forEach((id, k) => {
+    if (id !== "meu" && (k === 0 || ids[k - 1] === "meu")) { main.appendChild(fImportSection(renderChooser)); main.appendChild(el("p", "chart-t", "Planos prontos")); }
     const P = PROFILES[id];
     const b = el("button", "guide pick"); b.type = "button"; b.id = "pick-" + id;
     b.append(el("h3", null, P.name), el("p", "note muted", P.desc));
     if (id === profileId) b.appendChild(el("span", "chip", "Plano atual"));
+    else if (id === "meu") b.appendChild(el("span", "chip", "Importado"));
     b.addEventListener("click", () => startProfile(id));
     main.appendChild(b);
   });
+}
+
+/* ---------- Força: plano de treino importado de um PDF ---------- */
+// O plano importado vira o perfil "meu", com registros próprios. O id de cada exercício vem do nome,
+// então reimportar um plano revisado mantém o histórico dos exercícios que continuam.
+const FPLAN_KEY = "treino-plano-meu-v1";
+const F_DAY = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+const F_DOWRE = /\b(domingo|segunda|terca|quarta|quinta|sexta|sabado|dom|seg|ter|qua|qui|sex|sab)\b\.?(?:-?feira)?|\b([2-7])a\b/g;
+let fplan = null, fImp = null;
+const fNm = t => String(t || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+function loadFPlan() {
+  try { const v = JSON.parse(localStorage.getItem(FPLAN_KEY)); fplan = v && Array.isArray(v.workouts) && v.workouts.length ? v : null; } catch (e) { fplan = null; }
+  if (!fplan) { delete PROFILES.meu; return; }
+  const dayTab = {}, dow = new Set();
+  fplan.workouts.forEach(w => {
+    (w.days || []).forEach(d => { if (dayTab[d] == null) dayTab[d] = w.id; if (!w.optional) dow.add(d); });
+    w.ex.forEach(x => { if (x.group) GROUP[x.id] = x.group; });
+  });
+  PROFILES.meu = { name: fplan.name || "Meu plano", desc: fDesc(fplan.workouts), plan: fplan.workouts, dow: [...dow].sort(), dayTab, logsKey: "treino-logs-meu-v1", setKey: "treino-settings-meu-v1", custom: true };
+}
+function fDesc(ws) {
+  const ds = [...new Set(ws.flatMap(w => w.optional ? [] : w.days || []))].sort((a, b) => (a + 6) % 7 - (b + 6) % 7);
+  return ws.map(w => w.short).join(", ") + (ds.length ? " · " + listPt(ds.map(d => F_DAY[d].toLowerCase())) : "");
+}
+function fDays(t) {
+  const s = fNm(t);
+  if (/todos os dias|diariamente/.test(s)) return [0, 1, 2, 3, 4, 5, 6];
+  const MAP = { dom: 0, seg: 1, ter: 2, qua: 3, qui: 4, sex: 5, sab: 6 }, toks = []; let m;
+  F_DOWRE.lastIndex = 0;
+  while ((m = F_DOWRE.exec(s))) toks.push({ d: m[1] ? MAP[m[1].slice(0, 3)] : Number(m[2]) - 1, i: m.index, j: m.index + m[0].length });
+  const out = new Set();
+  toks.forEach((t, k) => {
+    out.add(t.d); const nx = toks[k + 1];
+    if (nx && /^\s*(a|ate|-|–|—)\s*$/.test(s.slice(t.j, nx.i))) for (let d = t.d; d !== nx.d; d = (d + 1) % 7) out.add(d);
+  });
+  return [...out].sort((a, b) => a - b);
+}
+const fOnlyDays = t => !fNm(t).replace(F_DOWRE, "").replace(/\b(e|a|ate|ou)\b|[,;/&()\-–—.]/g, "").trim();
+function fDaysTxt(ds) { return ds.length ? listPt(ds.slice().sort((a, b) => (a + 6) % 7 - (b + 6) % 7).map(d => F_DAY[d].slice(0, 3).toLowerCase())) : ""; }
+function fReps(t) {
+  const s = String(t || "").replace(/\s+/g, " ").trim();
+  const n = (s.match(/\d+/g) || []).map(Number).filter(x => x > 0 && x <= 100);
+  if (!n.length || /\d\s*(s|seg\w*|min\w*|")(\s|$)|\d\s*'/i.test(s)) return { lo: null, hi: null, reps: s };
+  return { lo: Math.min(...n), hi: Math.max(...n), reps: s };
+}
+function fGroup(name) {
+  const s = fNm(name);
+  const R = [[/invers|invertid|face ?pull|desenvolvimento|elevacao (lateral|frontal)|elev\.? (lat|front)|arnold|remada alta|encolhimento|ombro|deltoide/, "Ombros"],
+    [/panturrilha|gemeos|soleo/, "Panturrilhas"],
+    [/gluteo|pelvica|hip ?thrust|abdutora|adutora|ponte/, "Glúteos"],
+    [/triceps|testa|frances|coice|mergulho/, "Tríceps"],
+    [/rosca|biceps|martelo|scott/, "Bíceps"],
+    [/flexora|stiff|romeno|terra|good ?morning|nordic|posterior/, "Posteriores"],
+    [/agachamento|leg ?press|extensora|hack|afundo|passada|avanco|bulgaro|belt|sissy|quadriceps|smith/, "Quadríceps"],
+    [/remada|puxada|pull ?down|barra fixa|pull ?up|pullover|serrote|graviton|dorsal|costas/, "Costas"],
+    [/supino|crucifixo|peck ?deck|voador|cross ?over|flexao de braco|paralela|peito|chest/, "Peito"]];
+  for (const [re, g] of R) if (re.test(s)) return g;
+  return "";
+}
+function fMakeEx(e, used) {
+  const name = String(e.name || "").replace(/\s+/g, " ").trim(), r = fReps(e.reps), sm = /(\d+)(?:\s*(?:a|-|–|ou|\/)\s*(\d+))?/.exec(e.sets || "");
+  let id = "x-" + (fNm(name).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 34) || "ex"), b = id, k = 2;
+  while (used.has(id)) id = b + "-" + k++;
+  used.add(id);
+  return { id, name, sets: sm ? (sm[2] ? sm[1] + "–" + sm[2] : sm[1]) : "", lo: r.lo, hi: r.hi, reps: r.reps, rest: String(e.rest || "").trim(), note: String(e.obs || "").replace(/\(\s*\)/g, "").trim(), group: fGroup(name) };
+}
+function fMakeWorkout(w, i) {
+  const parts = String(w.name || "").replace(/\s+/g, " ").trim().split(/\s+[-–—:|]\s+/).map(p => p.trim()).filter(Boolean);
+  const keep = parts.filter(p => !(fDays(p).length && fOnlyDays(p)));
+  const name = keep.join(" – ") || "Treino " + "ABCDEFGHIJKL"[i];
+  const p0 = keep[0] || name, short = p0.length <= 14 ? p0 : p0.slice(0, 13) + "…";
+  const ds = fDays(w.days || "");
+  let focus = String(w.focus || "").trim() || keep.slice(1).join(" – ");
+  if (focus) { focus = focus[0].toUpperCase() + focus.slice(1); if (!/[.!?]$/.test(focus)) focus += "."; }
+  const used = new Set();
+  return { id: "tr-" + (i + 1), short, name, days: ds, day: listPt(ds.map(d => F_DAY[d])), focus, optional: !ds.length, ex: w.ex.map(e => fMakeEx(e, used)) };
+}
+// sem dia nenhum no PDF: sugere uma divisão comum, que dá para ajustar na prévia
+const F_SUGGEST = { 1: [[1, 3, 5]], 2: [[1, 4], [2, 5]], 3: [[1], [3], [5]], 4: [[1], [2], [4], [5]], 5: [[1], [2], [3], [4], [5]], 6: [[1], [2], [3], [4], [5], [6]] };
+function fFinish(name, note, raw, tpl) {
+  const ws = raw.filter(w => w.ex.length).slice(0, 12);
+  const workouts = ws.map((w, i) => fMakeWorkout(w, i));
+  let suggested = false;
+  if (workouts.length && workouts.every(w => !w.days.length) && F_SUGGEST[workouts.length]) {
+    suggested = true;
+    workouts.forEach((w, i) => { w.days = F_SUGGEST[workouts.length][i]; w.day = listPt(w.days.map(d => F_DAY[d])); w.optional = false; });
+  }
+  return { name: String(name || "").trim(), note: String(note || "").trim(), workouts, tpl: !!tpl, suggested };
+}
+// Modelo do STEK (modelo-plano-de-treino.pdf): lê os campos pelo nome
+function fTemplateParse(f) {
+  const g = k => String(f[k] == null ? "" : f[k]).replace(/\s+/g, " ").trim(), raw = [];
+  for (let t = 1; t <= 12; t++) {
+    const P = "stek_f_t" + t + "_"; if (!Object.keys(f).some(k => k.startsWith(P))) continue;
+    const ex = [];
+    for (let r = 1; r <= 30; r++) { const nm = g(P + "e" + r + "_ex"); if (nm) ex.push({ name: nm, sets: g(P + "e" + r + "_series"), reps: g(P + "e" + r + "_reps"), rest: g(P + "e" + r + "_desc"), obs: g(P + "e" + r + "_obs") }); }
+    raw.push({ name: g(P + "nome"), days: g(P + "dias"), focus: g(P + "foco"), ex });
+  }
+  return fFinish(g("stek_f_plano"), String(f.stek_f_obs || "").trim(), raw, true);
+}
+// Outros PDFs de treino: títulos ("Treino A", "Segunda-feira"), linhas como "Supino reto 4x10" ou tabela Exercício | Séries | Repetições
+function fPlanParse(pages, title) {
+  const lines = [];
+  pages.forEach(items => {
+    const its = items.filter(t => t.s && t.s.trim()).map(t => ({ s: t.s.replace(/\s+/g, " "), x: t.x, y: t.y, h: t.h || 10 }));
+    its.sort((a, b) => b.y - a.y || a.x - b.x);
+    const pl = [];
+    its.forEach(t => { const L = pl.find(l => Math.abs(l.y - t.y) <= Math.max(2, t.h * 0.3)); if (L) L.t.push(t); else pl.push({ y: t.y, t: [t] }); });
+    pl.sort((a, b) => b.y - a.y).forEach(l => { l.t.sort((a, b) => a.x - b.x); l.h = Math.max(...l.t.map(t => t.h)); l.text = l.t.map(t => t.s).join(" ").replace(/\s+/g, " ").trim(); if (!/^(p[áa]gina|page) \d+/i.test(l.text)) lines.push(l); });
+  });
+  const SR = /(\d{1,2})\s*[x×]\s*(\d{1,3}(?:\s*(?:a|-|–|\/|ou)\s*\d{1,3})*\s*(?:s\b|seg\w*|")?|falha|m[áa]x\w*)/i;
+  const SD = /(\d{1,2})\s*s[ée]ries?\s*(?:de|x|×|com)?\s*(\d{1,3}(?:\s*(?:a|-|–|\/|ou)\s*\d{1,3})*)\s*(?:repeti\S*|reps?\b)?/i;
+  const REST = /(\d+\s*(?:min\w*|m)\s*(?:e\s*)?\d*\s*(?:s|seg\w*)?|\d+\s*(?:s|seg\w*|")|\d+\s*'(?:\s*\d+\s*")?)(?=\W|$)/i;
+  const clean = t => String(t || "").replace(/^\s*(?:\d{1,2}\s*[.)\-–º°]|[•·\-–*])\s*/, "").replace(/[\s\-–—:|•·,;]+$/, "").trim();
+  const raw = []; let cur = null, cols = null, planName = "", note = "";
+  const newW = (name, days) => { cur = { name, days: days || "", focus: "", ex: [] }; raw.push(cur); cols = null; };
+  lines.forEach(L => {
+    const t = L.text; let m;
+    if ((m = /^(?:nome do plano|plano)\s*:\s*(.+)$/i.exec(t))) { planName = m[1]; return; }
+    if ((m = /^observa[çc][õo]es\s*:\s*(.+)$/i.exec(t))) { if (!note) note = m[1]; return; }
+    if ((m = /^nome\s*:\s*(.*?)\s*(?:dias?\s*:\s*(.*))?$/i.exec(t))) { if (m[1]) newW(m[1], m[2] || ""); else cur = null; return; } // modelo do STEK impresso
+    if ((m = /^dias?\s*:\s*(.+)$/i.exec(t)) && cur) { cur.days = m[1]; return; }
+    if ((m = /^foco\s*:\s*(.+)$/i.exec(t)) && cur) { cur.focus = m[1]; return; }
+    if (/s[ée]ries/i.test(t) && /repeti|\breps?\b/i.test(t)) {
+      const cs = L.t.map(it => { const s = fNm(it.s); return { x: it.x, r: /^(exerc|nome|movimento)/.test(s) ? "ex" : /^serie/.test(s) ? "sets" : /^(repet|reps?\b)/.test(s) ? "reps" : /^(descanso|interv|pausa)/.test(s) ? "rest" : /^(obs|tecnica|metodo)/.test(s) ? "obs" : /^(carga|peso)/.test(s) ? "load" : "" }; }).filter(c => c.r);
+      if (cs.some(c => c.r === "sets") && cs.some(c => c.r === "reps")) { if (!cs.some(c => c.r === "ex")) cs.unshift({ x: -1e9, r: "ex" }); cols = cs; return; }
+    }
+    if (!SR.test(t) && !SD.test(t)) {
+      if (/^(treino|ficha|dia)\s+[a-z0-9]{1,3}\b|^(treino|ficha)\s*[:\-–]/i.test(t) || (fDays(t).length && t.length < 70 && /^\W*(domingo|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|dom|seg|ter|qua|qui|sex|s[áa]b)\b/i.test(t))) {
+        if (fOnlyDays(t) && cur && !cur.ex.length) { cur.days = t; return; } // "Treino A" e, na linha de baixo, "Segunda e quinta"
+        newW(t, t); return;
+      }
+    }
+    if ((m = SR.exec(t)) || (m = SD.exec(t))) {
+      const name = clean(t.slice(0, m.index)); if (name.length < 3) return;
+      let after = t.slice(m.index + m[0].length); const rm = REST.exec(after), rest = rm ? rm[1].trim() : "";
+      if (rm) after = after.replace(rm[0], "");
+      if (!cur) newW("", "");
+      cur.ex.push({ name, sets: m[1], reps: m[2], rest, obs: clean(after.replace(/descanso\s*:?/i, "")) });
+      return;
+    }
+    if (cols) {
+      const cell = {};
+      L.t.forEach(it => { let c = cols[0]; cols.forEach(cc => { if (it.x >= cc.x - 6) c = cc; }); cell[c.r] = ((cell[c.r] || "") + " " + it.s).trim(); });
+      if (cell.ex && cell.sets && /\d/.test(cell.sets) && clean(cell.ex).length >= 3) {
+        if (!cur) newW("", "");
+        cur.ex.push({ name: clean(cell.ex), sets: cell.sets, reps: cell.reps || "", rest: cell.rest || "", obs: cell.obs || "" });
+      }
+    }
+  });
+  // nome: "Plano: X", o título do PDF ou o título grande do topo da primeira página
+  const hs = lines.map(l => l.h).sort((a, b) => a - b), body = hs[Math.floor(hs.length / 2)] || 10;
+  const big = lines.slice(0, 4).find(l => l.h >= body * 1.3 && !/^(treino|ficha|dia)\s+[a-z0-9]{1,3}\b/i.test(l.text) && !fDays(l.text).length && l.text.length < 60);
+  return fFinish(planName || title || (big && big.text), note, raw, false);
+}
+async function fPdfPick(file, rerender) {
+  fImp = { busy: true, fname: file.name }; rerender();
+  try {
+    if (file.size > 20e6) throw new Error("o arquivo passa de 20 MB");
+    const { pages, title, fields } = await pdfReadItems(file);
+    const keys = Object.keys(fields);
+    if (keys.some(k => /^stek_(materia|d\d+_)/.test(k)) && !keys.some(k => /^stek_f_/.test(k))) throw new Error("esse é o modelo de plano de estudos. Ele é importado na Inteligência, em Matérias");
+    let r = keys.some(k => /^stek_f_/.test(k)) ? fTemplateParse(fields) : null;
+    if (!r || !r.workouts.length) {
+      if (pages.every(p => !p.length)) throw new Error(r ? "o modelo está sem exercícios. Preencha pelo menos um treino e salve o PDF antes de enviar" : "o PDF não tem texto, parece ser uma foto ou um escaneado");
+      const g = fPlanParse(pages, title);
+      if (g.workouts.length || !r) r = g;
+    }
+    if (!r.workouts.length) throw new Error(r.tpl ? "o modelo está sem exercícios. Preencha pelo menos um treino e salve o PDF antes de enviar" : "não encontrei exercícios com séries e repetições (como “Supino reto 4x10”) no PDF");
+    if (!r.name) r.name = file.name.replace(/\.pdf$/i, "").replace(/[_]+/g, " ").trim() || "Meu plano";
+    fImp = { fname: file.name, res: r, name: r.name };
+  } catch (e) { fImp = { fname: file.name, err: "Não consegui montar o treino: " + (e && e.message || "erro ao ler o arquivo") + "." }; }
+  rerender();
+  const sec = document.getElementById("fimp"); if (sec) sec.scrollIntoView({ block: "start" });
+}
+function fApply() {
+  const r = fImp.res;
+  r.workouts.forEach(w => { w.optional = !w.days.length; w.day = listPt(w.days.map(d => F_DAY[d])); });
+  fplan = { upd: Date.now(), name: (fImp.name || "").trim() || r.name || "Meu plano", note: r.note || "", workouts: r.workouts };
+  try { localStorage.setItem(FPLAN_KEY, JSON.stringify(fplan)); } catch (e) {}
+  fImp = null; loadFPlan();
+}
+function fImportSection(rerender) {
+  const s = el("section", "guide"); s.id = "fimp";
+  s.appendChild(el("h3", null, "Importar treino de um PDF"));
+  const pick = label => {
+    const lab = el("label", "btn", label); lab.htmlFor = "fpdf-file"; lab.id = "fpdf-pick"; lab.tabIndex = 0;
+    const fi = el("input"); fi.type = "file"; fi.id = "fpdf-file"; fi.accept = ".pdf,application/pdf"; fi.hidden = true;
+    lab.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fi.click(); } });
+    fi.addEventListener("change", () => { const f = fi.files[0]; fi.value = ""; if (f) fPdfPick(f, rerender); });
+    return [lab, fi];
+  };
+  if (!fImp || fImp.err) {
+    s.appendChild(el("p", "note muted", "Baixe o modelo, preencha os treinos direto no PDF (no celular ou no computador), salve e envie aqui. O app monta o seu plano para você conferir antes de salvar. Também dá para enviar a ficha da academia em PDF, desde que tenha os exercícios com séries e repetições. O arquivo é lido aqui no aparelho e não é enviado para nenhum lugar."));
+    const dl = el("a", "btn ghost", "Baixar modelo"); dl.href = "modelo-plano-de-treino.pdf"; dl.download = "modelo-plano-de-treino.pdf"; dl.id = "fpdf-model";
+    const b = el("div", "pdf-btns"); b.append(...pick("Escolher PDF"), dl); s.appendChild(b);
+    if (fImp && fImp.err) {
+      const m = el("p"); flash(m, fImp.err, "err"); s.appendChild(m);
+      s.appendChild(el("p", "note muted", "O jeito mais certeiro é usar o modelo (botão “Baixar modelo”). Fora dele, funciona melhor PDF feito no computador, com um treino por título (Treino A, Treino B…) e os exercícios em tabela ou como “Supino reto 4x10”."));
+    }
+    return s;
+  }
+  if (fImp.busy) { s.appendChild(el("p", "note", "Lendo " + fImp.fname + "…")); return s; }
+  const P = fImp, r = P.res;
+  s.appendChild(el("p", "note muted", (r.tpl ? "Modelo do STEK reconhecido. " : "") + "Confira o que o app entendeu de " + P.fname + ". Dá para ajustar o nome e os dias antes de salvar."));
+  const f = el("div", "field"); const l = el("label", null, "Nome do plano"); l.htmlFor = "fimp-name";
+  const ni = el("input"); ni.id = "fimp-name"; ni.value = P.name; ni.addEventListener("input", () => { P.name = ni.value; });
+  f.append(l, ni); s.appendChild(f);
+  const nEx = r.workouts.reduce((a, w) => a + w.ex.length, 0);
+  const sum = el("p", "note"); sum.id = "fimp-sum";
+  const upd = () => { sum.textContent = r.workouts.length + (r.workouts.length === 1 ? " treino" : " treinos") + " e " + nEx + " exercícios. " + (fDesc(r.workouts).split(" · ")[1] ? "Dias de treino: " + fDesc(r.workouts).split(" · ")[1] + "." : "Nenhum dia fixo: todos ficam como opcionais."); };
+  upd(); s.appendChild(sum);
+  if (r.suggested) s.appendChild(el("p", "note muted", "O PDF não dizia os dias de cada treino, então o app sugeriu uma divisão. Ajuste os dias se quiser."));
+  if (fplan) s.appendChild(el("p", "note", "O seu plano importado atual (" + fplan.name + ") será trocado por este. Os registros continuam salvos, e exercício com o mesmo nome mantém o histórico."));
+  r.workouts.forEach((w, i) => {
+    const c = el("div", "fimp-w");
+    c.appendChild(el("b", null, w.name));
+    if (w.focus && !fNm(w.name).includes(fNm(w.focus.replace(/\.$/, "")))) c.appendChild(el("p", "note muted", w.focus));
+    const df = el("div", "field"); const dl = el("label", null, "Dias (vazio = opcional)"); dl.htmlFor = "fimp-days-" + i;
+    const di = el("input"); di.id = "fimp-days-" + i; di.value = fDaysTxt(w.days); di.placeholder = "Ex.: seg e qui";
+    di.addEventListener("change", () => { w.days = fDays(di.value); w.optional = !w.days.length; di.value = fDaysTxt(w.days); upd(); });
+    df.append(dl, di); c.appendChild(df);
+    const ul = el("ul", "fimp-ex");
+    w.ex.forEach(x => ul.appendChild(el("li", null, x.name + " · " + prescText(x) + (x.note ? " · " + x.note : ""))));
+    c.appendChild(ul); s.appendChild(c);
+  });
+  if (r.note) s.appendChild(el("p", "note muted", "Observações do plano (ficam no Guia): " + (r.note.length > 260 ? r.note.slice(0, 257) + "…" : r.note)));
+  const ok = el("button", "btn", "Salvar plano"); ok.type = "button"; ok.id = "fimp-ok";
+  ok.addEventListener("click", () => { fApply(); startProfile("meu"); });
+  const again = pick("Outro PDF"); again[0].classList.add("ghost");
+  const no = el("button", "btn ghost", "Cancelar"); no.type = "button"; no.id = "fimp-cancel";
+  no.addEventListener("click", () => { fImp = null; rerender(); });
+  const b = el("div", "btns"); b.append(ok, ...again, no); s.appendChild(b);
+  return s;
+}
+function prescText(ex) {
+  const reps = ex.lo != null && ex.hi != null ? (ex.lo === ex.hi ? ex.lo : ex.lo + "–" + ex.hi) + " reps" : (ex.reps || "");
+  return [ex.warm ? "Aquec. " + ex.warm : "", [ex.sets ? ex.sets + " séries" : "", reps].filter(Boolean).join(" × "), ex.rest ? "descanso " + ex.rest : ""].filter(Boolean).join(" · ");
 }
 
 
@@ -1499,6 +1753,7 @@ async function pdfPick(file, rerender) {
   try {
     if (file.size > 20e6) throw new Error("o arquivo passa de 20 MB");
     const { pages, title, fields } = await pdfReadItems(file);
+    if (Object.keys(fields).some(k => /^stek_f_/.test(k))) throw new Error("esse é o modelo de plano de treino. Ele é importado no módulo Força");
     const isTpl = Object.keys(fields).some(k => /^stek_/.test(k));
     let r = isTpl ? pdfTemplateParse(fields, todayISO()) : null;
     if (!r || !r.days.length) { // modelo vazio ou "impresso" em PDF (campos viraram texto): lê pelo layout
@@ -4659,7 +4914,7 @@ function forcaTasks() {
   const done = w.ex.filter(x => exerciseDone(rec[x.id])).length, total = w.ex.length, complete = done === total;
   return { tasks: [{ id: "task-" + w.id, title: w.name, optional: !!w.optional, complete, pct: done / total,
     label: complete ? "Concluído" : (w.optional ? "Opcional · " : "") + done + "/" + total,
-    sub: complete ? "Todos os exercícios registrados hoje." : w.focus + " Faltam " + (total - done) + " de " + total + " exercícios.",
+    sub: complete ? "Todos os exercícios registrados hoje." : (w.focus ? w.focus + " " : "") + "Faltam " + (total - done) + " de " + total + " exercícios.",
     go: () => enterForca(w.id) }] };
 }
 
@@ -5675,7 +5930,7 @@ setInterval(() => {
 
 /* ======================= Conta e nuvem ======================= */
 const CLOUD_KEY = "stek-cloud";
-const SYNC_KEYS = ["treino-perfil", "treino-logs-v1", "treino-logs-irma-v1", "treino-settings-v1", "treino-settings-irma-v1", "stek-intel-v1", "stek-fin-v1", "stek-stamina-v1", "stek-graca-v1", "stek-missoes-v1", "stek-perfil-v1", "stek-rotina-v1"];
+const SYNC_KEYS = ["treino-perfil", "treino-logs-v1", "treino-logs-irma-v1", "treino-settings-v1", "treino-settings-irma-v1", "treino-plano-meu-v1", "treino-logs-meu-v1", "treino-settings-meu-v1", "stek-intel-v1", "stek-fin-v1", "stek-stamina-v1", "stek-graca-v1", "stek-missoes-v1", "stek-perfil-v1", "stek-rotina-v1"];
 const DEFAULT_SERVER = "https://stek-pluggy.nataniel-akio.workers.dev";
 const _lsSet = Storage.prototype.setItem;
 let cloud = null, cloudApplying = false, cloudTimer = null, cloudBusy = false;
@@ -5768,9 +6023,9 @@ function applyRemote(items, keepLast) {
   saveCloud(); reloadAllState();
 }
 function reloadAllState() {
-  loadIntel(); loadFin(); loadStamina(); loadGraca(); loadMs(); loadPerfil(); loadRotina();
+  loadIntel(); loadFin(); loadStamina(); loadGraca(); loadMs(); loadPerfil(); loadRotina(); loadFPlan();
   const p = readProfile();
-  if (p) { if (p !== profileId) useProfile(p); state.logs = {}; loadLogs(); loadSettings(); }
+  if (p) { if (p !== profileId || p === "meu") useProfile(p); state.logs = {}; loadLogs(); loadSettings(); }
   rerenderView();
 }
 function rerenderView() {
@@ -5840,7 +6095,7 @@ function mergeKey(k, a, b) {
     out.timer = R.timer || L.timer || null;
     return JSON.stringify(out);
   }
-  if (k === "stek-perfil-v1" || k === "stek-rotina-v1") return (L.upd || 0) > (R.upd || 0) ? a : b;
+  if (k === "stek-perfil-v1" || k === "stek-rotina-v1" || k === "treino-plano-meu-v1") return (L.upd || 0) > (R.upd || 0) ? a : b;
   if (k === "stek-missoes-v1") {
     if (!Array.isArray(L.tasks)) return b; if (!Array.isArray(R.tasks)) return a;
     const byId = {}; R.tasks.forEach(x => { byId[x.id] = x; });
@@ -6031,6 +6286,7 @@ loadGraca();
 loadMs();
 loadPerfil();
 loadRotina();
+loadFPlan();
 const savedProfile = readProfile();
 if (savedProfile) loadProfile(savedProfile);
 const startHash = location.hash;

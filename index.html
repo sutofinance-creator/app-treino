@@ -1452,25 +1452,35 @@ async function fPublish() {
 }
 
 // Contas que ainda usavam um dos planos que antes vinham no código: o plano vem do catálogo (com os mesmos ids de
-// exercício, então o histórico continua) e os registros antigos são juntados no "Meu plano".
-const F_LEGACY = { akio: { logs: "treino-logs-v1", set: "treino-settings-v1", src: "app-akio" }, irma: { logs: "treino-logs-irma-v1", set: "treino-settings-irma-v1", src: "app-irma" } };
+// exercício, então o histórico continua) e os registros antigos são juntados no "Meu plano". Nada aqui depende do
+// nome do plano antigo: perfil antigo é qualquer valor diferente de "meu", e os registros são achados pelos ids.
+const F_OLDLOGS = /^treino-logs(-[a-z0-9]+)?-v1$/;
+function fOldLogKeys() { const out = []; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (F_OLDLOGS.test(k) && k !== "treino-logs-meu-v1") out.push(k); } } catch (e) {} return out.sort(); }
 function fLegacyId() {
-  let p = null; try { p = localStorage.getItem(PROFILE_KEY); if (!p && localStorage.getItem("treino-logs-v1")) p = "akio"; } catch (e) {}
-  return F_LEGACY[p] ? p : null;
+  let p = null; try { p = localStorage.getItem(PROFILE_KEY); } catch (e) {}
+  if (p) return p !== "meu" && /^[a-z0-9]{1,20}$/.test(p) ? p : null;
+  return fOldLogKeys().length ? "?" : null; // instalação bem antiga: sem perfil, só registros
 }
 function fMigrateLegacy() {
   const p = fLegacyId();
-  if (p && fplan && fplan.from === p) { try { localStorage.setItem(PROFILE_KEY, "meu"); } catch (e) {} loadFPlan(); }
-  if (fplan && F_LEGACY[fplan.from]) fMergeOld(fplan.from, fplan.migDay || "");
+  if (p && fplan && fplan.from) { try { localStorage.setItem(PROFILE_KEY, "meu"); } catch (e) {} loadFPlan(); }
+  if (fplan && fplan.from) fMergeOld(fplan.migDay || "");
 }
 async function fLateMigrate() {
   const p = fLegacyId();
-  if (!p || (fplan && fplan.from === p) || !loggedIn() || fLateMigrate.busy) return;
+  if (!p || (fplan && fplan.from) || !loggedIn() || fLateMigrate.busy) return;
   fLateMigrate.busy = true;
   try {
     const r = await cloudFetch("GET", "/plans?kind=treino");
-    let hit = null; (r.plans || []).some(x => { try { const d = JSON.parse(x.data); if (d && d.src === F_LEGACY[p].src) { hit = { id: x.id, d }; return true; } } catch (e) {} return false; });
-    if (!hit || fLegacyId() !== p || (fplan && fplan.from === p)) return;
+    // o plano antigo do catálogo que corresponde ao perfil antigo; sem perfil, o que mais tem exercícios com registro aqui
+    const ids = new Set(); fOldLogKeys().forEach(k => { try { const o = JSON.parse(localStorage.getItem(k)) || {}; Object.values(o).forEach(d => Object.keys((d && d.e) || {}).forEach(id => ids.add(id))); } catch (e) {} });
+    let hit = null, best = 0;
+    (r.plans || []).forEach(x => { try {
+      const d = JSON.parse(x.data); if (!d || !/^app-/.test(d.src || "")) return;
+      const n = (d.workouts || []).reduce((a, w) => a + (w.ex || []).filter(e => ids.has(e.id)).length, 0) + (d.src === "app-" + p ? 1e6 : 0);
+      if (n > best) { best = n; hit = { id: x.id, d }; }
+    } catch (e) {} });
+    if (!hit || fLegacyId() !== p || (fplan && fplan.from)) return;
     const str = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n), okId = v => /^[a-z0-9-]{1,40}$/.test(String(v || ""));
     const workouts = (hit.d.workouts || []).slice(0, 12).map((w, i) => {
       const used = new Set(), days = [...new Set((w.days || []).map(Number).filter(d => d >= 0 && d <= 6))].sort((a, b) => a - b);
@@ -1485,30 +1495,40 @@ async function fLateMigrate() {
       return { id: okId(w.id) ? w.id : "tr-" + (i + 1), short: str(w.short, 14) || str(w.name, 14), name: str(w.name, 60), days, day: listPt(days.map(d => F_DAY[d])), focus: str(w.focus, 120), optional: !!w.optional || !days.length, ex };
     }).filter(w => w.ex.length);
     if (!workouts.length) return;
-    fplan = { upd: Date.now(), name: str(hit.d.name, 80) || "Meu plano", note: "", workouts, src: F_LEGACY[p].src, from: p, migDay: todayISO(), pubId: hit.id };
+    fplan = { upd: Date.now(), name: str(hit.d.name, 80) || "Meu plano", note: "", workouts, src: hit.d.src, from: "catalogo", migDay: todayISO(), pubId: hit.id };
     localStorage.setItem(FPLAN_KEY, JSON.stringify(fplan));
-    fMergeOld(p, "");
+    fMergeOld("");
     localStorage.setItem(PROFILE_KEY, "meu"); loadFPlan(); loadProfile("meu");
     cloudFetch("POST", "/plans/" + hit.id + "/use", {}).catch(() => {});
     if (state.view === "forca") enterForca();
   } catch (e) {}
   finally { fLateMigrate.busy = false; }
 }
-// junta os registros do plano antigo no plano novo; o que já está no plano novo prevalece. Depois da migração,
-// só traz dias a partir dela (registros feitos num aparelho que ainda estava com a versão anterior do app).
-function fMergeOld(from, minDay) {
-  const L = F_LEGACY[from]; let lo, ln, so, sn;
-  try { lo = JSON.parse(localStorage.getItem(L.logs)) || {}; ln = JSON.parse(localStorage.getItem("treino-logs-meu-v1")) || {}; } catch (e) { return; }
-  let ch = false;
-  Object.keys(lo).forEach(d => {
-    const o = lo[d]; if (!o || !o.e || (minDay && d < minDay) || !Object.keys(o.e).length) return;
-    const n = ln[d] || { date: d, e: {} }; n.e = n.e || {};
-    Object.keys(o.e).forEach(id => { if (!(id in n.e)) { n.e[id] = o.e[id]; ch = true; } });
-    ln[d] = n;
+// junta os registros dos planos antigos no plano novo, só dos exercícios que existem nele; o que já está no plano
+// novo prevalece. Depois da migração, só traz dias a partir dela (registros de um aparelho com a versão anterior).
+function fMergeOld(minDay) {
+  if (!fplan) return;
+  const mine = new Set(fplan.workouts.flatMap(w => w.ex.map(x => x.id)));
+  let ln, sn; try { ln = JSON.parse(localStorage.getItem("treino-logs-meu-v1")) || {}; sn = JSON.parse(localStorage.getItem("treino-settings-meu-v1")) || {}; } catch (e) { return; }
+  let ch = false, cs = false, bestKey = null, bestN = 0;
+  fOldLogKeys().forEach(k => {
+    let lo; try { lo = JSON.parse(localStorage.getItem(k)) || {}; } catch (e) { return; }
+    let n = 0;
+    Object.keys(lo).forEach(d => {
+      const o = lo[d]; if (!o || !o.e || (minDay && d < minDay)) return;
+      Object.keys(o.e).forEach(id => {
+        if (!mine.has(id)) return; n++;
+        const t = ln[d] || (ln[d] = { date: d, e: {} }); t.e = t.e || {};
+        if (!(id in t.e)) { t.e[id] = o.e[id]; ch = true; }
+      });
+    });
+    if (n > bestN) { bestN = n; bestKey = k; }
   });
   if (ch) try { localStorage.setItem("treino-logs-meu-v1", JSON.stringify(ln)); } catch (e) {}
-  try { so = JSON.parse(localStorage.getItem(L.set)) || {}; sn = JSON.parse(localStorage.getItem("treino-settings-meu-v1")) || {}; } catch (e) { return; }
-  let cs = false; sn.goals = sn.goals || {};
+  // dias de treino marcados no calendário: vêm das configurações do plano antigo com mais registros
+  if (!bestKey) return;
+  let so; try { so = JSON.parse(localStorage.getItem(bestKey.replace("treino-logs", "treino-settings"))) || {}; } catch (e) { return; }
+  sn.goals = sn.goals || {};
   ["days", "goals"].forEach(k => { Object.keys(so[k] || {}).forEach(m => { sn[k] = sn[k] || {}; if (!(m in sn[k])) { sn[k][m] = so[k][m]; cs = true; } }); });
   if (cs) try { localStorage.setItem("treino-settings-meu-v1", JSON.stringify(sn)); } catch (e) {}
 }
@@ -6010,7 +6030,7 @@ setInterval(() => {
 
 /* ======================= Conta e nuvem ======================= */
 const CLOUD_KEY = "stek-cloud";
-const SYNC_KEYS = ["treino-perfil", "treino-logs-v1", "treino-logs-irma-v1", "treino-settings-v1", "treino-settings-irma-v1", "treino-plano-meu-v1", "treino-logs-meu-v1", "treino-settings-meu-v1", "stek-intel-v1", "stek-fin-v1", "stek-stamina-v1", "stek-graca-v1", "stek-missoes-v1", "stek-perfil-v1", "stek-rotina-v1"];
+const SYNC_KEYS = ["treino-perfil", "treino-plano-meu-v1", "treino-logs-meu-v1", "treino-settings-meu-v1", "stek-intel-v1", "stek-fin-v1", "stek-stamina-v1", "stek-graca-v1", "stek-missoes-v1", "stek-perfil-v1", "stek-rotina-v1"];
 const DEFAULT_SERVER = "https://stek-pluggy.nataniel-akio.workers.dev";
 const _lsSet = Storage.prototype.setItem;
 let cloud = null, cloudApplying = false, cloudTimer = null, cloudBusy = false;
@@ -6286,7 +6306,7 @@ function renderConta() {
     const doLogout = async (erase) => {
       try { await cloudPush(); await cloudFetch("POST", "/auth/logout"); } catch (e) {}
       cloud = null; saveCloud(); cloudUI.msg = ""; cloudUI.kind = ""; cloudUI.confirm = null;
-      if (erase) { SYNC_KEYS.concat(["stek-cloud"]).forEach(k => { try { localStorage.removeItem(k); } catch (e) {} }); location.hash = "#inicio"; location.reload(); return; }
+      if (erase) { SYNC_KEYS.concat(["stek-cloud"], fOldLogKeys(), fOldLogKeys().map(k => k.replace("treino-logs", "treino-settings"))).forEach(k => { try { localStorage.removeItem(k); } catch (e) {} }); location.hash = "#inicio"; location.reload(); return; }
       updateAcct(); cloudUI.msg = "Você saiu. Os dados continuam neste aparelho, mas não sincronizam mais."; cloudUI.kind = "ok"; renderConta();
     };
     lo.addEventListener("click", () => doLogout(false));
@@ -6301,7 +6321,7 @@ function renderConta() {
   s.appendChild(tabs);
   const form = el("form", "inputs one"); form.id = "auth-form";
   const fld = (id, label, type, ac, ph) => { const f = el("div", "field"); const l = el("label", null, label); l.htmlFor = id; const i = el("input"); i.id = id; i.type = type; i.autocomplete = ac; if (ph) i.placeholder = ph; f.append(l, i); form.appendChild(f); return i; };
-  const u = fld("acc-user", "Usuário (sem espaços)", "text", "username", "ex.: akio.suto"); u.autocapitalize = "none"; u.spellcheck = false;
+  const u = fld("acc-user", "Usuário (sem espaços)", "text", "username", "ex.: maria.silva"); u.autocapitalize = "none"; u.spellcheck = false;
   const p1 = fld("acc-pass", "Senha", "password", cloudUI.mode === "login" ? "current-password" : "new-password", cloudUI.mode === "login" ? "" : "pelo menos 8 caracteres");
   let p2, code;
   if (cloudUI.mode === "register") { p2 = fld("acc-pass2", "Confirme a senha", "password", "new-password"); code = fld("acc-code", "Código de convite", "text", "off", "peça ao dono do app"); }

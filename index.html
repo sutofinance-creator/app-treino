@@ -113,6 +113,7 @@ details summary { cursor: pointer; font: 600 14px var(--font-display); letter-sp
 .week td:first-child { font-family: var(--font-display); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); width: 96px; }
 .btns { display: flex; flex-wrap: wrap; gap: 10px; }
 a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+.fcat-list { display: grid; gap: 0; }
 .fshare { border: 1px solid var(--line); background: var(--surface); margin: 8px 0; padding: 10px 12px; display: grid; gap: 6px; justify-items: start; }
 .fshare-pick { background: none; border: 0; padding: 0; display: grid; gap: 4px; justify-items: start; }
 .fshare-pick b { color: var(--ink); font-family: var(--font-display); font-size: 17px; letter-spacing: .05em; text-transform: uppercase; }
@@ -1260,20 +1261,18 @@ function renderChooser() {
   document.getElementById("tabs").innerHTML = "";
   const main = document.getElementById("main"); main.innerHTML = "";
   const head = el("div", "wk-head");
-  head.append(el("h2", null, "Escolha seu plano"), el("p", null, "Importe o seu treino em PDF ou use um dos planos prontos. Dá para trocar depois na aba Guia."));
+  head.append(el("h2", null, "Escolha seu treino"), el("p", null, "Importe o seu treino em PDF ou escolha um do catálogo. Dá para trocar depois na aba Guia."));
   main.appendChild(head);
-  const ids = Object.keys(PROFILES).sort((a, b) => (a === "meu" ? -1 : 0) - (b === "meu" ? -1 : 0));
-  if (PROFILES.meu) main.appendChild(el("p", "chart-t", "Seu plano"));
-  ids.forEach((id, k) => {
-    if (id !== "meu" && (k === 0 || ids[k - 1] === "meu")) { main.appendChild(fImportSection(renderChooser)); main.appendChild(fSharedSection()); main.appendChild(el("p", "chart-t", "Planos prontos")); }
-    const P = PROFILES[id];
-    const b = el("button", "guide pick"); b.type = "button"; b.id = "pick-" + id;
+  if (PROFILES.meu) {
+    main.appendChild(el("p", "chart-t", "Seu plano"));
+    const P = PROFILES.meu, b = el("button", "guide pick"); b.type = "button"; b.id = "pick-meu";
     b.append(el("h3", null, P.name), el("p", "note muted", P.desc));
-    if (id === profileId) b.appendChild(el("span", "chip", "Plano atual"));
-    else if (id === "meu") b.appendChild(el("span", "chip", "Importado"));
-    b.addEventListener("click", () => startProfile(id));
+    b.appendChild(el("span", "chip", profileId === "meu" ? "Plano atual" : "Importado"));
+    b.addEventListener("click", () => startProfile("meu"));
     main.appendChild(b);
-  });
+  }
+  main.appendChild(fImportSection(renderChooser));
+  main.appendChild(fCatalogSection());
 }
 
 /* ---------- Força: plano de treino importado de um PDF ---------- */
@@ -1467,7 +1466,7 @@ function fImportSection(rerender) {
     return [lab, fi];
   };
   if (!fImp || fImp.err) {
-    s.appendChild(el("p", "note muted", "Baixe o modelo, preencha os treinos direto no PDF (no celular ou no computador), salve e envie aqui. O app monta o seu plano para você conferir antes de salvar. Também dá para enviar a ficha da academia em PDF, desde que tenha os exercícios com séries e repetições. O arquivo é lido aqui no aparelho; depois de salvo, o plano fica disponível para as outras pessoas do app escolherem."));
+    s.appendChild(el("p", "note muted", "Baixe o modelo, preencha os treinos direto no PDF (no celular ou no computador), salve e envie aqui. O app monta o seu plano para você conferir antes de salvar. Também dá para enviar a ficha da academia em PDF, desde que tenha os exercícios com séries e repetições. O arquivo é lido aqui no aparelho; depois de salvo, o treino entra no catálogo do app para outras pessoas escolherem."));
     const dl = el("a", "btn ghost", "Baixar modelo"); dl.href = "modelo-plano-de-treino.pdf"; dl.download = "modelo-plano-de-treino.pdf"; dl.id = "fpdf-model";
     const b = el("div", "pdf-btns"); b.append(...pick("Escolher PDF"), dl); s.appendChild(b);
     if (fImp && fImp.err) {
@@ -1487,7 +1486,7 @@ function fImportSection(rerender) {
   const upd = () => { sum.textContent = r.workouts.length + (r.workouts.length === 1 ? " treino" : " treinos") + " e " + nEx + " exercícios. " + (fDesc(r.workouts).split(" · ")[1] ? "Dias de treino: " + fDesc(r.workouts).split(" · ")[1] + "." : "Nenhum dia fixo: todos ficam como opcionais."); };
   upd(); s.appendChild(sum);
   if (r.suggested) s.appendChild(el("p", "note muted", "O PDF não dizia os dias de cada treino, então o app sugeriu uma divisão. Ajuste os dias se quiser."));
-  s.appendChild(el("p", "note", loggedIn() ? "Ao salvar, este plano também fica disponível para as outras pessoas do app escolherem. Vai só o plano (nome, treinos, exercícios e observações); seus registros de carga e seu usuário não aparecem." : "Ao salvar, este plano também vai ficar disponível para as outras pessoas do app escolherem, assim que você entrar na sua conta. Vai só o plano; seus registros de carga e seu usuário não aparecem."));
+  s.appendChild(el("p", "note", "Ao salvar, este treino também entra no catálogo do app" + (loggedIn() ? "" : " (assim que você entrar na sua conta)") + ", para outras pessoas escolherem. Vai só o plano (nome, treinos, exercícios e observações); seus registros de carga e seu usuário não aparecem."));
   if (fplan) s.appendChild(el("p", "note", "O seu plano importado atual (" + fplan.name + ") será trocado por este. Os registros continuam salvos, e exercício com o mesmo nome mantém o histórico."));
   r.workouts.forEach((w, i) => {
     const c = el("div", "fimp-w");
@@ -1511,9 +1510,9 @@ function fImportSection(rerender) {
   return s;
 }
 
-// Planos compartilhados: todo plano importado de PDF fica na lista para as outras contas escolherem (fica no servidor da sua conta).
-// Vai só o plano (nome, treinos, exercícios e observações). Registros de carga e o usuário de quem enviou não aparecem.
-const fShared = { list: null, loading: false, err: "", canMod: false, confirm: null, rm: null };
+// Catálogo de treinos: todo plano importado de PDF entra no catálogo do app (no servidor), para as outras contas escolherem.
+// O catálogo só cresce; só o dono do app tira um plano. Vai só o plano: registros de carga e o usuário de quem enviou não aparecem.
+const fShared = { list: null, loading: false, err: "", canMod: false, confirm: null, rm: null, q: "", days: 0 };
 function fClean(p) {
   const str = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n);
   const ws = (Array.isArray(p && p.workouts) ? p.workouts : []).slice(0, 12).map((w, i) => {
@@ -1533,11 +1532,11 @@ async function fLoadShared(force) {
   fShared.loading = true;
   try {
     const r = await cloudFetch("GET", "/plans?kind=treino");
-    fShared.list = (r.plans || []).map(p => { try { const plan = fClean(JSON.parse(p.data)); return plan.workouts.length ? { id: p.id, mine: !!p.mine, updated: p.updated, plan } : null; } catch (e) { return null; } }).filter(Boolean);
+    fShared.list = (r.plans || []).map(p => { try { const plan = fClean(JSON.parse(p.data)); return plan.workouts.length ? { id: p.id, mine: !!p.mine, uses: Number(p.uses) || 0, plan } : null; } catch (e) { return null; } }).filter(Boolean);
     fShared.canMod = !!r.canModerate; fShared.err = "";
   } catch (e) {
     if (e.status === 401) cloudExpired();
-    fShared.list = []; fShared.err = e.status === 404 ? "A lista de planos compartilhados ainda não está ativa no servidor." : "Não deu para carregar os planos compartilhados agora. Tente de novo mais tarde.";
+    fShared.list = []; fShared.err = e.status === 404 ? "O catálogo ainda não está ativo no servidor: falta atualizar o Worker." : "Não deu para carregar os treinos importados agora. Tente de novo mais tarde.";
   }
   fShared.loading = false;
   if (document.getElementById("fshared")) renderChooser();
@@ -1558,48 +1557,74 @@ function fAdopt(sp) {
   fplan = { upd: Date.now(), name: c.name || "Plano compartilhado", note: c.note, workouts: c.workouts, sharedFrom: sp.id };
   try { localStorage.setItem(FPLAN_KEY, JSON.stringify(fplan)); } catch (e) {}
   fShared.confirm = null; loadFPlan(); startProfile("meu");
+  if (loggedIn()) cloudFetch("POST", "/plans/" + sp.id + "/use", {}).catch(() => {}); // conta quantas pessoas usam cada treino
 }
 async function fUnshare(sp) {
   try {
     await cloudFetch("DELETE", "/plans/" + sp.id);
     if (fplan && fplan.pubId === sp.id) { fplan.pubId = null; fplan.unshared = true; fplan.upd = Date.now(); localStorage.setItem(FPLAN_KEY, JSON.stringify(fplan)); }
     fShared.list = (fShared.list || []).filter(x => x.id !== sp.id); fShared.rm = null; fShared.err = "";
-  } catch (e) { fShared.err = "Não consegui tirar o plano da lista: " + e.message + "."; }
+  } catch (e) { fShared.err = "Não consegui tirar o treino do catálogo: " + e.message + "."; }
   renderChooser();
 }
-function fSharedSection() {
+function fCatalogSection() {
   const s = el("section", "guide"); s.id = "fshared";
-  s.appendChild(el("h3", null, "Planos compartilhados"));
-  if (!loggedIn()) { s.appendChild(el("p", "note muted", "Entre na sua conta para ver os treinos que outras pessoas importaram no app.")); return s; }
-  if (!fShared.list) { s.appendChild(el("p", "note muted", "Carregando…")); fLoadShared(); return s; }
+  const items = [];
+  (fShared.list || []).forEach(sp => items.push({ sp, id: sp.id, name: sp.plan.name || "Plano", desc: fDesc(sp.plan.workouts), uses: sp.uses || 0, mine: sp.mine,
+    days: new Set(sp.plan.workouts.flatMap(w => w.optional ? [] : w.days)).size,
+    text: fNm([sp.plan.name].concat(sp.plan.workouts.map(w => w.name + " " + w.focus + " " + w.ex.map(x => x.name).join(" "))).join(" ")) }));
+  ["akio", "irma"].forEach(id => { const P = PROFILES[id]; items.push({ pid: id, id, name: P.name, desc: P.desc, uses: null, days: P.dow.length,
+    text: fNm([P.name, P.desc].concat(P.plan.map(w => w.name + " " + w.focus + " " + w.ex.map(x => x.name).join(" "))).join(" ")) }); });
+  s.appendChild(el("h3", null, "Catálogo de treinos"));
+  s.appendChild(el("p", "note muted", items.length + " treinos para escolher. Todo treino que alguém importa entra aqui, e escolher um copia o plano para você, com os seus próprios registros."));
+  if (!loggedIn()) s.appendChild(el("p", "note muted", "Entre na sua conta para ver também os treinos que as outras pessoas importaram."));
+  else if (!fShared.list) { s.appendChild(el("p", "note muted", "Carregando os treinos importados…")); fLoadShared(); }
   if (fShared.err) { const m = el("p"); flash(m, fShared.err, "err"); s.appendChild(m); }
-  const cur = fplan ? (fplan.sharedFrom || fplan.pubId) : null;
-  const list = fShared.list;
-  if (!list.length && !fShared.err) { s.appendChild(el("p", "note muted", "Ainda ninguém importou um treino. Quando alguém importar, o plano aparece aqui para os outros escolherem.")); return s; }
-  s.appendChild(el("p", "note muted", "Treinos que as pessoas do app importaram. Escolher um copia o plano para você, com os seus próprios registros."));
-  list.forEach(sp => {
-    const box = el("div", "fshare");
-    const b = el("button", "pick fshare-pick"); b.type = "button"; b.id = "fsh-" + sp.id;
-    b.append(el("b", null, sp.plan.name || "Plano"), el("span", "note muted", fDesc(sp.plan.workouts)));
-    const isCur = profileId === "meu" && cur === sp.id;
-    if (isCur) b.appendChild(el("span", "chip", "Plano atual"));
-    else if (sp.mine) b.appendChild(el("span", "chip", "Você compartilhou"));
-    b.addEventListener("click", () => {
-      if (isCur) { startProfile("meu"); return; }
-      if (fplan && fShared.confirm !== sp.id) { fShared.confirm = sp.id; renderChooser(); return; }
-      fAdopt(sp);
-    });
-    box.appendChild(b);
-    if (fShared.confirm === sp.id) {
-      box.appendChild(el("p", "note", "Seu plano atual (" + fplan.name + ") será trocado por este. Os registros continuam salvos, e exercício com o mesmo nome mantém o histórico. Toque de novo no plano para confirmar."));
-    }
-    if (sp.mine || fShared.canMod) {
-      const rm = el("button", "linkbtn", fShared.rm === sp.id ? "Confirmar: tirar da lista" : "Tirar da lista"); rm.type = "button"; rm.id = "fsh-rm-" + sp.id;
-      rm.addEventListener("click", () => { if (fShared.rm !== sp.id) { fShared.rm = sp.id; renderChooser(); return; } fUnshare(sp); });
-      box.appendChild(rm);
-    }
-    s.appendChild(box);
+  // busca e filtro por dias de treino na semana
+  const q = el("input"); q.id = "fcat-q"; q.type = "search"; q.placeholder = "Buscar por nome ou exercício (ex.: glúteo, supino)"; q.value = fShared.q || "";
+  const qf = el("div", "field"); const ql = el("label", null, "Buscar"); ql.htmlFor = "fcat-q"; qf.append(ql, q); s.appendChild(qf);
+  const dset = [...new Set(items.map(x => x.days).filter(Boolean))].sort((a, b) => a - b);
+  const chips = el("div", "chips");
+  if (dset.length > 1) [0].concat(dset).forEach(d => {
+    const c = el("button", "gchip", d ? d + "× por semana" : "Todos"); c.type = "button"; c.id = "fcat-d" + d;
+    c.setAttribute("aria-pressed", String((fShared.days || 0) === d));
+    c.addEventListener("click", () => { fShared.days = d; renderChooser(); const n = document.getElementById("fshared"); if (n) n.scrollIntoView({ block: "start" }); });
+    chips.appendChild(c);
   });
+  s.appendChild(chips);
+  const box = el("div", "fcat-list"); box.id = "fcat-list"; s.appendChild(box);
+  const cur = fplan ? (fplan.sharedFrom || fplan.pubId) : null;
+  const draw = () => {
+    box.innerHTML = "";
+    const t = fNm(fShared.q || ""), d = fShared.days || 0;
+    const shown = items.filter(x => (!t || t.split(" ").every(w => x.text.includes(w))) && (!d || x.days === d));
+    if (!shown.length) { box.appendChild(el("p", "note muted", "Nenhum treino com esse filtro.")); return; }
+    shown.forEach(x => {
+      const row = el("div", "fshare");
+      const b = el("button", "pick fshare-pick"); b.type = "button"; b.id = x.pid ? "pick-" + x.pid : "fsh-" + x.id;
+      const meta = [x.days ? x.days + "× por semana" : "dias livres"].concat(x.pid ? ["plano do app"] : [x.uses ? "usado por " + x.uses + (x.uses === 1 ? " pessoa" : " pessoas") : ""]).filter(Boolean).join(" · ");
+      b.append(el("b", null, x.name), el("span", "note muted", x.desc), el("span", "note", meta));
+      const isCur = x.pid ? profileId === x.pid : profileId === "meu" && cur === x.id;
+      if (isCur) b.appendChild(el("span", "chip", "Plano atual"));
+      else if (x.mine) b.appendChild(el("span", "chip", "Você importou"));
+      b.addEventListener("click", () => {
+        if (x.pid) { startProfile(x.pid); return; }
+        if (isCur) { startProfile("meu"); return; }
+        if (fplan && fShared.confirm !== x.id) { fShared.confirm = x.id; draw(); return; }
+        fAdopt(x.sp);
+      });
+      row.appendChild(b);
+      if (fShared.confirm === x.id) row.appendChild(el("p", "note", "Seu plano atual (" + fplan.name + ") será trocado por este. Os registros continuam salvos, e exercício com o mesmo nome mantém o histórico. Toque de novo no treino para confirmar."));
+      if (!x.pid && fShared.canMod) {
+        const rm = el("button", "linkbtn", fShared.rm === x.id ? "Confirmar: tirar do catálogo" : "Tirar do catálogo"); rm.type = "button"; rm.id = "fsh-rm-" + x.id;
+        rm.addEventListener("click", () => { if (fShared.rm !== x.id) { fShared.rm = x.id; draw(); return; } fUnshare(x.sp); });
+        row.appendChild(rm);
+      }
+      box.appendChild(row);
+    });
+  };
+  q.addEventListener("input", () => { fShared.q = q.value; draw(); });
+  draw();
   return s;
 }
 function prescText(ex) {

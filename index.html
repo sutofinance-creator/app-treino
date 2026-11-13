@@ -131,6 +131,9 @@ details summary { cursor: pointer; font: 600 14px var(--font-display); letter-sp
 .step { width: 32px; height: 32px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); font: 700 18px var(--font-body); cursor: pointer; }
 .note { margin: 0; font-size: 15px; }
 .note.muted { font-size: 13px; color: var(--muted); }
+.pdf-days { display: grid; gap: 6px; font-size: 13px; max-height: 320px; overflow: auto; }
+.pdf-day { display: grid; grid-template-columns: 46px 1fr; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; }
+.pdf-day b { color: var(--accent); font-family: var(--font-display); letter-spacing: .05em; }
 .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; max-width: 360px; }
 .cal-h { text-align: center; font: 600 12px var(--font-display); color: var(--muted); letter-spacing: .1em; }
 .cal-d { text-align: center; font-size: 13px; padding: 6px 0; font-variant-numeric: tabular-nums; border: 1px solid transparent; }
@@ -1362,8 +1365,8 @@ function migrateIntelPlans() {
   const nm = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
   let changed = false;
   STUDY_PRESET.filter(p => p.planRev).forEach(p => {
-    const s = intel.subjects.find(x => x.id === p.id) || intel.subjects.find(x => nm(x.name) === nm(p.name));
-    if (!s || (s.planRev || 1) >= p.planRev) return;
+    const s = intel.subjects.find(x => x.id === p.id) || intel.subjects.find(x => x.plan && !x.src && nm(x.name) === nm(p.name));
+    if (!s || s.src === "pdf" || (s.planRev || 1) >= p.planRev) return; // plano que a pessoa importou de um PDF nunca é trocado
     // countFrom: o que foi feito antes do novo plano já está em "base" (ex.: 27 de 139); dali em diante conta o registrado no app
     Object.assign(s, { total: p.total, base: p.base, countFrom: p.countFrom, exams: p.exams.slice(), note: p.note, plan: JSON.parse(JSON.stringify(p.plan)), planRev: p.planRev });
     delete s.goal; changed = true;
@@ -1371,6 +1374,301 @@ function migrateIntelPlans() {
   if (changed) saveIntel();
   return changed;
 }
+/* ---------- Inteligência: ler o cronograma de um PDF (feito no aparelho, sem enviar o arquivo) ---------- */
+// Entrada: páginas com os pedaços de texto e suas posições (como o pdf.js entrega). Saída: plano por dia.
+function pdfPlanParse(pages, title, todayIso) {
+  const MES = "(\\d{1,2})\\/(\\d{1,2})(?:\\/(\\d{2,4}))?";
+  const reDate = new RegExp(MES, "g"), WD = /^(seg|ter|qua|qui|sex|s[áa]b|dom)\w*\.?$/i;
+  const all = [], lines = [];
+  pages.forEach((items, pi) => {
+    const its = items.filter(t => t.s && t.s.trim()).map(t => ({ s: t.s.replace(/\s+/g, " "), x: t.x, y: t.y, h: t.h || 10, p: pi }));
+    its.sort((a, b) => b.y - a.y || a.x - b.x);
+    const pl = [];
+    its.forEach(t => { const L = pl.find(l => Math.abs(l.y - t.y) <= Math.max(2, t.h * 0.3)); if (L) L.t.push(t); else pl.push({ y: t.y, p: pi, t: [t] }); });
+    pl.forEach(l => { l.t.sort((a, b) => a.x - b.x); l.h = Math.max(...l.t.map(t => t.h)); l.x = l.t[0].x; l.text = l.t.map(t => t.s).join(" ").replace(/\s+/g, " ").trim(); });
+    pl.sort((a, b) => b.y - a.y);
+    // ignora cabeçalho e rodapé repetidos (título no topo, "Page x of y")
+    pl.filter(l => l.h >= 8 && !/^page \d+ of \d+$/i.test(l.text) && !/^p[áa]gina \d+/i.test(l.text)).forEach(l => lines.push(l));
+  });
+  // tamanho de letra do corpo (o mais comum) para achar títulos de seção
+  const hs = {}; lines.forEach(l => { const k = Math.round(l.h); hs[k] = (hs[k] || 0) + l.text.length; });
+  const body = Number(Object.keys(hs).sort((a, b) => hs[b] - hs[a])[0] || 12);
+  const isHead = l => l.h > body * 1.25 && l.text.length < 90;
+  const fullText = lines.map(l => l.text).join(" ");
+  // ano das datas sem ano
+  const yr = (() => { const m = /\b\d{1,2}\/\d{1,2}\/(\d{4})\b/.exec(fullText); return m ? Number(m[1]) : Number(todayIso.slice(0, 4)); })();
+  const toIso = (d, m, y) => {
+    let Y = y ? (String(y).length === 2 ? 2000 + Number(y) : Number(y)) : yr;
+    const iso = Y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+    if (!y) { const diff = (Date.parse(iso) - Date.parse(todayIso)) / 864e5; if (diff < -200) Y++; else if (diff > 200) Y--; }
+    return Y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+  };
+  const datesIn = (s) => { const out = []; let m; reDate.lastIndex = 0; while ((m = reDate.exec(s))) { if (Number(m[2]) >= 1 && Number(m[2]) <= 12 && Number(m[1]) >= 1 && Number(m[1]) <= 31) out.push(toIso(m[1], m[2], m[3])); } return out; };
+  const rangeDates = (a, b) => { const out = []; for (let d = a, i = 0; d <= b && i < 60; i++) { out.push(d); const [y, m, dd] = d.split("-").map(Number); const n = new Date(y, m - 1, dd + 1); d = n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2, "0") + "-" + String(n.getDate()).padStart(2, "0"); } return out; };
+  const roleOf = h => {
+    const t = h.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+    if (/^(data|datas|dia|dias|date)$/.test(t)) return "date";
+    if (/teoria|^tema/.test(t)) return "theory";
+    if (/^(qtd|qtde|quantidade|questoes|exercicios|itens|no plano|n.? questoes)$/.test(t)) return "num?";
+    if (/acumulad|progresso|feitos/.test(t)) return "cum";
+    if (/^%$/.test(t)) return "pct";
+    if (/prepara/.test(t)) return "prep";
+    return "text";
+  };
+  const entries = [], totals = []; let firstRow = null, heading = "";
+  const notes = [];
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i];
+    if (isHead(L)) { heading = L.text; continue; }
+    // cabeçalho de tabela: precisa de uma coluna de data e pelo menos mais uma
+    const heads = L.t.map(t => ({ x: t.x, s: t.s.trim(), r: roleOf(t.s) }));
+    if (heads.length >= 2 && heads.some(h => h.r === "date") && heads.every(h => h.s.length < 25)) {
+      // cabeçalho em duas linhas ("No" / "plano")
+      const nx = lines[i + 1];
+      if (nx && nx.p === L.p && L.y - nx.y < L.h * 1.9 && nx.t.every(t => heads.some(h => Math.abs(h.x - t.x) < 4))) {
+        nx.t.forEach(t => { const h = heads.find(h => Math.abs(h.x - t.x) < 4); h.s += " " + t.s.trim(); h.r = roleOf(h.s); }); i++;
+      }
+      // "Dia" numérico + "Data": a coluna de data é "Data"
+      const dcols = heads.filter(h => h.r === "date"); if (dcols.length > 1) dcols.forEach(h => { if (!/^data/i.test(h.s)) h.r = "index"; });
+      const cols = heads.sort((a, b) => a.x - b.x), left = cols[0].x;
+      const colOf = x => { let c = cols[0]; cols.forEach(k => { if (x >= k.x - 3) c = k; }); return c; };
+      const rows = []; let cur = null, j = i + 1;
+      for (; j < lines.length; j++) {
+        const R = lines[j];
+        if (R.p !== L.p || isHead(R) || R.x < left - 3 || (j > i + 1 && lines[j - 1].y - R.y > R.h * 4)) break;
+        const cells = {}; R.t.forEach(t => { const c = colOf(t.x); (cells[c.x] = cells[c.x] || []).push(t.s); });
+        const dc = cols.find(c => c.r === "date"), dtext = dc && cells[dc.x] ? cells[dc.x].join(" ") : "";
+        // só conta como início de linha da tabela um número "de verdade" (não o "(16%)" que quebrou para a linha de baixo)
+        const hasNum = cols.some(c => (c.r === "num?" || c.r === "cum") && cells[c.x] && /^\d+(?:\s*\/\s*\d+)?(?:\s*\(?\s*[\d.,]+\s*%\s*\)?)?$/.test(cells[c.x].join(" ").trim()));
+        const hasDate = datesIn(dtext).length > 0, hasWd = WD.test(dtext.split(" ")[0] || "");
+        if ((hasDate || hasWd) && (!cur || cur.hasDate || hasNum)) { cur = { cells: {}, hasDate: false }; rows.push(cur); }
+        if (!cur) continue;
+        Object.keys(cells).forEach(k => { (cur.cells[k] = cur.cells[k] || []).push(cells[k].join(" ")); });
+        if (hasDate) cur.hasDate = true;
+      }
+      i = j - 1;
+      // coluna "num?" só é quantidade se as células forem números; se tiver texto, é a lista de exercícios
+      cols.forEach(c => { if (c.r !== "num?") return; const vals = rows.map(r => (r.cells[c.x] || []).join(" ").trim()).filter(Boolean); c.r = vals.length && vals.every(v => /^(\d+|[—–-])$/.test(v)) ? "qty" : "text"; });
+      const revis = /revis/i.test(heading);
+      rows.forEach(r => {
+        const get = role => cols.filter(c => c.r === role).map(c => (r.cells[c.x] || []).join(" ").trim()).filter(v => v && !/^[—–-]$/.test(v));
+        const dtext = get("date").join(" ");
+        let ds = datesIn(dtext);
+        const rg = /(\d{1,2}\/\d{1,2})\s+a\s+(\d{1,2}\/\d{1,2})/.exec(dtext); if (rg) { const [a, b] = [datesIn(rg[1])[0], datesIn(rg[2])[0]]; if (a && b) ds = rangeDates(a, b); }
+        if (!ds.length) return;
+        const q = get("qty")[0], cum = get("cum")[0];
+        let qty = q != null ? Number(q) : null, cumN = null;
+        if (cum) { const m = /(\d+)\s*(?:\/\s*(\d+))?/.exec(cum); if (m) { cumN = Number(m[1]); if (m[2]) totals.push(Number(m[2])); } }
+        let text = get("text").join(" — ");
+        let theory = get("theory").join(" · ");
+        const prep = get("prep").join(" ");
+        if (prep && theory) theory += " (prepara para " + prep + ")";
+        // "Teoria L5 · L5: 2, 4(a)" → teoria separada das questões
+        const segs = text.split(/\s+·\s+/), th = segs.filter(s => /^teoria\b/i.test(s)), rest = segs.filter(s => !/^teoria\b/i.test(s));
+        if (th.length) { theory = [theory].concat(th.map(s => s.replace(/^teoria\s*/i, ""))).filter(Boolean).join(" · "); text = rest.join(" · "); }
+        const e = { dates: ds, qty, cum: cumN, text, theory, revis, tab: true };
+        if (!firstRow && (qty != null || cumN != null)) firstRow = e;
+        entries.push(e);
+      });
+      continue;
+    }
+    // fora de tabela: "05/12 e 06/12: refazer ..." ou "28/11 a 03/12: revisão"
+    const m = /^(?:de\s+)?((?:\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)(?:\s*(?:e|a|,)\s*\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)*)\s*:\s*(.+)$/i.exec(L.text);
+    if (m) {
+      let t = m[2];
+      for (let k = i + 1; k < lines.length && lines[k].p === L.p && !isHead(lines[k]) && Math.abs(lines[k].x - L.x) < 2 && !/^\d{1,2}\/\d{1,2}/.test(lines[k].text) && L.y - lines[k].y < L.h * 4; k++) { t += " " + lines[k].text; i = k; }
+      const rg = /(\d{1,2}\/\d{1,2})\s+a\s+(\d{1,2}\/\d{1,2})/.exec(m[1]);
+      const ds = rg ? rangeDates(datesIn(rg[1])[0], datesIn(rg[2])[0]) : datesIn(m[1]);
+      if (ds.length) entries.push({ dates: ds, qty: 0, cum: null, text: "", theory: t.trim(), revis: /revis/i.test(heading) || /revis/i.test(t) });
+      continue;
+    }
+    if (/reserva|se atrasar|observa/i.test(heading)) notes.push({ h: heading, t: L.text });
+  }
+  // quantidade a partir do acumulado quando não há coluna de quantidade
+  const doneRe = [/j[áa]\s+feit\w*[^\n]*?(\d+)\s*(?:quest|exerc|ite)/i, /(?:itens\s+)?feit[oa]s?\s*(?:at[ée]\s+\S+\s*)?:\s*(\d+)/i];
+  let base = null;
+  if (firstRow && firstRow.qty != null && firstRow.cum != null) base = firstRow.cum - firstRow.qty;
+  if (base == null) for (const re of doneRe) { const m = re.exec(fullText); if (m) { base = Number(m[1]); break; } }
+  let prevCum = base;
+  entries.forEach(e => {
+    if (e.qty == null && e.cum != null) { e.qty = prevCum != null ? Math.max(0, e.cum - prevCum) : (e.text ? 1 : 0); }
+    if (e.cum != null) prevCum = e.cum;
+    if (e.qty == null) e.qty = 0;
+  });
+  if (base == null) base = 0;
+  // junta tudo por dia
+  const plan = {};
+  // frases soltas ("28/11 a 03/12: revisão") só preenchem dias que nenhuma tabela cobre
+  const tabDays = new Set(); entries.forEach(e => { if (e.tab) e.dates.forEach(d => tabDays.add(d)); });
+  entries.forEach(e => e.dates.forEach((d, k) => {
+    if (!e.tab && tabDays.has(d)) return;
+    const q = k === 0 ? e.qty : 0; // a quantidade fica no primeiro dia de uma faixa
+    let theory = e.theory;
+    if (!q && !theory && e.text) theory = e.text;
+    if (theory && e.revis && !/^(revis|folga)/i.test(theory)) theory = "Revisão: " + theory;
+    const items = q ? e.text : "";
+    const cur = plan[d] || [0, "", ""];
+    plan[d] = [cur[0] + q, [cur[1], items].filter(Boolean).join(" · "), [cur[2], theory].filter(Boolean).join(" · ")];
+  }));
+  const sum = Object.values(plan).reduce((a, x) => a + x[0], 0);
+  const total = Math.max(base + sum, ...totals, 0);
+  const exams = [];
+  const em = /provas?\b[^0-9]{0,40}?(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)(?:\s*e\s*(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?))?/i.exec(fullText);
+  if (em) [em[1], em[2]].filter(Boolean).forEach(s => exams.push(...datesIn(s)));
+  const unit = /quest[õo]es|exerc[íi]cios|itens/i.test(fullText) ? "exercicios" : /p[áa]ginas/i.test(fullText) ? "paginas" : /aulas/i.test(fullText) ? "aulas" : "exercicios";
+  const name = (title || (lines.find(isHead) || {}).text || "Nova matéria").trim();
+  const noteTxt = [...new Set(notes.map(n => n.h))].map(h => h + ": " + notes.filter(n => n.h === h).map(n => n.t).join(" ")).join(" ");
+  const days = Object.keys(plan).sort();
+  return { name, unit, base, total, exams: [...new Set(exams)].sort(), plan, days, sum, note: noteTxt };
+}
+
+/* ---------- Inteligência: importar cronograma de um PDF ---------- */
+// O PDF é lido aqui no aparelho com o pdf.js (vendor/pdfjs). O arquivo não é enviado para lugar nenhum.
+let pdfImp = null, pdfLibP = null;
+function loadPdfLib() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if (!pdfLibP) pdfLibP = new Promise((ok, no) => {
+    const sc = document.createElement("script"); sc.src = "vendor/pdfjs/pdf.min.js";
+    sc.onload = () => { if (!window.pdfjsLib) { pdfLibP = null; no(new Error("o leitor de PDF não abriu")); return; } window.pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdfjs/pdf.worker.min.js"; ok(window.pdfjsLib); };
+    sc.onerror = () => { pdfLibP = null; no(new Error("sem internet para baixar o leitor de PDF (só na primeira vez)")); };
+    document.head.appendChild(sc);
+  });
+  return pdfLibP;
+}
+async function pdfReadItems(file) {
+  const lib = await loadPdfLib();
+  const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, disableFontFace: true }).promise;
+  const meta = await doc.getMetadata().catch(() => ({}));
+  const pages = [];
+  for (let i = 1; i <= Math.min(doc.numPages, 40); i++) {
+    const tc = await (await doc.getPage(i)).getTextContent();
+    pages.push(tc.items.filter(t => t.str && t.str.trim()).map(t => ({ s: t.str, x: t.transform[4], y: t.transform[5], h: Math.abs(t.transform[3]) || t.height })));
+  }
+  try { doc.destroy(); } catch (e) {}
+  let title = String((meta.info && meta.info.Title) || "").trim();
+  if (title.length > 60 || /^microsoft|\.(docx?|pdf|tex|odt|pages)$|untitled|sem t[íi]tulo|^documento?\d*$/i.test(title)) title = "";
+  return { pages, title };
+}
+const pdfNm = t => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+async function pdfPick(file, rerender) {
+  pdfImp = { busy: true, fname: file.name }; rerender();
+  try {
+    if (file.size > 20e6) throw new Error("o arquivo passa de 20 MB");
+    const { pages, title } = await pdfReadItems(file);
+    if (pages.every(p => !p.length)) throw new Error("o PDF não tem texto, parece ser uma foto ou um escaneado");
+    const r = pdfPlanParse(pages, title, todayISO());
+    if (!r.days.length) throw new Error("não encontrei datas de cronograma (como 13/11) no PDF");
+    if (!title && (!r.name || r.name === "Nova matéria")) r.name = file.name.replace(/\.pdf$/i, "").replace(/[_]+/g, " ").trim() || "Nova matéria";
+    const same = intel && intel.subjects.find(x => pdfNm(x.name) === pdfNm(r.name));
+    pdfImp = { fname: file.name, res: r, name: same ? same.name : r.name, target: same ? same.id : "new", unit: r.unit, base: r.base, total: r.total, exams: r.exams.slice() };
+  } catch (e) { pdfImp = { fname: file.name, err: "Não consegui montar o plano: " + (e && e.message || "erro ao ler o arquivo") + "." }; }
+  rerender();
+  const sec = document.getElementById("pdf-imp"); if (sec) sec.scrollIntoView({ block: "start" });
+}
+function pdfExamDates(txt, ref) {
+  const out = [], y0 = Number(ref.slice(0, 4)); let m; const re = /(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/g;
+  while ((m = re.exec(txt))) {
+    const d = Number(m[1]), mo = Number(m[2]); if (!d || d > 31 || !mo || mo > 12) continue;
+    let y = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : y0;
+    let iso = y + "-" + String(mo).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+    if (!m[3] && iso < ref && daysBetween(iso, ref) > 60) iso = (y + 1) + iso.slice(4);
+    out.push(iso);
+  }
+  return [...new Set(out)].sort();
+}
+function pdfApply() {
+  const P = pdfImp, r = P.res;
+  if (!intel) createIntel(false);
+  const data = { name: (P.name || "").trim() || r.name, unit: P.unit, base: P.base, total: P.total ? Math.max(P.total, P.base + r.sum) : 0,
+    countFrom: r.days[0], exams: P.exams.slice(), note: r.note || "", plan: JSON.parse(JSON.stringify(r.plan)), src: "pdf" };
+  let s = P.target !== "new" && intel.subjects.find(x => x.id === P.target);
+  if (s) { Object.assign(s, data); delete s.goal; }
+  else { let id; do { id = "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); } while (intel.subjects.some(x => x.id === id)); s = Object.assign({ id }, data); intel.subjects.push(s); }
+  pdfImp = null; saveIntel();
+  return s;
+}
+function pdfDayLine(iso, v, sub) {
+  const [q, items, th] = v;
+  const row = el("div", "pdf-day");
+  row.appendChild(el("b", null, fmtDate(iso).slice(0, 5)));
+  const parts = [];
+  if (q) parts.push(q + " " + unitWord(sub, q) + (items ? ": " + items : ""));
+  if (th) parts.push((/^(revis|folga)/i.test(th) ? "" : "Teoria: ") + th);
+  row.appendChild(el("span", null, parts.join(" · ") || "—"));
+  return row;
+}
+function pdfImportSection(rerender, after) {
+  const s = el("section", "guide"); s.id = "pdf-imp";
+  s.appendChild(el("h3", null, "Importar plano de um PDF"));
+  const pick = label => {
+    const lab = el("label", "btn", label); lab.htmlFor = "pdf-file"; lab.id = "pdf-pick"; lab.tabIndex = 0;
+    lab.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fi.click(); } });
+    const fi = el("input"); fi.type = "file"; fi.id = "pdf-file"; fi.accept = ".pdf,application/pdf"; fi.hidden = true;
+    fi.addEventListener("change", () => { const f = fi.files[0]; fi.value = ""; if (f) pdfPick(f, rerender); });
+    return [lab, fi];
+  };
+  if (!pdfImp || pdfImp.err) {
+    s.appendChild(el("p", "note muted", "Escolha o PDF do seu cronograma de estudos. O app procura as datas (como 13/11), quantos exercícios caem em cada dia, a teoria e as provas, e monta o plano da matéria para você conferir antes de salvar. O arquivo é lido aqui no aparelho e não é enviado para nenhum lugar."));
+    const b = el("div", "btns"); b.append(...pick("Escolher PDF")); s.appendChild(b);
+    if (pdfImp && pdfImp.err) {
+      const m = el("p"); flash(m, pdfImp.err, "err"); s.appendChild(m);
+      s.appendChild(el("p", "note muted", "Funciona melhor com PDF feito no computador (Word, Google Docs, LaTeX) que tenha uma tabela com a coluna de data, ou linhas como “28/11 a 03/12: revisão”."));
+    }
+    return s;
+  }
+  if (pdfImp.busy) { s.appendChild(el("p", "note", "Lendo " + pdfImp.fname + "…")); return s; }
+
+  const P = pdfImp, r = P.res;
+  s.appendChild(el("p", "note muted", "Confira o que o app entendeu de " + P.fname + ". Dá para ajustar antes de salvar."));
+  const grid = el("div", "inputs two");
+  const fld = (id, label, node) => { const f = el("div", "field"); const l = el("label", null, label); l.htmlFor = id; node.id = id; f.append(l, node); grid.appendChild(f); return node; };
+  const nmI = fld("pdf-name", "Nome da matéria", el("input")); nmI.value = P.name;
+  nmI.addEventListener("input", () => { P.name = nmI.value; });
+  const tg = fld("pdf-target", "Onde salvar", el("select")); tg.className = "sel"; tg.parentNode.style.gridColumn = "1 / -1";
+  [["new", "Criar matéria nova"]].concat((intel ? intel.subjects : []).map(x => [x.id, "Trocar o plano de " + x.name])).forEach(([v, t]) => { const o = el("option", null, t); o.value = v; if (P.target === v) o.selected = true; tg.appendChild(o); });
+  const un = fld("pdf-unit", "Contar por", el("select")); un.className = "sel";
+  UNIT_OPTS.forEach(([v, t]) => { const o = el("option", null, t); o.value = v; if (P.unit === v) o.selected = true; un.appendChild(o); });
+  un.addEventListener("change", () => { P.unit = un.value; });
+  const bs = fld("pdf-base", "Já feitos antes do plano", el("input")); bs.inputMode = "numeric"; bs.value = String(P.base);
+  const tt = fld("pdf-total", "Total (0 = sem total)", el("input")); tt.inputMode = "numeric"; tt.value = String(P.total);
+  const ex = fld("pdf-exams", "Provas (dd/mm)", el("input")); ex.placeholder = "Ex.: 04/12, 11/12"; ex.value = P.exams.map(d => fmtDate(d).slice(0, 5)).join(", ");
+  bs.addEventListener("change", () => { const v = parseNum(bs.value); P.base = v == null ? 0 : Math.max(0, Math.round(v)); bs.value = String(P.base); sumUp(); });
+  tt.addEventListener("change", () => { const v = parseNum(tt.value); P.total = v == null ? 0 : Math.max(0, Math.round(v)); tt.value = String(P.total); sumUp(); });
+  ex.addEventListener("change", () => { P.exams = pdfExamDates(ex.value, r.days[0]); ex.value = P.exams.map(d => fmtDate(d).slice(0, 5)).join(", "); sumUp(); });
+  s.appendChild(grid);
+  const warn = el("p", "note");
+  const sum = el("p", "note"); sum.id = "pdf-sum";
+  const fake = () => ({ unit: P.unit });
+  function sumUp() {
+    const n = r.days.length, q = r.sum;
+    sum.textContent = n + (n === 1 ? " dia" : " dias") + " de cronograma, de " + fmtDate(r.days[0]).slice(0, 5) + " a " + fmtDate(r.days[n - 1]).slice(0, 5) + ". "
+      + (q ? q + " " + unitWord(fake(), q) + " no plano" + (P.base ? ", mais " + P.base + " já feitos" : "") + (P.total ? " (total " + Math.max(P.total, P.base + q) + ")" : "") + ". " : "Não achei quantidades por dia: os dias entram como teoria e revisão, sem meta de " + unitWord(fake(), 2) + ". ")
+      + (P.exams.length ? "Provas em " + P.exams.map(d => fmtDate(d).slice(0, 5)).join(" e ") + "." : "Nenhuma prova encontrada.");
+    const t = P.target !== "new" && intel && intel.subjects.find(x => x.id === P.target);
+    warn.textContent = t ? "O cronograma atual de " + t.name + " será trocado por este. O tempo e os " + unitWord(t, 2) + " que você já registrou continuam salvos; a partir de " + fmtDate(r.days[0]).slice(0, 5) + " o app conta o que você registrar, e o que veio antes fica em “Já feitos antes do plano”." : "";
+    warn.hidden = !t;
+  }
+  tg.addEventListener("change", () => { P.target = tg.value; const t = intel && intel.subjects.find(x => x.id === P.target); if (t) { P.name = t.name; nmI.value = t.name; } sumUp(); });
+  sumUp();
+  s.append(sum, warn);
+  const list = el("div", "pdf-days");
+  r.days.slice(0, 3).forEach(d => list.appendChild(pdfDayLine(d, r.plan[d], fake())));
+  s.appendChild(list);
+  if (r.days.length > 3) {
+    const det = el("details"); det.appendChild(el("summary", null, "Ver os " + r.days.length + " dias"));
+    const all = el("div", "pdf-days"); r.days.slice(3).forEach(d => all.appendChild(pdfDayLine(d, r.plan[d], fake())));
+    det.appendChild(all); s.appendChild(det);
+  }
+  if (r.note) s.appendChild(el("p", "note muted", "Observações do PDF (ficam na matéria): " + (r.note.length > 260 ? r.note.slice(0, 257) + "…" : r.note)));
+  const ok = el("button", "btn", "Salvar plano"); ok.type = "button"; ok.id = "pdf-ok";
+  ok.addEventListener("click", () => { const sub = pdfApply(); after(sub); });
+  const again = pick("Outro PDF"); again[0].classList.add("ghost");
+  const no = el("button", "btn ghost", "Cancelar"); no.type = "button"; no.id = "pdf-cancel";
+  no.addEventListener("click", () => { pdfImp = null; rerender(); });
+  const b = el("div", "btns"); b.append(ok, ...again, no); s.appendChild(b);
+  return s;
+}
+
 function loadIntelDefaults() { if (intel) { intel.days = intel.days || {}; intel.goals = intel.goals || { week: 2, weekend: 4 }; } }
 function saveIntel() {
   try { localStorage.setItem(INTEL_KEY, JSON.stringify(intel)); setStatus("Salvo no celular", "ok"); }
@@ -1515,8 +1813,9 @@ function renderIntelSetup() {
   const head = el("div", "wk-head");
   head.append(el("h2", null, "Inteligência"), el("p", null, "Como você quer começar? Dá para editar as matérias depois, na aba Matérias."));
   main.appendChild(head);
-  [["preset", "Importar meu plano de estudos", "Análise 2, Cálculo 2 e FVC, com o cronograma diário até as provas de dezembro."],
-   ["empty", "Começar do zero", "Cadastre as próprias matérias e use os cronômetros e contadores."]].forEach(([k, t, d]) => {
+  main.appendChild(pdfImportSection(renderIntelSetup, sub => enterIntel("estudo", sub.id)));
+  (isOwner() ? [["preset", "Importar meu plano de estudos", "Análise 2, Cálculo 2 e FVC, com o cronograma diário até as provas de dezembro."]] : []).concat([
+   ["empty", "Começar do zero", "Cadastre as próprias matérias e use os cronômetros e contadores."]]).forEach(([k, t, d]) => {
     const b = el("button", "guide pick"); b.type = "button"; b.id = "intel-" + k;
     b.append(el("h3", null, t), el("p", "note muted", d));
     b.addEventListener("click", () => { createIntel(k === "preset"); enterIntel(k === "preset" ? "estudo" : "materias"); });
@@ -1792,6 +2091,7 @@ function renderMaterias(main) {
   const head = el("div", "wk-head");
   head.append(el("h2", null, "Matérias"), el("p", null, "Metas diárias e matérias. As mudanças são salvas na hora."));
   main.appendChild(head);
+  main.appendChild(pdfImportSection(renderIntel, sub => { state.itab = "estudo"; enterIntel("estudo", sub.id); }));
 
   const gs = el("section", "guide");
   gs.appendChild(el("h3", null, "Meta diária"));
@@ -5438,11 +5738,15 @@ function loadCloud() {
 }
 function saveCloud() { try { if (cloud) _lsSet.call(localStorage, CLOUD_KEY, JSON.stringify(cloud)); else localStorage.removeItem(CLOUD_KEY); } catch (e) {} }
 function loggedIn() { return !!(cloud && cloud.token); }
-// Quem não é o dono (ou está sem conta) vê só Força e Economia. Quem decide é o servidor, na resposta do login e da sincronização.
-const BASIC_MODS = ["forca", "financas"];
+// Quem não é o dono (ou está sem conta) vê Inteligência, Força e Economia. O servidor diz quem é o dono, na resposta do login e da sincronização
+// (o dono recebe a lista completa; as outras contas recebem só ["forca", "financas"], e a Inteligência é liberada aqui para todos).
+const BASIC_MODS = ["inteligencia", "forca", "financas"];
+const SERVER_BASIC = ["forca", "financas"];
+function isOwner() { return loggedIn() && Array.isArray(cloud.modules) && cloud.modules.some(x => !SERVER_BASIC.includes(x)); }
 function allowedModules() {
   if (!loggedIn() || !Array.isArray(cloud.modules)) return BASIC_MODS;
-  return cloud.modules.includes("inteligencia") ? MODULES.map(m => m.id) : cloud.modules; // o dono vê todos, inclusive módulos novos
+  if (isOwner()) return MODULES.map(m => m.id); // o dono vê todos, inclusive módulos novos
+  return BASIC_MODS.filter(x => x === "inteligencia" || cloud.modules.includes(x));
 }
 function modAllowed(id) { return allowedModules().includes(id); }
 function setModules(list) {
@@ -5684,7 +5988,7 @@ function renderConta() {
   if (loggedIn()) {
     const s = el("section", "guide");
     s.append(el("h3", null, "Conectado como " + cloud.user));
-    s.appendChild(el("p", "note muted", "Acesso: " + (modAllowed("inteligencia") ? "todos os módulos." : "módulos Força e Economia.")));
+    s.appendChild(el("p", "note muted", "Acesso: " + (isOwner() ? "todos os módulos." : "módulos Inteligência, Força e Economia.")));
     const st = el("p", "note"); st.id = "cloud-state";
     if (cloud.err) flash(st, cloud.err, "err"); else st.textContent = Object.keys(cloud.dirty).length ? "Há alterações esperando para subir para a nuvem." : "Tudo sincronizado. As alterações sobem sozinhas alguns segundos depois de feitas.";
     s.appendChild(st);

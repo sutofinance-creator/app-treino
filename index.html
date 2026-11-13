@@ -3308,6 +3308,8 @@ function saveFin() {
 }
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 function brl(v) { return BRL.format(v || 0); }
+const FX_SYM = { USD: "US$", EUR: "€", GBP: "£" };
+function fmtFx(cur, v) { const n = Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); return (FX_SYM[cur] || cur) + " " + n; }
 function pctf(v) { return v == null || !isFinite(v) ? "—" : (v * 100).toFixed(1).replace(".", ",") + "%"; }
 function normTxt(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z ]/g, " ").replace(/\s+/g, " ").trim(); }
 function monthKey(iso) { return iso.slice(0, 7); }
@@ -3374,6 +3376,7 @@ function suggestFor(t) {
   return null;
 }
 function isComplete(t) {
+  if (t.fxPending) return false; // compra em moeda estrangeira sem o valor em reais: precisa do valor da fatura
   if (isSplit(t)) return splitOk(t);
   if (!t.cat || !t.kind) return false;
   if (t.dir === "out" && t.kind === "gasto") return !!(t.ess && t.freq && t.nat && (t.item || "").trim());
@@ -3464,8 +3467,17 @@ function mergeTx(list) {
   const ext = new Set(fin.tx.filter(t => t.extId).map(t => t.extId));
   const seen = {}; fin.tx.forEach(t => { const k = txKey(t); seen[k] = (seen[k] || 0) + 1; });
   let added = 0, dup = 0, auto = 0;
+  const byExt = {}; fin.tx.forEach(t => { if (t.extId) byExt[t.extId] = t; });
   list.forEach(t => {
-    if (t.extId && ext.has(t.extId)) { dup++; return; }
+    if (t.extId && ext.has(t.extId)) {
+      // compra em moeda estrangeira já importada: passa a usar o valor em reais da fatura (sem mexer na classificação nem em ajuste feito à mão)
+      const cur = byExt[t.extId];
+      if (cur && t.cur && !cur.fxManual) {
+        const old = cur.amount; Object.assign(cur, { cur: t.cur, orig: t.orig }); if (t.fxPending) cur.fxPending = true; else delete cur.fxPending;
+        if (!t.fxPending && cents(old) !== cents(t.amount)) { cur.amount = t.amount; if (isSplit(cur)) cur.split = scaleSplit(cur.split, cur.amount); }
+      }
+      dup++; return;
+    }
     const k = txKey(t); if (seen[k]) { seen[k]--; dup++; return; }
     if (t.status === "done") { learnRule(t); auto++; }
     fin.tx.push(t); added++;
@@ -3597,17 +3609,24 @@ async function syncOF() {
   if (!ofReady() || finSyncing) return null;
   finSyncing = true;
   // v2: o servidor passou a trazer as compras da fatura aberta do cartão; na primeira sincronização depois disso, busca o período todo de novo
-  const full = (fin.of.v || 1) < 2;
-  const from = fin.of.lastTo && !full ? addDaysISO(fin.of.lastTo, -7) : (fin.of.from || ofDefaultFrom());
+  const full = (fin.of.v || 1) < 2, fullFrom = fin.of.from || ofDefaultFrom();
+  const from = fin.of.lastTo && !full ? addDaysISO(fin.of.lastTo, -7) : fullFrom;
   try {
-    const data = await ofRequest("/transactions?from=" + from);
-    const list = (data.transactions || []).filter(t => t.date && typeof t.amount === "number" && t.amount !== 0).map(t => ({
-      id: uid(), extId: "pluggy:" + t.id, date: t.date, desc: cleanDesc(t.description), memo: t.description,
-      amount: Math.abs(t.amount), dir: t.direction || (t.accountType === "CREDIT" ? (t.amount > 0 ? "out" : "in") : (t.type === "CREDIT" ? "in" : "out")),
-      bank: t.accountType === "CREDIT" ? "Cartão " + (t.accountName || "") : (t.accountName || ""),
-      method: t.accountType === "CREDIT" ? "Cartão de Crédito" : (pmLabel(t.paymentMethod) || methodFrom(t.description)),
-      source: "openfinance", status: "pending" }));
+    let data = await ofRequest("/transactions?from=" + from);
+    // v3: o servidor passou a mandar o valor em reais das compras em moeda estrangeira; busca o período todo uma vez para corrigir as antigas
+    const knowsCur = (data.transactions || []).some(t => "currencyCode" in t);
+    if (knowsCur && (fin.of.v || 1) < 3 && from !== fullFrom) data = await ofRequest("/transactions?from=" + fullFrom);
+    const list = (data.transactions || []).filter(t => t.date && typeof t.amount === "number" && t.amount !== 0).map(t => {
+      const o = { id: uid(), extId: "pluggy:" + t.id, date: t.date, desc: cleanDesc(t.description), memo: t.description,
+        amount: Math.abs(t.amount), dir: t.direction || (t.accountType === "CREDIT" ? (t.amount > 0 ? "out" : "in") : (t.type === "CREDIT" ? "in" : "out")),
+        bank: t.accountType === "CREDIT" ? "Cartão " + (t.accountName || "") : (t.accountName || ""),
+        method: t.accountType === "CREDIT" ? "Cartão de Crédito" : (pmLabel(t.paymentMethod) || methodFrom(t.description)),
+        source: "openfinance", status: "pending" };
+      if (t.currencyCode && t.currencyCode !== "BRL" && t.originalAmount != null) { o.cur = t.currencyCode; o.orig = Math.abs(t.originalAmount); if (t.converted === false) o.fxPending = true; }
+      return o;
+    });
     const r = mergeTx(list);
+    if (knowsCur) fin.of.v = Math.max(fin.of.v || 1, 3);
     Object.assign(fin.of, { last: new Date().toISOString(), lastTo: data.to || todayISO(), err: "", lastAdded: r.added });
     if (typeof data.items === "number") fin.of.linked = data.items;
     if (full && (data.transactions || []).some(t => t.direction)) fin.of.v = 2;
@@ -3882,10 +3901,11 @@ function txRow(t, pending) {
   const wrap = el("section", "card tx" + (finUI.open === t.id ? " open" : "")); wrap.id = "tx-" + t.id;
   const b = el("button", "tx-head"); b.type = "button"; b.id = "txb-" + t.id; b.setAttribute("aria-expanded", String(finUI.open === t.id));
   const left = el("span", "tx-l");
-  left.append(el("span", "tx-desc", t.desc), el("span", "tx-meta", fmtDate(t.date) + (t.method ? " · " + t.method : "") + (t.status === "done" && t.item ? " · " + t.item : "")));
+  left.append(el("span", "tx-desc", t.desc), el("span", "tx-meta", fmtDate(t.date) + (t.method ? " · " + t.method : "") + (t.cur ? " · " + fmtFx(t.cur, t.orig) : "") + (t.status === "done" && t.item ? " · " + t.item : "")));
+  if (t.fxPending) left.appendChild(el("span", "tx-sug tx-fx", "Valor em " + t.cur + ": confira o valor em reais na fatura e corrija aqui."));
   if (t.memo && t.memo !== t.desc && finUI.open === t.id) left.appendChild(el("span", "tx-meta", "Extrato: " + t.memo));
   const r = el("span", "tx-r");
-  r.appendChild(el("span", "tx-val " + (t.dir === "in" ? "in" : "out"), (t.dir === "in" ? "+ " : "− ") + brl(t.amount)));
+  r.appendChild(el("span", "tx-val " + (t.dir === "in" ? "in" : "out"), (t.dir === "in" ? "+ " : "− ") + (t.fxPending ? fmtFx(t.cur, t.amount) : brl(t.amount))));
   if (t.status === "done") {
     const chips = el("span", "tx-chips");
     if (isSplit(t)) {
@@ -3932,6 +3952,15 @@ function txEditor(t) {
   const draw = () => {
     box.innerHTML = "";
     let leftEl = null, fillBtn = null;
+    if (t.cur) {
+      // compra em moeda estrangeira: o que vale é o valor em reais da fatura
+      box.appendChild(el("p", "note muted", "Compra em " + fmtFx(t.cur, t.orig) + ". " + (t.fxPending ? "O banco não informou o valor em reais: digite o valor que aparece na fatura (o IOF vem num lançamento separado)." : "Valor em reais informado pelo banco; se a fatura mostrar outro, corrija aqui.")));
+      const g = el("div", "inputs two"), f = el("div", "field"), l = el("label", null, "Valor na fatura (R$)"), i = el("input");
+      l.htmlFor = "f-brl-" + t.id; i.id = "f-brl-" + t.id; i.inputMode = "decimal"; i.placeholder = "Ex.: 114,32";
+      i.value = d.fxPending ? "" : d.amount.toFixed(2).replace(".", ",");
+      i.addEventListener("input", () => { const v = parseMoney(i.value); if (v > 0) { d.amount = Math.round(v * 100) / 100; d.fxPending = false; } else if (t.fxPending) d.fxPending = true; upd(); });
+      f.append(l, i); g.appendChild(f); box.appendChild(g);
+    }
     if (!d.split) {
       if (t.status !== "done" && suggestFor(t)) box.appendChild(el("p", "note muted", "Campos preenchidos com base no que você já classificou para \"" + t.desc + "\". Confira e ajuste."));
       box.appendChild(chipGroup("Tipo de lançamento", kinds, d.kind, v => { d.kind = v; draw(); }, "k-" + t.id));
@@ -4006,10 +4035,12 @@ function txEditor(t) {
         leftEl.className = "rat-left " + (cents(rem) === 0 ? "ok" : "err");
         fillBtn.disabled = cents(rem) === 0 || !(((d.split[d.split.length - 1].amount || 0) + rem) > 0);
         hint.textContent = ok ? "" : cents(rem) !== 0 ? (cents(rem) > 0 ? "Distribua o valor todo: ainda falta " + brl(rem) + "." : "As partes passam do total em " + brl(-rem) + ".") : "Preencha valor, categoria e as classificações de cada parte.";
-      } else hint.textContent = ok ? "" : (d.kind === "gasto" ? "Preencha o que foi comprado, a categoria e as três classificações." : "Preencha a " + (d.kind === "receita" ? "origem." : "categoria."));
+      } else if (d.fxPending) hint.textContent = "Digite o valor em reais que aparece na fatura.";
+      else hint.textContent = ok ? "" : (d.kind === "gasto" ? "Preencha o que foi comprado, a categoria e as três classificações." : "Preencha a " + (d.kind === "receita" ? "origem." : "categoria."));
     }
     sv.addEventListener("click", () => {
       if (!isComplete(d)) return;
+      if (t.cur) { if (cents(d.amount) !== cents(t.amount)) { t.amount = d.amount; t.fxManual = true; } delete t.fxPending; }
       let fields;
       if (d.split) {
         const parts = d.split.map(p => { const o = { amount: Math.round(p.amount * 100) / 100, kind: p.kind, cat: (p.cat || "").trim(), item: (p.item || "").trim() }; if (p.kind === "gasto") Object.assign(o, { ess: p.ess, freq: p.freq, nat: p.nat }); else Object.assign(o, { ess: null, freq: null, nat: null }); return o; });

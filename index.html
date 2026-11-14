@@ -1170,6 +1170,16 @@ function renderChooser() {
     b.addEventListener("click", () => startProfile("meu"));
     main.appendChild(b);
   }
+  // usava um treino que vinha pronto e ainda não tem conta: os registros continuam aqui, o treino volta ao entrar na conta
+  if (!loggedIn() && fLegacyId() && !fplan) {
+    const g = el("section", "guide"); g.id = "f-legacy";
+    g.appendChild(el("h3", null, "Seu treino continua salvo"));
+    g.appendChild(el("p", "note", "O treino que você usava agora fica no catálogo, que só aparece para quem tem conta. Seus registros de carga continuam guardados neste aparelho. Crie sua conta (ou entre nela) aqui mesmo, neste aparelho, e abra a Força de novo: o treino volta com todo o histórico."));
+    g.appendChild(el("p", "note muted", "Até lá, não apague os dados do navegador nem desinstale o app, porque os registros estão só neste aparelho."));
+    const bt = el("button", "btn", "Criar conta ou entrar"); bt.type = "button"; bt.id = "f-legacy-acct"; bt.addEventListener("click", () => enterConta());
+    const bb = el("div", "btns"); bb.appendChild(bt); g.appendChild(bb);
+    main.insertBefore(g, head.nextSibling);
+  }
   main.appendChild(fImportSection(renderChooser));
   main.appendChild(fCatalogSection());
 }

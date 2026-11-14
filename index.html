@@ -2191,6 +2191,7 @@ function buildSubjCard(s, n, iso) {
   if (infos.length) box.appendChild(el("p", "ex-note", infos.join(" · ")));
   top.append(el("div", "num", String(n).padStart(2, "0")), box);
   card.appendChild(top);
+  if ((s.att || []).length) card.appendChild(msAttachBox(() => s.att, () => {}, "sm-" + s.id + "-", false, "Materiais"));
 
   // cronômetro
   const running = intel.timer && intel.timer.sid === s.id;
@@ -2445,6 +2446,7 @@ function renderMaterias(main) {
     field("name", "Nome", "text"); field("unit", "Contar por", "unit");
     field("total", "Total (0 = sem total)", "num"); field("base", "Já feitos antes", "num");
     c.appendChild(grid);
+    c.appendChild(msAttachBox(() => { const t = intel.subjects.find(x => x.id === s.id) || s; return t.att || (t.att = []); }, () => saveIntel(), "m-" + s.id + "-", true, "Materiais"));
     c.appendChild(planEditor(s));
     const rng = s.plan ? planRange(s) : null;
     if (rng) c.appendChild(el("p", "note muted", "Cronograma importado de " + fmtDate(rng[0]).slice(0, 5) + " a " + fmtDate(rng[1]).slice(0, 5) + (s.exams && s.exams.length ? "; provas em " + s.exams.map(d => fmtDate(d).slice(0, 5)).join(" e ") : "") + ". " + (s.note || "")));
@@ -2453,7 +2455,7 @@ function renderMaterias(main) {
       if (!intelConfirm.has(s.id)) { intelConfirm.add(s.id); renderIntel(); return; }
       intelConfirm.delete(s.id);
       if (intel.timer && intel.timer.sid === s.id) stopTimer(true);
-      intel.subjects = intel.subjects.filter(x => x.id !== s.id); saveIntel(); renderIntel();
+      intel.subjects = intel.subjects.filter(x => x.id !== s.id); saveIntel(); msDropFiles(s.att); renderIntel();
     });
     const br = el("div", "btns"); br.appendChild(rm); c.appendChild(br);
     if (intelConfirm.has(s.id)) c.appendChild(el("p", "note muted", "Toque de novo para remover. Os registros de tempo dessa matéria deixam de aparecer."));
@@ -3354,12 +3356,29 @@ function msNew(v, silent) {
   g.tasks.push(t); if (!silent) saveMs(); return t;
 }
 function msTouch(t) { t.upd = Date.now(); saveMs(); }
-/* ---------- Missões: anexos (links e arquivos) ---------- */
-// Links ficam na própria missão. Arquivos vão para o servidor da sua conta (até 10 MB cada, 100 MB no total) e só a sua
-// conta acessa. A missão guarda só o nome, o tamanho e o id do arquivo.
-const MS_CHUNK = 512 * 1024, MS_FILE_MAX = 10 * 1024 * 1024;
+/* ---------- Anexos (missões e matérias): links e arquivos ---------- */
+// Links ficam na própria missão ou matéria. Arquivos vão para o servidor da sua conta e só a sua conta acessa; a missão ou
+// matéria guarda só o nome, o tamanho e o id. Com o armazenamento de arquivos (R2) ativo no servidor, cada arquivo pode ter
+// até 300 MB (sobe em partes de 10 MB e abre direto no navegador); sem ele, até 10 MB.
+const MS_CHUNK = 512 * 1024;
 const msBlobs = {};
-function fmtSize(n) { return n >= 1048576 ? (n / 1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round((n || 0) / 1024)) + " KB"; }
+let fileInfo = null, fileInfoP = null, attBusy = 0;
+function loadFileInfo() {
+  if (fileInfo || fileInfoP || !loggedIn()) return fileInfoP;
+  fileInfoP = cloudFetch("GET", "/files").then(r => { fileInfo = r; return r; }).catch(() => null).finally(() => { fileInfoP = null; });
+  return fileInfoP;
+}
+async function cloudBin(method, path, blob) {
+  const res = await fetch(cloudServer() + path, { method, headers: { "Content-Type": "application/octet-stream", Authorization: "Bearer " + cloud.token }, body: blob });
+  if (!res.ok) { const d = await res.json().catch(() => ({})); if (res.status === 401) cloudExpired(); const e = new Error(d.error || ("o servidor respondeu " + res.status)); e.status = res.status; throw e; }
+  return res.json().catch(() => ({}));
+}
+function fmtSize(n) {
+  n = n || 0; const t = (v, d) => v.toFixed(d).replace(/\.0+$/, "").replace(".", ",");
+  if (n >= 1073741824) return t(n / 1073741824, 1) + " GB";
+  if (n >= 1048576) return t(n / 1048576, n >= 104857600 ? 0 : 1) + " MB";
+  return n ? Math.max(1, Math.round(n / 1024)) + " KB" : "0 MB";
+}
 async function cloudRaw(method, path, text) {
   const res = await fetch(cloudServer() + path, { method, headers: { "Content-Type": "text/plain", Authorization: "Bearer " + cloud.token }, body: text });
   if (!res.ok) { const d = await res.json().catch(() => ({})); if (res.status === 401) cloudExpired(); const e = new Error(d.error || ("o servidor respondeu " + res.status)); e.status = res.status; throw e; }
@@ -3370,19 +3389,45 @@ function bytesFromB64(b) { const s = atob(b), u = new Uint8Array(s.length); for 
 const msAttId = () => "a" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 async function msUpload(file, onProg) {
   if (!file.size) throw new Error(file.name + " está vazio");
-  if (file.size > MS_FILE_MAX) throw new Error(file.name + " passa de 10 MB");
-  const chunks = Math.ceil(file.size / MS_CHUNK);
-  const { id } = await cloudFetch("POST", "/files", { name: file.name, type: file.type || "", size: file.size, chunks });
-  for (let n = 0; n < chunks; n++) {
-    const part = new Uint8Array(await file.slice(n * MS_CHUNK, (n + 1) * MS_CHUNK).arrayBuffer());
-    await cloudRaw("PUT", "/files/" + id + "/" + n, b64FromBytes(part));
-    if (onProg) onProg((n + 1) / chunks);
+  const inf = fileInfo || await loadFileInfo();
+  if (inf && file.size > inf.max) throw new Error(file.name + " passa de " + fmtSize(inf.max) + (inf.r2 ? "" : ". Arquivos maiores precisam do armazenamento de arquivos ativo no servidor"));
+  const r = await cloudFetch("POST", "/files", { name: file.name, type: file.type || "", size: file.size, chunks: Math.ceil(file.size / MS_CHUNK), r2: true });
+  if (r.store === "r2") {
+    for (let n = 0; n < r.parts; n++) {
+      await cloudBin("PUT", "/files/" + r.id + "/p/" + n, file.slice(n * r.partSize, (n + 1) * r.partSize));
+      if (onProg) onProg((n + 1) / r.parts);
+    }
+  } else {
+    const chunks = r.chunks || Math.ceil(file.size / MS_CHUNK); // Worker anterior não devolve as partes
+    for (let n = 0; n < chunks; n++) {
+      const part = new Uint8Array(await file.slice(n * MS_CHUNK, (n + 1) * MS_CHUNK).arrayBuffer());
+      await cloudRaw("PUT", "/files/" + r.id + "/" + n, b64FromBytes(part));
+      if (onProg) onProg((n + 1) / chunks);
+    }
   }
-  await cloudFetch("POST", "/files/" + id + "/done", {});
-  return { id: msAttId(), kind: "file", fid: id, name: file.name, size: file.size, type: file.type || "", at: Date.now() };
+  await cloudFetch("POST", "/files/" + r.id + "/done", {});
+  if (fileInfo) fileInfo.used += file.size;
+  return { id: msAttId(), kind: "file", fid: r.id, name: file.name, size: file.size, type: file.type || "", store: r.store === "r2" ? "r2" : undefined, at: Date.now() };
 }
 async function msOpenFile(a, btn) {
   const label = btn.textContent;
+  if (a.store === "r2") { // arquivo grande: abre direto no navegador por um link temporário
+    const w = window.open("", "_blank");
+    try {
+      if (!loggedIn()) throw new Error("entre na sua conta para abrir os arquivos");
+      if (w) w.document.write('<p style="font-family:sans-serif;padding:24px">Abrindo ' + a.name.replace(/[<&>"]/g, "") + '…</p>');
+      btn.textContent = "Abrindo " + a.name + "…";
+      const { url } = await cloudFetch("POST", "/files/" + a.fid + "/link", {});
+      btn.textContent = label;
+      if (w) { w.location.href = url; return; }
+      const m = btn.closest(".ms-att").querySelector(".ms-att-msg");
+      if (m) { m.innerHTML = ""; m.className = "note ms-att-msg"; const lk = el("a", null, "Toque aqui para abrir " + a.name); lk.href = url; lk.target = "_blank"; lk.rel = "noopener"; m.appendChild(lk); }
+    } catch (e) {
+      if (w) w.close();
+      btn.textContent = label; const m = btn.closest(".ms-att").querySelector(".ms-att-msg"); if (m) { flash(m, "Não consegui abrir o arquivo: " + e.message + ".", "err"); m.classList.add("ms-att-msg"); }
+    }
+    return;
+  }
   try {
     if (!msBlobs[a.fid]) {
       if (!loggedIn()) throw new Error("entre na sua conta para abrir os arquivos");
@@ -3407,18 +3452,19 @@ function msDropFiles(atts) {
   if (!loggedIn()) return;
   (atts || []).filter(a => a.kind === "file" && a.fid).forEach(a => {
     if (msData().tasks.some(t => (t.att || []).some(b => b.fid === a.fid))) return;
+    if (intel && intel.subjects.some(t => (t.att || []).some(b => b.fid === a.fid))) return;
     if (msUI.newAtt.some(b => b.fid === a.fid)) return;
     cloudFetch("DELETE", "/files/" + a.fid).catch(() => {});
   });
 }
 // getList devolve a lista atual (de uma missão ou do rascunho de missão nova); persist salva. A caixa se redesenha sozinha.
-function msAttachBox(getList, persist, idp, editable) {
+function msAttachBox(getList, persist, idp, editable, title) {
   const box = el("div", "ms-att"); box.id = idp + "att";
   let addOpen = false, busy = "", err = "";
   const draw = () => {
     box.innerHTML = "";
     const list = getList() || [];
-    if (list.length || editable) box.appendChild(el("span", "field-l", "Anexos" + (list.length ? " (" + list.length + ")" : "")));
+    if (list.length || editable) box.appendChild(el("span", "field-l", (title || "Anexos") + (list.length ? " (" + list.length + ")" : "")));
     if (list.length) {
       const ul = el("ul", "ms-att-list");
       list.forEach(a => {
@@ -3470,6 +3516,7 @@ function msAttachBox(getList, persist, idp, editable) {
         fl.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fi.click(); } });
         fi.addEventListener("change", async () => {
           const files = [...fi.files]; fi.value = ""; err = "";
+          attBusy++;
           for (const [k, f] of files.entries()) {
             try {
               busy = "Enviando " + f.name + (files.length > 1 ? " (" + (k + 1) + " de " + files.length + ")" : "") + "…"; draw();
@@ -3477,12 +3524,14 @@ function msAttachBox(getList, persist, idp, editable) {
               getList().push(a); persist();
             } catch (e) { err = "Não consegui anexar " + f.name + ": " + e.message + "."; }
           }
-          busy = ""; draw();
+          attBusy--; busy = ""; draw();
         });
         bb.append(fl, fi);
       }
       box.appendChild(bb);
       if (!loggedIn()) box.appendChild(el("p", "note muted", "Para anexar arquivos, entre na sua conta. Links funcionam sem conta."));
+      else if (fileInfo) box.appendChild(el("p", "note muted", "Arquivos de até " + fmtSize(fileInfo.max) + " cada. Usado: " + fmtSize(fileInfo.used) + " de " + fmtSize(fileInfo.quota) + "."));
+      else loadFileInfo()?.then(r => { if (r && box.isConnected) draw(); });
     }
     box.appendChild(msg);
   };
@@ -3805,6 +3854,7 @@ function msForm(v, onSave, idp, compact, extra) {
   const b = el("div", "btns"); const sv = el("button", "btn", v.id ? "Salvar" : "Criar missão"); sv.type = "button"; sv.id = idp + "save";
   sv.addEventListener("click", () => {
     const title = ti.value.trim(); if (!title) { flash(msg, "Escreva o que precisa ser feito.", "err"); return; }
+    if (attBusy) { flash(msg, "Espere terminar o envio dos arquivos.", "err"); return; }
     const est = Math.round(parseNum(es.value) || 0);
     const r = rec.type ? { type: rec.type, days: rec.type === "semanal" ? rec.days.slice().sort() : undefined, mday: rec.type === "mensal" ? rec.mday : undefined } : null;
     let due = du.value || null;

@@ -3390,7 +3390,7 @@ const msAttId = () => "a" + Date.now().toString(36) + Math.random().toString(36)
 async function msUpload(file, onProg) {
   if (!file.size) throw new Error(file.name + " está vazio");
   const inf = fileInfo || await loadFileInfo();
-  if (inf && file.size > inf.max) throw new Error(file.name + " passa de " + fmtSize(inf.max) + (inf.r2 ? "" : ". Arquivos maiores precisam do armazenamento de arquivos ativo no servidor"));
+  if (inf && file.size > inf.max) throw new Error(file.name + " passa de " + fmtSize(inf.max) + (inf.r2 ? "" : ". Para arquivos maiores, anexe um link (do Google Drive, por exemplo)"));
   const r = await cloudFetch("POST", "/files", { name: file.name, type: file.type || "", size: file.size, chunks: Math.ceil(file.size / MS_CHUNK), r2: true });
   if (r.store === "r2") {
     for (let n = 0; n < r.parts; n++) {

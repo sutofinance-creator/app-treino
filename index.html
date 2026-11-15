@@ -526,6 +526,22 @@ ol.steps a { color: var(--accent); }
 .hex-row.off .hex-row-p { color: var(--muted); }
 .hex-row-l { grid-column: 1 / -1; font-size: 13px; color: var(--muted); }
 .hex-row-l.you { color: var(--ink); }
+.pen-box { padding: 14px; display: grid; gap: 8px; border-color: rgba(255, 92, 122, .6); box-shadow: 0 0 0 1px rgba(255, 92, 122, .45), 0 0 18px rgba(255, 92, 122, .2), inset 0 0 22px rgba(255, 92, 122, .06); }
+.pen-box.ok { border-color: rgba(60, 240, 165, .55); box-shadow: 0 0 0 1px rgba(60, 240, 165, .4), 0 0 16px rgba(60, 240, 165, .15); }
+.pen-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pen-box h3 { color: var(--bad); text-shadow: 0 0 10px rgba(255, 92, 122, .45); }
+.pen-box.ok h3 { color: var(--good); text-shadow: none; }
+.pen-box .note { margin: 0; }
+.pen-box .hex-rows { margin-top: 2px; }
+.pen-row { border-left-color: var(--bad); }
+.pen-row .hex-row-p { color: var(--bad); }
+.pen-row.done { border-left-color: var(--good); }
+.pen-row.done .hex-row-p { color: var(--good); }
+.pen-btns { grid-column: 1 / -1; margin-top: 6px; }
+.pen-note { color: var(--bad); }
+.pen-note.ok { color: var(--good); }
+.xp-card .pen-box { clip-path: none; }
+.xp-card .pen-box h3 { font-size: 18px; }
 .hex-form { display: grid; gap: 12px; }
 .hex-form .field input { font-size: 17px; }
 /* ---------- Economia: rateio ---------- */
@@ -2306,6 +2322,8 @@ function renderEstudo(main) {
   tiles.classList.add("tiles-3");
   g.appendChild(tiles);
   const pb = el("div", "goalbar"); const pf = el("span"); pf.style.width = Math.min(100, sec / goal * 100) + "%"; if (iso === today) pf.dataset.live = "day-bar"; pb.appendChild(pf); g.appendChild(pb);
+  const pih = iso === today ? penToday().find(x => x.key === "pen-intel-h") : null;
+  if (pih) { const pn = el("p", "note pen-note" + (pih.done ? " ok" : "")); pn.id = "pen-intel-note"; pn.textContent = "Missão de penalidade: +1h hoje. " + pih.txt + (pih.done ? " Cumprida." : ""); g.appendChild(pn); }
   main.appendChild(g);
 
   if (!intel.subjects.length) {
@@ -2374,7 +2392,8 @@ function buildSubjCard(s, n, iso) {
 
   // contador
   const crow = el("div", "count-row");
-  const cl = el("label", "field-l", (UNITS[s.unit] || UNITS.exercicios)[1].replace(/^./, c => c.toUpperCase()) + " feitos no dia" + (p && p.qty ? " (meta " + p.qty + ")" : "")); cl.htmlFor = "cnt-" + s.id;
+  const smin = subjMin(s, iso);
+  const cl = el("label", "field-l", (UNITS[s.unit] || UNITS.exercicios)[1].replace(/^./, c => c.toUpperCase()) + " feitos no dia" + (p && p.qty ? " (meta " + p.qty + (smin ? ", mínimo " + smin : "") + ")" : "")); cl.htmlFor = "cnt-" + s.id;
   const ctr = el("div", "stepper");
   const minus = el("button", "step", "−"); minus.type = "button"; minus.id = "cm-" + s.id; minus.setAttribute("aria-label", "Diminuir");
   const inp = el("input", "count-in"); inp.id = "cnt-" + s.id; inp.inputMode = "numeric"; inp.value = String(r.count || 0);
@@ -2386,6 +2405,8 @@ function buildSubjCard(s, n, iso) {
   ctr.append(minus, inp, plus);
   crow.append(cl, ctr);
   card.appendChild(crow);
+  const psb = iso === today ? penToday().find(x => x.key === "pen-sub-" + s.id) : null;
+  if (psb) { const pn = el("p", "ex-note pen-note" + (psb.done ? " ok" : "")); pn.id = "pen-sub-note-" + s.id; pn.textContent = "Missão de penalidade: " + psb.txt + (psb.done ? " Cumprida." : ""); card.appendChild(pn); }
 
   // progresso total
   if (s.total) {
@@ -2581,13 +2602,15 @@ function renderMaterias(main) {
       i.addEventListener("change", () => {
         if (k === "name") { const v = i.value.trim(); if (v) { s.name = v; h.textContent = v; } else i.value = s.name; }
         else if (type === "unit") s.unit = i.value;
-        else { const v = parseNum(i.value); s[k] = v == null ? 0 : Math.round(v); i.value = String(s[k]); }
+        else { const v = parseNum(i.value); s[k] = v == null ? 0 : Math.max(0, Math.round(v)); i.value = String(s[k]); }
+        if (k === "min") { if (s.min > 0 && !s.minFrom) s.minFrom = todayISO(); if (!s.min) { delete s.min; delete s.minFrom; } }
         saveIntel(); if (k === "total" || k === "base") renderIntel();
       });
       f.append(l, i); grid.appendChild(f);
     };
     field("name", "Nome", "text"); field("unit", "Contar por", "unit");
     field("total", "Total (0 = sem total)", "num"); field("base", "Já feitos antes", "num");
+    field("min", "Mínimo por dia (0 = sem mínimo)", "num");
     c.appendChild(grid);
     c.appendChild(msAttachBox(() => { const t = intel.subjects.find(x => x.id === s.id) || s; return t.att || (t.att = []); }, () => saveIntel(), "m-" + s.id + "-", true, "Materiais"));
     c.appendChild(planEditor(s));
@@ -5554,7 +5577,11 @@ function forcaTasks() {
     go: () => enterForca(w.id) }] };
 }
 
-function moduleTasks(id) { return id === "forca" ? forcaTasks() : id === "inteligencia" ? intelTasks() : id === "financas" ? finTasks() : id === "estamina" ? staminaTasks() : id === "graca" ? gracaTasks() : id === "missoes" ? missoesTasks() : { tasks: [] }; }
+function moduleTasks(id) {
+  const r = id === "forca" ? forcaTasks() : id === "inteligencia" ? intelTasks() : id === "financas" ? finTasks() : id === "estamina" ? staminaTasks() : id === "graca" ? gracaTasks() : id === "missoes" ? missoesTasks() : { tasks: [] };
+  if (!r.setup && modAllowed(id)) { const pt = penTasks(id); if (pt.length) r.tasks = pt.concat(r.tasks || []); }
+  return r;
+}
 function enterModule(id, tab) { if (id === "forca") enterForca(tab); else if (id === "inteligencia") enterIntel(tab); else if (id === "financas") enterFin(tab); else if (id === "estamina") enterStamina(tab); else if (id === "graca") enterGraca(tab); else if (id === "missoes") enterMissoes(tab); }
 
 function moduleStatus(m) {
@@ -6078,6 +6105,15 @@ function xpStarts() {
   if (modAllowed("financas") && fin && fin.tx.length) st.financas = fin.tx.reduce((a, t) => !a || (t.added || t.date) < a ? (t.added || t.date) : a, null) || today;
   return st;
 }
+// mínimo por matéria (Inteligência): vale a partir do dia em que foi definido e nunca passa da meta do dia
+function subjMin(s, iso) {
+  if (!(s.min > 0) || (s.minFrom && iso < s.minFrom)) return 0;
+  const p = planFor(s, iso); if (!p || p.doneAll || !(p.qty > 0)) return 0;
+  return Math.min(s.min, p.qty);
+}
+function finPendOn(iso) { return fin.tx.filter(t => t.date <= iso && (t.added || t.date) <= iso && (t.status !== "done" || (t.doneAt && t.doneAt > iso))); }
+function grPlanNeed(iso) { return grTodayPlan(iso).filter(r => !r.created || r.created <= iso).reduce((a, r) => a + Math.max(1, r.times || 1), 0); }
+function grDayCount(iso) { const d = grData().days[iso] || {}; return Object.keys(d).reduce((a, k) => a + ((d[k] && d[k].count) || 0), 0); }
 // avalia um módulo num dia: null = ainda não usava; { min, p (0 a 1 além do mínimo), none, txt }
 function xpMod(id, iso) {
   const today = todayISO(), H = s => fmtHM(s);
@@ -6086,7 +6122,8 @@ function xpMod(id, iso) {
     const tasks = intel.subjects.map(s => { const pl = planFor(s, iso); if (!pl || pl.doneAll) return null; const t = subjTask(s, iso); return t ? t.complete : null; }).filter(x => x != null);
     const done = tasks.filter(Boolean).length, p = tasks.length ? done / tasks.length : 1;
     if (!goal && !tasks.length) return { min: true, p: 1, none: true, txt: "Sem meta para o dia" };
-    return { min: have >= goal, p, txt: "Estudo " + H(have) + " de " + H(goal) + (tasks.length ? " · tarefas " + done + " de " + tasks.length : "") };
+    const subMiss = intel.subjects.map(s => { const mn = subjMin(s, iso), c = getRec(iso, s.id).count || 0; return mn && c < mn ? { sid: s.id, name: s.name, miss: mn - c } : null; }).filter(Boolean);
+    return { min: have >= goal && !subMiss.length, hoursOk: have >= goal, subMiss, p, txt: "Estudo " + H(have) + " de " + H(goal) + (tasks.length ? " · tarefas " + done + " de " + tasks.length : "") + (subMiss.length ? " · abaixo do mínimo: " + subMiss.map(x => x.name).join(", ") : "") };
   }
   if (id === "estamina") {
     const cp = cardioPlan(iso), cm = Math.floor(stKindSec(iso, "cardio") / 60), fm = Math.floor(stKindSec(iso, "foco") / 60), fg = stam().goals.focusMin;
@@ -6101,7 +6138,7 @@ function xpMod(id, iso) {
   }
   if (id === "financas") {
     const lim = addDaysISO(iso, -7);
-    const pend = fin.tx.filter(t => t.date <= iso && (t.added || t.date) <= iso && (t.status !== "done" || (t.doneAt && t.doneAt > iso)));
+    const pend = finPendOn(iso);
     const old = pend.filter(t => t.date < lim).length;
     return { min: !old, p: pend.length ? 0 : 1, txt: pend.length ? pend.length + " pendente(s)" + (old ? ", " + old + " com mais de 7 dias" : "") : "Nada pendente" };
   }
@@ -6119,19 +6156,101 @@ function xpMod(id, iso) {
   }
   return null;
 }
-function xpDay(iso, st) {
+/* ---------- Missão de penalidade ----------
+   Módulo abaixo do mínimo num dia → no dia seguinte (só nele) aparece a penalidade daquele módulo.
+   Penalidade pendente: o dia não rende XP, mesmo com o mínimo em tudo. Cumprida + mínimo em tudo: XP do dia em dobro. */
+const PEN_START = "2026-11-16"; // a primeira penalidade sai do resultado de 15/11
+const PEN_FLEX = 50;
+const PEN_TXT = { inteligencia: "+1h de estudo se faltaram horas; matéria abaixo do mínimo: o que faltou + 1", estamina: "+20 min de cardio", forca: PEN_FLEX + " flexões", financas: "zerar os pendentes", graca: "+1 ritual", missoes: "+1h de trabalho" };
+function penFlag(iso) { return !!(rotina && rotina.pen && rotina.pen[iso] && rotina.pen[iso].forca); }
+// flexões: marcadas à mão; ficam em rotina.pen (que não é apagado com o tempo) e em "concluídos" da rotina (para o desfazer)
+function penSetForca(on) {
+  const r = ensureRotina(), iso = todayISO(); r.pen = r.pen || {};
+  if (on) r.pen[iso] = Object.assign({}, r.pen[iso], { forca: true }); else if (r.pen[iso]) delete r.pen[iso].forca;
+  const k = new Set(r.done[iso] || []); if (on) k.add("pen-forca"); else k.delete("pen-forca"); r.done[iso] = [...k];
+  saveRotina();
+}
+function penItems(m, iso) {
+  const H = x => fmtHM(x), base = { mod: m.id, name: XP_NAMES[m.id] }, out = [];
+  const mk = (key, title, txt, have, need, extra) => out.push(Object.assign({}, base, { key, title, txt, done: have >= need, pct: need ? Math.min(1, have / need) : 1 }, extra || {}));
+  if (m.id === "inteligencia") {
+    if (!m.hoursOk) { const need = goalSec(iso) + 3600, have = daySec(iso); mk("pen-intel-h", "+1h de estudo", "Estudo hoje: " + H(have) + " de " + H(need) + " (meta do dia + 1h).", have, need); }
+    (m.subMiss || []).forEach(x => {
+      const sb = intel.subjects.find(z => z.id === x.sid); if (!sb) return;
+      const mn = subjMin(sb, iso), add = x.miss + 1, need = mn + add, c = getRec(iso, sb.id).count || 0;
+      mk("pen-sub-" + sb.id, sb.name + ": +" + add + " " + unitWord(sb, add), c + " de " + need + " " + unitWord(sb, need) + " hoje (" + (mn ? "mínimo de hoje " + mn + " + " : "") + x.miss + " que " + (x.miss === 1 ? "faltou" : "faltaram") + " ontem + 1).", c, need, { sid: sb.id, need });
+    });
+  } else if (m.id === "estamina") {
+    const cp = cardioPlan(iso), tgt = (cp.optional ? 0 : cp.target) + 20, have = Math.floor(stKindSec(iso, "cardio") / 60);
+    mk("pen-cardio", "+20 min de cardio", "Cardio hoje: " + have + " de " + tgt + " min" + (cp.optional ? "." : " (meta do dia + 20)."), have, tgt, { tgt });
+  } else if (m.id === "forca") {
+    const ok = penFlag(iso); mk("pen-forca", PEN_FLEX + " flexões", ok ? "Feito." : "Faça e marque como feito.", ok ? 1 : 0, 1, { manual: true });
+  } else if (m.id === "financas") {
+    const n = finPendOn(iso).length; mk("pen-eco", "Zerar os pendentes", n ? n + (n === 1 ? " lançamento pendente." : " lançamentos pendentes.") : "Nada pendente.", n ? 0 : 1, 1);
+  } else if (m.id === "graca") {
+    const need = grPlanNeed(iso) + 1, did = grDayCount(iso);
+    mk("pen-graca", "+1 ritual", did + " de " + need + " hoje (os rituais do dia + 1; vale qualquer ritual).", did, need);
+  } else if (m.id === "missoes") {
+    const need = msGoalSec(iso) + 3600, have = msDaySec(iso);
+    mk("pen-work", "+1h de trabalho", "Trabalho hoje: " + H(have) + " de " + H(need) + " (meta do dia + 1h).", have, need);
+  }
+  return out;
+}
+// penalidades de um dia, a partir de como ficou o dia anterior (prevMods = módulos já avaliados do dia anterior)
+function penList(iso, st, prevMods) {
+  if (iso < PEN_START) return [];
+  const y = addDaysISO(iso, -1);
+  const mods = prevMods || Object.keys(XP_NAMES).filter(id => st[id] && y >= st[id]).map(id => Object.assign({ id }, xpMod(id, y))).filter(m => m.txt != null);
+  return mods.filter(m => !m.min).reduce((a, m) => a.concat(penItems(m, iso)), []);
+}
+function penToday() { return penList(todayISO(), xpStarts()); }
+function xpDay(iso, st, prev) {
   const mods = Object.keys(XP_NAMES).filter(id => st[id] && iso >= st[id]).map(id => Object.assign({ id, name: XP_NAMES[id] }, xpMod(id, iso))).filter(m => m.txt != null);
-  if (!mods.length) return { xp: 0, mods, ok: false };
+  const pen = penList(iso, st, prev ? prev.mods : null), penOk = pen.every(p => p.done);
+  if (!mods.length) return { xp: 0, mods, ok: false, pen, penOk };
   const ok = mods.every(m => m.min), avg = mods.reduce((a, m) => a + (m.min ? m.p : 0), 0) / mods.length;
-  return { xp: ok ? Math.round(100 + 100 * avg) : 0, mods, ok, full: ok && mods.every(m => m.p >= 1) };
+  let xp = ok ? Math.round(100 + 100 * avg) : 0;
+  if (pen.length) xp = ok && penOk ? xp * 2 : 0;
+  return { xp, mods, ok, full: ok && mods.every(m => m.p >= 1), pen, penOk };
 }
 function xpState() {
   const st = xpStarts(), ids = Object.keys(st); if (!ids.length) return null;
   const today = todayISO(); let d = ids.map(k => st[k]).filter(x => x !== st.financas || ids.length === 1).reduce((a, x) => !a || x < a ? x : a, null) || today;
-  const days = []; let total = 0, n = 0;
-  for (; d <= today && n < 1500; d = addDaysISO(d, 1), n++) { const r = xpDay(d, st); total += r.xp; days.push(Object.assign({ iso: d }, r)); }
+  const days = []; let total = 0, n = 0, prev = null;
+  for (; d <= today && n < 1500; d = addDaysISO(d, 1), n++) { const r = xpDay(d, st, prev); total += r.xp; days.push(Object.assign({ iso: d }, r)); prev = r; }
   let lvl = 1, left = total; while (left >= xpNeed(lvl)) { left -= xpNeed(lvl); lvl++; }
   return { total, lvl, cur: left, need: xpNeed(lvl), days, today: days[days.length - 1] };
+}
+function penBox(P, idp) {
+  const ok = P.every(p => p.done);
+  const s = el("section", "guide pen-box" + (ok ? " ok" : "")); s.id = idp;
+  const h = el("div", "pen-head"); h.append(el("h3", null, "Missão de penalidade"), el("span", "st " + (ok ? "ok" : "bad"), ok ? "Cumprida" : "Pendente"));
+  s.appendChild(h);
+  const mods = [...new Set(P.map(p => p.name))];
+  s.appendChild(el("p", "note", ok ? "Cumprida. Batendo o mínimo em todos os módulos, o XP de hoje vem em dobro." : "Ontem ficou abaixo do mínimo em " + listPt(mods) + ". Cumpra até a meia-noite: sem a penalidade, hoje não rende XP; com ela e o mínimo em todos os módulos, o XP de hoje dobra."));
+  if (ok && idp === "pen-box") return s; // na rotina, cumprida vira só o aviso
+  const ul = el("ul", "hex-rows");
+  P.forEach(p => {
+    const li = el("li", "hex-row pen-row" + (p.done ? " done" : "")); li.id = idp + "-" + p.key;
+    li.append(el("span", "hex-row-n", p.name + " · " + p.title), el("span", "hex-row-p", p.done ? "Feito" : "Falta"), el("span", "hex-row-l you", p.txt));
+    if (p.manual) {
+      const b = el("button", "btn" + (p.done ? " ghost" : ""), p.done ? "Desfazer" : "Fiz as " + PEN_FLEX + " flexões"); b.type = "button"; b.id = idp + "-forca-ok";
+      b.addEventListener("click", () => { penSetForca(!p.done); rtRefresh(b.id); });
+      const bb = el("div", "btns pen-btns"); bb.appendChild(b); li.appendChild(bb);
+    }
+    ul.appendChild(li);
+  });
+  s.appendChild(ul);
+  return s;
+}
+// penalidades de hoje como pendências do módulo (cards da aba Início)
+function penTasks(id) {
+  return penToday().filter(p => p.mod === id).map(p => ({ id: "task-" + p.key, title: "Penalidade: " + p.title, label: p.done ? "Feito" : "Falta", sub: p.txt, pct: p.pct, complete: p.done,
+    go: () => {
+      if (id === "inteligencia") enterIntel("estudo", p.sid); else if (id === "estamina") { enterStamina("est-hoje"); rtFocus("st-cardio"); }
+      else if (id === "financas") enterFin("fin-pendentes"); else if (id === "graca") enterGraca("gr-hoje"); else if (id === "missoes") enterMissoes("ms-hoje");
+      else { state.htab = "rotina"; history.replaceState(null, "", "#rotina"); renderHome(); rtFocus("pen-box"); }
+    } }));
 }
 const xpUI = { open: false };
 function xpCard() {
@@ -6143,10 +6262,17 @@ function xpCard() {
   const info = el("div", "xp-info");
   info.appendChild(el("span", "xp-num", X.cur.toLocaleString("pt-BR") + " / " + X.need.toLocaleString("pt-BR") + " XP"));
   const bar = el("div", "goalbar"); const f = el("span"); f.style.width = Math.min(100, X.cur / X.need * 100) + "%"; bar.appendChild(f); info.appendChild(bar);
-  const T = X.today, falta = T.mods.filter(m => !m.min).map(m => m.name);
-  info.appendChild(el("span", "xp-sub", T.ok ? "Hoje: +" + T.xp + " XP" + (T.full ? " · 100% em tudo" : " · mínimo em todos os módulos; 100% vale o dobro") : "Hoje: falta o mínimo em " + listPt(falta) + " para ganhar XP."));
+  const T = X.today, falta = T.mods.filter(m => !m.min).map(m => m.name), P = T.pen || [];
+  let sub;
+  if (P.length && !T.penOk) sub = "Hoje: sem XP até cumprir a missão de penalidade" + (falta.length ? " e o mínimo em " + listPt(falta) : "") + ".";
+  else if (P.length) sub = T.ok ? "Hoje: +" + T.xp + " XP · dobro pela penalidade cumprida" : "Penalidade cumprida: falta o mínimo em " + listPt(falta) + " para ganhar o XP em dobro.";
+  else sub = T.ok ? "Hoje: +" + T.xp + " XP" + (T.full ? " · 100% em tudo" : " · mínimo em todos os módulos; 100% vale o dobro") : "Hoje: falta o mínimo em " + listPt(falta) + " para ganhar XP.";
+  info.appendChild(el("span", "xp-sub", sub));
   info.appendChild(el("span", "xp-sub muted", "Faltam " + (X.need - X.cur).toLocaleString("pt-BR") + " XP para o nível " + (X.lvl + 1) + "."));
   top.append(badge, info); card.appendChild(top);
+  if (P.length) card.appendChild(penBox(P, "xp-pen"));
+  const tom = addDaysISO(todayISO(), 1), fails = T.mods.filter(m => !m.min);
+  if (tom >= PEN_START && fails.length) { const n = el("p", "note muted"); n.id = "xp-amanha"; n.textContent = "Se o dia terminar assim, amanhã tem missão de penalidade: " + fails.map(m => m.name + " (" + PEN_TXT[m.id] + ")").join("; ") + "."; card.appendChild(n); }
   if (seen && X.lvl > seen) { const m = el("p", "note flash ok", "Subiu para o nível " + X.lvl + "!"); m.id = "xp-up"; card.appendChild(m); }
   try { localStorage.setItem("stek-xp-nivel", String(X.lvl)); } catch (e) {}
   const more = el("details", "hex-more"); more.id = "xp-more"; more.open = xpUI.open;
@@ -6159,9 +6285,9 @@ function xpCard() {
     ul.appendChild(li);
   });
   more.appendChild(ul);
-  const wk = X.days.slice(-7).reverse().map(d => capFirst(DOW_SHORT[rtDow(d.iso)]) + " " + fmtDate(d.iso).slice(0, 5) + ": " + (d.xp ? "+" + d.xp : "0"));
+  const wk = X.days.slice(-7).reverse().map(d => capFirst(DOW_SHORT[rtDow(d.iso)]) + " " + fmtDate(d.iso).slice(0, 5) + ": " + (d.xp ? "+" + d.xp + (d.pen && d.pen.length ? " (dobro)" : "") : "0" + (d.pen && d.pen.length && !d.penOk && d.iso !== X.today.iso ? " (penalidade)" : "")));
   more.appendChild(el("p", "note muted", "Últimos dias: " + wk.join(" · ") + ". Total: " + X.total.toLocaleString("pt-BR") + " XP."));
-  more.appendChild(el("p", "note muted", "Regras: o dia só rende XP se você bater o mínimo em todos os módulos. Mínimo em tudo = 100 XP; 100% em tudo = 200 XP; no meio, proporcional. Mínimo / 100%: Inteligência, meta de horas / horas e tarefas das matérias; Estamina, cardio ou foco / os dois; Força, metade dos exercícios / todos; Economia, nada pendente há mais de 7 dias / nada pendente; Graça, 1 ritual / todos; Missões, horas mínimas / horas e entregas do dia. Módulo sem nada no dia conta como feito. A cada nível, o próximo pede mais XP."));
+  more.appendChild(el("p", "note muted", "Regras: o dia só rende XP se você bater o mínimo em todos os módulos. Mínimo em tudo = 100 XP; 100% em tudo = 200 XP; no meio, proporcional. Mínimo / 100%: Inteligência, meta de horas / horas e tarefas das matérias; Estamina, cardio ou foco / os dois; Força, metade dos exercícios / todos; Economia, nada pendente há mais de 7 dias / nada pendente; Graça, 1 ritual / todos; Missões, horas mínimas / horas e entregas do dia. Módulo sem nada no dia conta como feito. A cada nível, o próximo pede mais XP. Missão de penalidade: o módulo que fica abaixo do mínimo num dia ganha uma penalidade só para o dia seguinte (Inteligência: +1h de estudo se faltaram horas e, em cada matéria abaixo do mínimo, o que faltou + 1; Estamina: +20 min de cardio; Força: " + PEN_FLEX + " flexões; Economia: zerar os pendentes; Graça: +1 ritual; Missões: +1h de trabalho). Com penalidade pendente o dia não rende XP; cumprida e com o mínimo em tudo, o XP do dia dobra."));
   card.appendChild(more);
   return card;
 }
@@ -6281,6 +6407,9 @@ function rtDemand(iso, plan, sim) {
   const today = todayISO(), isT = iso === today, c = rt(), d = rtBase(iso), skip = c.skip[iso] || [];
   const items = [], done = [], skipped = [], concl = [], okd = c.done[iso] || [], run = isT ? rtRunning() : {};
   const add = it => { if (skip.includes(it.key)) skipped.push(it); else if (okd.includes(it.key)) concl.push(it); else items.push(it); };
+  // missão de penalidade de hoje: entra na agenda somando ao que o módulo já pede
+  const P = isT ? penToday() : [], pp = k => P.find(p => p.key === k && !p.done);
+  const grLeft = {};
   if (modAllowed("graca")) grTodayPlan(iso).forEach(r => {
     const need = Math.max(1, r.times || 1), did = isT ? Math.min(need, grRec(iso, r.id).count || 0) : 0, dur = Math.max(5, Math.round(r.limit || 15));
     for (let k = did; k < need; k++) {
@@ -6291,7 +6420,13 @@ function rtDemand(iso, plan, sim) {
       add({ key: "gr-" + r.id + "-" + k, mod: "graca", rid: r.id, running: run.graca === r.id && k === did, title: r.name + (need > 1 ? " (" + (k + 1) + "ª vez)" : ""), sub: r.limit ? r.limit + " min" : "", dur, win, fromEnd, rank: 0, go: () => { enterGraca("gr-hoje"); rtFocus("gr-" + r.id); } });
     }
     if (did) done.push(r.name + (need > 1 ? " " + did + "/" + need : ""));
+    grLeft[r.id] = need - did;
   });
+  const pg = pp("pen-graca");
+  if (pg && modAllowed("graca")) {
+    const r0 = grTodayPlan(iso)[0] || grData().rituals[0];
+    if (r0) add({ key: "pen-graca", mod: "graca", rid: r0.id, running: run.graca === r0.id && !(grLeft[r0.id] > 0), title: "Penalidade: " + r0.name + " (1 a mais)", sub: "Missão de penalidade da Graça: " + pg.txt, dur: Math.max(5, Math.round(r0.limit || 15)), win: [d.wake, d.sleep], rank: 1.5, pen: true, go: () => { enterGraca("gr-hoje"); rtFocus("gr-" + r0.id); } });
+  } else if (P.some(p => p.key === "pen-graca")) done.push("Penalidade da Graça");
   const wo = rtWorkout(iso), tw = rtTreinoWin(d);
   if (wo) {
     let dur = wo.dur;
@@ -6308,9 +6443,12 @@ function rtDemand(iso, plan, sim) {
     } });
     else done.push("Treino " + wo.name);
   }
+  const pf = P.find(p => p.key === "pen-forca");
+  if (pf && modAllowed("forca") && (!pf.done || okd.includes("pen-forca"))) add({ key: "pen-forca", mod: "forca", title: "Penalidade: " + PEN_FLEX + " flexões", sub: "Missão de penalidade da Força. Faça e toque em Concluir.", dur: 10, win: tw, rank: 1, pen: true, go: () => rtFocus("pen-box") });
   if (modAllowed("estamina")) {
     // na semana, os dias seguintes já contam com o cardio que a rotina marcou antes (um 4x4 por semana, meta de minutos)
     let cp = cardioPlan(iso); const ws = weekStart(iso);
+    const pc = pp("pen-cardio"); if (pc) cp = Object.assign({}, cp, { target: pc.tgt, optional: false, why: "Inclui +20 min da missão de penalidade." });
     if (sim && !isT) {
       if (cp.pid === "x4" && sim.x4[ws]) cp = Object.assign({}, cp, { pid: "z2", target: practice("z2").target, why: "Cardio leve para somar na meta da semana; o 4x4 já está marcado em outro dia." });
       if (!cp.optional && weekEq(iso, true) + (sim.eq[ws] || 0) >= stam().goals.weekMin) cp = Object.assign({}, cp, { optional: true, why: cp.why + " A meta da semana já fecha com o que está marcado, então é opcional." });
@@ -6324,10 +6462,10 @@ function rtDemand(iso, plan, sim) {
     else if (fh) done.push("Foco");
   }
   if (modAllowed("missoes") && mis) {
-    const goal = Math.round(msGoalSec(iso) / 60), have = isT ? Math.floor(msDaySec(iso) / 60) : 0, ms = (plan && plan.byDay[iso]) || [];
+    const pw = pp("pen-work"), goal = Math.round(msGoalSec(iso) / 60) + (pw ? 60 : 0), have = isT ? Math.floor(msDaySec(iso) / 60) : 0, ms = (plan && plan.byDay[iso]) || [];
     const need = Math.max(goal - have, ms.reduce((s, x) => s + x.need, 0));
     const w = rt().work, ws = hmToMin(w.start) ?? 480, we = hmToMin(w.end) ?? 1080;
-    if (need > 0) add({ key: "trabalho", mod: "missoes", running: !!run.trabalho, title: "Trabalho", dur: need, missions: ms, split: 120, minChunk: 30, gapAfter: 10, win: [ws, we > ws ? we : we + 1440], rank: 3, go: () => { enterMissoes("ms-hoje"); rtFocus("ms-work"); } });
+    if (need > 0) add({ key: "trabalho", mod: "missoes", running: !!run.trabalho, title: pw ? "Trabalho (com +1h de penalidade)" : "Trabalho", dur: need, missions: ms, split: 120, minChunk: 30, gapAfter: 10, win: [ws, we > ws ? we : we + 1440], rank: 3, go: () => { enterMissoes("ms-hoje"); rtFocus("ms-work"); } });
     else if (goal && have) done.push("Trabalho " + rtDur(have));
   }
   if (modAllowed("inteligencia") && intel) {
@@ -6342,20 +6480,22 @@ function rtDemand(iso, plan, sim) {
         subjects: [{ id: sb.id, label: sb.name }], dur, rank: 3.5, review: true, running: !!run.estudo && run.rtKey === key, go: () => rtGoSubj(sb.id) };
       const before = items.length; add(it); if (items.length > before) revMin += dur;
     });
-    const goal = Math.round(goalSec(iso) / 60), have = isT ? Math.floor(daySec(iso) / 60) : 0, need = goal - have - revMin;
+    const ph = pp("pen-intel-h"), penSub = P.some(p => /^pen-sub-/.test(p.key) && !p.done);
+    const goal = Math.round(goalSec(iso) / 60) + (ph ? 60 : 0), have = isT ? Math.floor(daySec(iso) / 60) : 0, need = Math.max(goal - have - revMin, penSub ? 30 : 0);
     const subs = intel.subjects.map(s => {
+      const ps = pp("pen-sub-" + s.id); if (ps) return { id: s.id, label: s.name + " (penalidade: chegar a " + ps.need + " " + unitWord(s, ps.need) + ")" };
       const p = planFor(s, iso); if (!p || p.doneAll) return null;
       if (isT) { const st = subjTask(s, iso); if (st && st.complete) return null; }
       return { id: s.id, label: s.name + (p.qty ? " (" + p.qty + " " + unitWord(s, p.qty) + ")" : "") };
     }).filter(Boolean);
-    if (need > 0) add({ key: "estudo", mod: "inteligencia", running: !!run.estudo && !/^rev-/.test(run.rtKey || ""), title: "Estudo", sub: subs.map(x => x.label).join(" · "), subjects: subs, dur: need, split: IR.work, minChunk: IR.min, gapAfter: IR.brk, longEvery: IR.every, longGap: IR.long, rank: 4, go: () => rtGoSubj(subs.length ? subs[0].id : null) });
+    if (need > 0) add({ key: "estudo", mod: "inteligencia", running: !!run.estudo && !/^rev-/.test(run.rtKey || ""), title: ph ? "Estudo (com +1h de penalidade)" : "Estudo", sub: subs.map(x => x.label).join(" · "), subjects: subs, dur: need, split: IR.work, minChunk: IR.min, gapAfter: IR.brk, longEvery: IR.every, longGap: IR.long, rank: 4, go: () => rtGoSubj(subs.length ? subs[0].id : null) });
     else if (have) done.push("Estudo " + rtDur(have));
   }
   if (isT && modAllowed("financas") && fin) {
     const n = fin.tx.filter(t => t.status !== "done").length;
-    if (n) add({ key: "eco", mod: "financas", title: "Classificar " + n + (n === 1 ? " lançamento" : " lançamentos"), sub: "Pendentes da Economia.", dur: Math.min(30, Math.max(5, Math.ceil(n * 1.5 / 5) * 5)), win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6, go: () => rtGoFin() });
+    if (n) add({ key: "eco", mod: "financas", title: "Classificar " + n + (n === 1 ? " lançamento" : " lançamentos"), sub: pp("pen-eco") ? "Missão de penalidade: zerar todos os pendentes da Economia." : "Pendentes da Economia.", dur: Math.min(30, Math.max(5, Math.ceil(n * 1.5 / 5) * 5)), win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6, go: () => rtGoFin() });
   }
-  return { items, done, skipped, concl, day: d };
+  return { items, done, skipped, concl, day: d, pen: P };
 }
 
 // Encaixa os itens no tempo livre, do mais fixo ao mais flexível
@@ -6547,7 +6687,8 @@ function rtConclude(it, on) {
   if (on && it.mod === "graca") {
     if (graca && graca.timer && graca.timer.rid === it.rid) grStop(true);
     else { const w = grRecW(iso, it.rid); w.count = (w.count || 0) + 1; w.cur = 0; saveGraca(); }
-  } else {
+  } else if (it.key === "pen-forca") penSetForca(on);
+  else {
     if (on) {
       if (it.mod === "inteligencia" && run.estudo) stopTimer();
       else if ((it.key === "cardio" && run.cardio) || (it.key === "foco" && run.foco)) stStop();
@@ -6632,6 +6773,7 @@ function renderRtHoje(main) {
 }
 function rtTodayNodes(R, nowMin) {
   const out = [], d = R.day;
+  if (R.dem.pen && R.dem.pen.length) out.push(penBox(R.dem.pen, "pen-box"));
   const ch = rtChanges(R);
   if (ch.length) { const b = el("p", "banner rt-warn", "Para caber tudo hoje: " + ch.join(", ") + "."); b.id = "rt-changes"; out.push(b); }
   if (nowMin >= d.sleep) out.push(el("p", "banner", "Pelo seu horário de dormir, o dia de hoje já acabou. Veja amanhã na aba Semana da Rotina."));

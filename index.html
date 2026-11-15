@@ -5991,7 +5991,7 @@ function rtStart(it, b, sid) {
   else if (it.key === "cardio") { stUI.cardio = it.pid; stStart(it.pid); }
   else if (it.key === "foco") { const pid = stUI.foco || "med"; stUI.foco = pid; stStart(pid); }
   else if (it.mod === "graca") grStart(it.rid);
-  else if (it.key === "trabalho") { const m = (b.missions || [])[0]; if (m) msStartMission(m.t.id); else msWorkStart(); }
+  else if (it.key === "trabalho") msWorkStart(); // sempre o trabalho geral; a missão específica se inicia nas Missões
   rtRefresh("rt-stop-" + it.key);
 }
 function rtStop(it, finish) {

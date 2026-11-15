@@ -2093,7 +2093,7 @@ function addTime(startMs, endMs, sid) {
     s = e;
   }
 }
-function startTimer(sid) { if (intel.timer) stopTimer(true); intel.timer = { sid, startedAt: Date.now() }; saveIntel(); }
+function startTimer(sid) { msHoldMission(); if (intel.timer) stopTimer(true); intel.timer = { sid, startedAt: Date.now() }; saveIntel(); }
 function stopTimer(silent) { const t = intel.timer; if (!t) return; addTime(t.startedAt, Date.now(), t.sid); intel.timer = null; if (!silent) saveIntel(); }
 
 function subjTask(sub, iso) {
@@ -2634,6 +2634,7 @@ function stAddTime(a, b, pid) {
   }
 }
 function stStart(pid) {
+  msHoldMission();
   const s = ensureStamina();
   if (s.timer) stStop(true);
   s.timer = { pid, startedAt: Date.now(), startPos: stRec(todayISO(), pid).sec };
@@ -2994,6 +2995,7 @@ function grStreak(iso) {
 
 /* ---------- sessão (cronômetro) ---------- */
 function grStart(rid) {
+  msHoldMission();
   const g = ensureGraca(); if (g.timer) grStop(false, true);
   const today = todayISO();
   g.timer = { rid, startedAt: Date.now(), day: today, startCur: grRec(today, rid).cur || 0 };
@@ -3337,7 +3339,14 @@ function msStop(silent) {
   if (!silent) saveMs();
 }
 function msResumeWork() { if (mis && mis.work && !mis.timer) mis.timer = { tid: MS_GERAL, startedAt: Date.now() }; }
+/* O trabalho geral pode rodar junto com estudo, Estamina e Graça (tempo ocioso no trabalho).
+   A missão específica não: o tempo dela precisa ser só dela. Iniciar uma missão pausa os outros
+   cronômetros; iniciar outro cronômetro pausa a missão (e o trabalho geral volta a contar). */
+function msHoldMission() { if (mis && mis.timer && mis.timer.tid !== MS_GERAL) msPauseMission(); }
 function msStartMission(tid) {
+  if (intel && intel.timer) stopTimer();
+  if (stamina && stamina.timer) stStop();
+  if (graca && graca.timer) grStop(false);
   const g = ensureMs(); if (g.timer) msStop(true);
   g.work = true; g.timer = { tid, startedAt: Date.now() };
   const t = msTask(tid); if (t && !t.started) { t.started = todayISO(); t.upd = Date.now(); }
@@ -3702,7 +3711,7 @@ function renderMsHoje(main) {
     tb.appendChild(gb); trow.append(tdisp, tb); w.appendChild(trow);
     const rm = runM ? msTask(runM) : null;
     let stt;
-    if (rm) stt = "Contando na missão “" + rm.title + "”. O trabalho geral está pausado e volta sozinho quando você pausar ou concluir a missão.";
+    if (rm) stt = "Contando na missão “" + rm.title + "”. O trabalho geral está pausado e volta sozinho quando você pausar ou concluir a missão. Enquanto a missão roda, os cronômetros de estudo, Estamina e Graça ficam parados.";
     else if (g.work && t) stt = "Contando como trabalho geral. Toque no cronômetro de uma missão para passar a contar nela.";
     else stt = "Expediente pausado. Inicie o trabalho ou o cronômetro de uma missão.";
     const sp = el("p", "ex-note", stt); sp.id = "ms-state"; w.appendChild(sp);
@@ -5879,7 +5888,14 @@ function rtSchedule(iso, items, from, cfg) {
   };
   // com o cronômetro rodando, a tarefa fica agora, antes das outras
   const order = items.slice().sort((a, b) => a.rank - b.rank);
-  order.filter(it => it.running).forEach(it => { if (it.split) many(it, null, dayWin, true); else one(it, dayWin, false); });
+  let base = null;
+  order.filter(it => it.running).sort((a, b) => (b.key === "trabalho") - (a.key === "trabalho")).forEach(it => {
+    if (!base) { const n = blocks.length; if (it.split) many(it, null, dayWin, true); else one(it, dayWin, false); base = blocks[n] || null; return; }
+    // rodando junto (ex.: estudar no tempo ocioso do trabalho): mesmo horário, sem ocupar mais tempo do dia
+    const pr = prog.get(it) || { rem: it.dur, part: 0 }; prog.set(it, pr);
+    const ch = it.split ? Math.min(it.split, pr.rem) : it.dur;
+    blocks.push({ s: base.s, e: base.s + ch, it, part: it.split ? pr.part++ : undefined }); pr.rem -= ch;
+  });
   let foco = order.find(it => it.beforeStudy && !it.running) || null;
   order.filter(it => !(it.running && !it.split) && !it.optional && !it.beforeStudy).forEach(it => {
     if (it.key === "cardio" && it.afterForca) { const fb = blocks.find(b => b.it.key === "forca"); one(it, fb ? [fb.e, fb.e + 120] : null); return; }
@@ -5961,7 +5977,7 @@ function rtIcon(mod) { const s = el("span", "rt-ico"); s.innerHTML = ICONS[mod] 
 
 /* ---------- Iniciar direto na rotina ----------
    Usa os mesmos cronômetros dos módulos (o registro fica igual a iniciar lá dentro).
-   A rotina é uma coisa de cada vez: iniciar uma tarefa aqui pausa o que estiver rodando em outro módulo. */
+   Na rotina, estudo, Estamina e Graça são uma coisa de cada vez; o trabalho geral pode rodar junto com elas. */
 let rtPick = null;
 function rtRunning() {
   const o = {};
@@ -5976,11 +5992,12 @@ function rtStudyOpts(it) {
   if (it.subjects && it.subjects.length) return it.subjects;
   return intel ? intel.subjects.filter(s => !(s.total && subjDoneUpTo(s) >= s.total)).map(s => ({ id: s.id, label: s.name })) : [];
 }
+// o trabalho geral roda junto com as outras tarefas; a missão específica pausa sozinha (msHoldMission)
 function rtStopOthers(mod) {
+  if (mod === "missoes") return;
   if (mod !== "inteligencia" && intel && intel.timer) stopTimer();
   if (mod !== "estamina" && stamina && stamina.timer) stStop();
   if (mod !== "graca" && graca && graca.timer) grStop(false);
-  if (mod !== "missoes" && mis && (mis.timer || mis.work)) msWorkPause();
 }
 function rtRefresh(fid) {
   if (state.view === "home") renderHome(); else if (state.view === "rotina") renderRotina();

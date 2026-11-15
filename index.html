@@ -2532,6 +2532,9 @@ const PRACTICES = [
   { id: "x4", kind: "cardio", name: "Intervalado 4x4", tag: "Cardio intervalado forte", factor: 1.4, target: 40,
     how: "10 min de aquecimento leve, 4 tiros de 4 min bem fortes (85–95% da FC máxima: só dá para falar palavras soltas) com 3 min leves entre eles e 5 min de desaquecimento. O cronômetro guia cada fase com aviso sonoro.",
     why: "É o estímulo mais eficiente para subir o VO2máx. Uma vez por semana já ajuda, e os minutos fortes contam em dobro. Começando agora? Faça só 3 tiros nas primeiras semanas.", yt: "treino norueguês 4x4 intervalado" },
+  { id: "pos", kind: "cardio", name: "Pós-treino", tag: "Cardio depois da musculação", factor: 1, target: 15, trainOnly: true,
+    how: "Depois da musculação, 15 min ou mais de cardio leve a moderado: esteira inclinada, bike, elíptico ou escada, num ritmo em que dá para conversar.",
+    why: "Nos dias de treino, 15 min já completam o cardio do dia. Conta 1 para 1 na meta da semana.", yt: "cardio pós treino esteira inclinada" },
   { id: "mod", kind: "cardio", name: "Outro moderado", tag: "Dá para falar, não para cantar", factor: 1, target: 30,
     how: "Qualquer atividade contínua em que você consegue conversar mas não cantar: natação tranquila, pedal, trilha, dança.",
     why: "Conta 1 para 1 na meta da semana." },
@@ -2588,9 +2591,21 @@ function strengthDay(iso) {
   const p = w && PLAN.find(x => x.id === w);
   return !!(p && !p.optional);
 }
-function cardioPlan(iso) {
+// dia com musculação: os dias fixos do plano, o treino opcional (ex.: sábado) e qualquer dia com treino registrado na Força
+function stTrainDay(iso) {
+  if (strengthDay(iso)) return true;
+  if (!profileId) return false;
+  const [y, m, d] = iso.split("-").map(Number);
+  if (prof().dayTab[new Date(y, m - 1, d).getDay()]) return true;
+  const lg = state.logs && state.logs[iso];
+  return !!(lg && lg.e && Object.keys(lg.e).length);
+}
+// sel: prática escolhida na tela. Escolher Pós-treino (ou registrar tempo nele) num dia de treino faz 15 min fecharem o cardio.
+function cardioPlan(iso, sel) {
   const sd = strengthDay(iso), goal = stam().goals.weekMin;
-  if (sd) return { pid: "z2", target: 15, optional: true, why: "Dia de musculação: se sobrar fôlego, 10 a 20 min de Zona 2 depois do treino." };
+  const POS_WHY = "Dia de musculação: 15 min de cardio depois do treino já completam o cardio do dia.";
+  if (sd) return { pid: "pos", target: 15, optional: true, why: POS_WHY };
+  if (stSec(iso, "pos") > 0 || (sel === "pos" && stTrainDay(iso))) return { pid: "pos", target: 15, optional: false, why: POS_WHY };
   const x4done = weekDays(weekStart(iso)).some(d => d < iso && stSec(d, "x4") >= 900);
   const pid = x4done ? "z2" : "x4", opt = weekEq(iso, true) >= goal;
   return { pid, target: practice(pid).target, optional: opt,
@@ -2716,8 +2731,8 @@ function renderStHoje(main) {
   main.appendChild(g);
   if (stUI.msg) { const f = el("p", "note"); flash(f, stUI.msg, "ok"); main.appendChild(f); stUI.msg = ""; }
 
-  const plan = cardioPlan(iso);
-  main.appendChild(stCard("cardio", 1, iso, plan.pid, iso === today ? plan.why : "Registre o cardio deste dia.", plan.target));
+  const plan = cardioPlan(iso, stUI.cardio), base = cardioPlan(iso);
+  main.appendChild(stCard("cardio", 1, iso, base.pid, iso === today ? plan.why : "Registre o cardio deste dia.", plan.target));
   main.appendChild(stCard("foco", 2, iso, "med", iso === today ? "Meditação ou respiração lenta, " + s.goals.focusMin + " min. Um bom momento é logo antes de estudar." : "Registre a prática de foco deste dia.", s.goals.focusMin));
 }
 
@@ -2731,7 +2746,7 @@ function stCard(kind, n, iso, suggested, intro, targetMin) {
   top.append(el("div", "num", String(n).padStart(2, "0")), box); card.appendChild(top);
 
   const chips = el("div", "chips"); chips.setAttribute("role", "group"); chips.setAttribute("aria-label", "Prática");
-  PRACTICES.filter(x => x.kind === kind).forEach(x => {
+  PRACTICES.filter(x => x.kind === kind && (!x.trainOnly || stTrainDay(iso) || stSec(iso, x.id) > 0 || x.id === pid)).forEach(x => {
     const c = el("button", "gchip", x.name + (x.id === suggested && iso === today ? " ★" : "")); c.type = "button"; c.id = "stp-" + x.id;
     c.setAttribute("aria-pressed", String(x.id === pid));
     if (running && running !== x.id) c.disabled = true;

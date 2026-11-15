@@ -295,6 +295,7 @@ details.imp[open] { gap: 10px; }
 .tx-val.in { color: var(--good); }
 .tx-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
 .sug-list { display: grid; gap: 8px; margin-top: 12px; }
+.err-t { color: var(--bad); }
 .xp-card { display: grid; gap: 10px; }
 .xp-top { display: flex; gap: 16px; align-items: center; }
 .xp-lvl { display: grid; place-items: center; min-width: 84px; padding: 8px 10px; border: 1px solid var(--accent); background: var(--accent-soft); box-shadow: 0 0 16px rgba(166, 107, 255, .35); }
@@ -7322,6 +7323,45 @@ function enterConta() {
   history.replaceState(null, "", "#conta");
   renderTabs(); renderConta(); window.scrollTo(0, 0);
 }
+/* Usuários do app (só o dono): nome, quando criou, último acesso e tipo de acesso. Senhas não aparecem: o servidor só guarda o hash. */
+const usersUI = { list: null, err: "", busy: false };
+async function usersLoad() {
+  usersUI.busy = true; usersUI.err = ""; usersUI.list = null; renderConta();
+  try { usersUI.list = await cloudFetch("GET", "/admin/users"); }
+  catch (e) { usersUI.err = e.status === 403 || e.status === 401 ? e.message : "Não consegui carregar a lista. Se ainda não colou o worker.js mais recente na Cloudflare, cole e publique (Deploy). Detalhe: " + e.message; }
+  usersUI.busy = false; renderConta();
+}
+function usersSection() {
+  const s = el("section", "guide"); s.id = "users";
+  s.appendChild(el("h3", null, "Usuários do app" + (usersUI.list ? " (" + usersUI.list.count + ")" : "")));
+  const when = ms => { if (!ms) return "nunca registrado"; const d = new Date(ms), iso = ymd(d), t = todayISO(); return (iso === t ? "hoje" : iso === addDaysISO(t, -1) ? "ontem" : fmtDate(iso)) + " às " + minToHM(d.getHours() * 60 + d.getMinutes()); };
+  if (usersUI.err) { const m = el("p"); flash(m, usersUI.err, "err"); s.appendChild(m); }
+  if (!usersUI.list) {
+    s.appendChild(el("p", "note muted", usersUI.busy ? "Carregando…" : "Veja quantas contas existem e o nome de cada uma."));
+    if (!usersUI.busy) {
+      const b = el("button", "btn", "Ver usuários"); b.type = "button"; b.id = "users-load";
+      b.addEventListener("click", usersLoad);
+      const bb = el("div", "btns"); bb.appendChild(b); s.appendChild(bb);
+    }
+    return s;
+  }
+  const L = usersUI.list;
+  s.appendChild(el("p", "note muted", L.count + (L.count === 1 ? " conta." : " contas.") + " Cada nome de usuário é único: o servidor recusa um cadastro com nome que já existe, sem diferenciar maiúsculas."));
+  const ul = el("ul", "hex-rows");
+  L.users.forEach(u => {
+    const li = el("li", "hex-row"); li.id = "user-" + u.name;
+    li.append(el("span", "hex-row-n", u.name + (u.me ? " (você)" : "")), el("span", "hex-row-p", u.full ? "Completo" : "Básico"));
+    li.appendChild(el("span", "hex-row-l", "Criada em " + fmtDate(ymd(new Date(u.created))) + " · último acesso " + when(u.seen)));
+    if (u.old) li.appendChild(el("span", "hex-row-l err-t", "Conta de uma versão antiga: a pessoa precisa tocar em Criar conta com o mesmo usuário. Até lá, quem tiver o código de convite consegue assumir esse nome."));
+    ul.appendChild(li);
+  });
+  s.appendChild(ul);
+  s.appendChild(el("p", "note muted", "O último acesso passa a ser anotado a partir desta versão do servidor. Completo = todos os módulos; Básico = Inteligência, Força e Economia."));
+  const bb = el("div", "btns"); const r = el("button", "btn ghost", "Atualizar"); r.type = "button"; r.id = "users-reload";
+  r.addEventListener("click", usersLoad);
+  bb.appendChild(r); s.appendChild(bb);
+  return s;
+}
 function renderConta() {
   const main = document.getElementById("main"); main.innerHTML = "";
   head2(main, "Conta", "Com a conta, seus dados ficam salvos na nuvem e aparecem em qualquer aparelho em que você entrar.");
@@ -7367,7 +7407,9 @@ function renderConta() {
     wipe.addEventListener("click", () => { if (cloudUI.confirm !== "wipe") { cloudUI.confirm = "wipe"; renderConta(); return; } doLogout(true); });
     out.append(lo, wipe); s.appendChild(out);
     s.appendChild(el("p", "note muted", "Use \"Sair e apagar\" em um aparelho que não é seu. Seus dados continuam salvos na nuvem."));
-    main.append(s, flashBox); return;
+    main.append(s, flashBox);
+    if (isOwner()) main.appendChild(usersSection());
+    return;
   }
   const s = el("section", "guide");
   const tabs = el("div", "chips");

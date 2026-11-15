@@ -2093,7 +2093,7 @@ function addTime(startMs, endMs, sid) {
     s = e;
   }
 }
-function startTimer(sid) { msHoldMission(); if (intel.timer) stopTimer(true); intel.timer = { sid, startedAt: Date.now() }; saveIntel(); }
+function startTimer(sid) { cronAsk(); msHoldMission(); if (intel.timer) stopTimer(true); intel.timer = { sid, startedAt: Date.now() }; saveIntel(); }
 function stopTimer(silent) { const t = intel.timer; if (!t) return; addTime(t.startedAt, Date.now(), t.sid); intel.timer = null; if (!silent) saveIntel(); }
 
 function subjTask(sub, iso) {
@@ -2634,7 +2634,7 @@ function stAddTime(a, b, pid) {
   }
 }
 function stStart(pid) {
-  msHoldMission();
+  cronAsk(); msHoldMission();
   const s = ensureStamina();
   if (s.timer) stStop(true);
   s.timer = { pid, startedAt: Date.now(), startPos: stRec(todayISO(), pid).sec };
@@ -2648,6 +2648,7 @@ function stStop(silent) {
   if (!silent) saveStamina();
 }
 function settleStamina() {
+  if (cronBusy) return false;
   const t = stamina && stamina.timer; if (!t || Date.now() < t.startedAt + stCap(t) * 1000) return false;
   stStop(true); saveStamina(); return true;
 }
@@ -2995,7 +2996,7 @@ function grStreak(iso) {
 
 /* ---------- sessão (cronômetro) ---------- */
 function grStart(rid) {
-  msHoldMission();
+  cronAsk(); msHoldMission();
   const g = ensureGraca(); if (g.timer) grStop(false, true);
   const today = todayISO();
   g.timer = { rid, startedAt: Date.now(), day: today, startCur: grRec(today, rid).cur || 0 };
@@ -3012,6 +3013,7 @@ function grStop(finish, silent) {
   if (!silent) saveGraca();
 }
 function settleGraca() {
+  if (cronBusy) return false;
   const t = graca && graca.timer; if (!t || !isFinite(grCap(t))) return false;
   if ((Date.now() - t.startedAt) / 1000 < grCap(t)) return false;
   grStop(true, true); saveGraca(); return true;
@@ -3344,6 +3346,7 @@ function msResumeWork() { if (mis && mis.work && !mis.timer) mis.timer = { tid: 
    cronômetros; iniciar outro cronômetro pausa a missão (e o trabalho geral volta a contar). */
 function msHoldMission() { if (mis && mis.timer && mis.timer.tid !== MS_GERAL) msPauseMission(); }
 function msStartMission(tid) {
+  cronAsk();
   if (intel && intel.timer) stopTimer();
   if (stamina && stamina.timer) stStop();
   if (graca && graca.timer) grStop(false);
@@ -3353,7 +3356,7 @@ function msStartMission(tid) {
   saveMs();
 }
 function msPauseMission() { msStop(true); msResumeWork(); saveMs(); }
-function msWorkStart() { const g = ensureMs(); g.work = true; msResumeWork(); saveMs(); }
+function msWorkStart() { cronAsk(); const g = ensureMs(); g.work = true; msResumeWork(); saveMs(); }
 function msWorkPause() { const g = ensureMs(); msStop(true); g.work = false; saveMs(); }
 function msMissionRunning() { const t = msData().timer; return t && t.tid !== MS_GERAL ? t.tid : null; }
 
@@ -6222,6 +6225,7 @@ function renderRtHorarios(main) {
   const msg = el("p", "note"); msg.id = "rt-msg"; msg.setAttribute("aria-live", "polite"); if (rtUI.msg) flash(msg, rtUI.msg, rtUI.kind || "ok"); rtUI.msg = "";
   const save = (txt) => { saveRotina(); rtUI.msg = txt || "Horários salvos."; rtUI.kind = "ok"; renderRotina(); pushLastSig = ""; pushSync(true); };
   pushSection(main);
+  cronSection(main);
   const timeField = (grid, id, label, val, onSet) => { const f = el("div", "field"), l = el("label", null, label), i = el("input"); l.htmlFor = id; i.id = id; i.type = "time"; i.value = val; i.addEventListener("change", () => { if (hmToMin(i.value) == null) return; onSet(i.value); save(); }); f.append(l, i); grid.appendChild(f); return i; };
   const s1 = el("section", "guide rt-set");
   s1.appendChild(el("h3", null, "Sono"));
@@ -6388,6 +6392,7 @@ function pushItems() {
       out.push({ tag: iso + "-" + it.key + "-" + b.s, at, title: ("Em " + lead + " min: " + it.title + ms).slice(0, 118), body: (minToHM(b.s) + " às " + minToHM(b.e) + (sub && !ms ? " · " + sub : "")).slice(0, 290), url: "./#tarefa-" + it.key + "@" + b.s + "@" + iso });
     });
   });
+  cronItems().filter(c => c.end && c.end > now).forEach(c => out.push({ tag: "cron-end-" + c.mod + "-" + c.start, at: c.end, title: ("Tempo concluído: " + c.title).slice(0, 118), body: "Terminou às " + minToHM(new Date(c.end).getHours() * 60 + new Date(c.end).getMinutes()) + ". Toque para abrir.", url: "./#abrir-" + c.tab }));
   return out.sort((a, b) => a.at - b.at).slice(0, 60);
 }
 async function pushSync(force) {
@@ -6435,9 +6440,115 @@ function pushSection(container) {
   s.appendChild(msg);
   container.appendChild(s);
 }
+/* ---------- Cronômetro na notificação ----------
+   Ao sair do app com um cronômetro ligado, ele fica na barra de notificações (nome, hora de início e botão Pausar).
+   O Android mostra no canto há quanto tempo começou. Um app da web não tem o cronômetro nativo que conta os segundos.
+   O Pausar da notificação é guardado pelo service worker (cache "stek-cron") e aplicado com a hora exata quando o app abre. */
+const CRON_LS = "stek-cron-notif", CRON_CACHE = "stek-cron";
+let cronBusy = false;
+function cronOn() { try { return localStorage.getItem(CRON_LS) !== "off"; } catch (e) { return true; } }
+function cronCan() { return "serviceWorker" in navigator && "Notification" in window; }
+function cronAsk() {
+  try {
+    if (!cronOn() || !cronCan() || Notification.permission !== "default" || localStorage.getItem("stek-cron-asked")) return;
+    localStorage.setItem("stek-cron-asked", "1"); Notification.requestPermission().catch(() => {});
+  } catch (e) {}
+}
+function cronItems() {
+  const out = [], hm = ms => { const d = new Date(ms); return minToHM(d.getHours() * 60 + d.getMinutes()); };
+  const add = (mod, title, t, end, tab) => out.push({ mod, title, start: t.startedAt, end: end || 0, tab, hm });
+  if (intel && intel.timer) { const t = intel.timer, x = intel.subjects.find(v => v.id === t.sid); add("inteligencia", "Estudo · " + (x ? x.name : "matéria"), t, 0, "estudo"); }
+  if (stamina && stamina.timer) { const t = stamina.timer, p = practice(t.pid), c = stCap(t); add("estamina", (p.kind === "cardio" ? "Cardio · " : "Foco · ") + p.name, t, isFinite(c) ? t.startedAt + c * 1000 : 0, "est-hoje"); }
+  if (graca && graca.timer) { const t = graca.timer, r = ritual(t.rid), c = grCap(t); add("graca", r ? r.name : "Ritual", t, isFinite(c) ? t.startedAt + c * 1000 : 0, "gr-hoje"); }
+  if (mis && mis.timer) { const t = mis.timer, x = t.tid !== MS_GERAL ? msTask(t.tid) : null; add("missoes", x ? "Missão · " + x.title : "Trabalho geral", t, 0, "ms-hoje"); }
+  return out;
+}
+function cronReg() { return navigator.serviceWorker && navigator.serviceWorker.getRegistration ? navigator.serviceWorker.getRegistration() : Promise.resolve(null); }
+function cronShow() {
+  if (!cronOn() || !cronCan() || Notification.permission !== "granted") return;
+  const list = cronItems(); if (!list.length) return;
+  cronReg().then(reg => { if (!reg) return; list.forEach(c => {
+    const hm = c.hm(c.start);
+    reg.showNotification("▶ " + c.title, {
+      tag: "stek-cron-" + c.mod, body: "Desde " + hm + (c.end ? " · termina às " + c.hm(c.end) : "") + ". Toque para abrir.",
+      timestamp: c.start, silent: true, renotify: false, requireInteraction: true,
+      icon: "icon-192.png?v=4", badge: "icon-192.png?v=4",
+      data: { url: "./#abrir-" + c.tab, cron: c.mod, start: c.start, title: c.title },
+      actions: [{ action: "pausar", title: "Pausar" }]
+    }).catch(() => {});
+  }); }).catch(() => {});
+}
+function cronHide() {
+  if (!cronCan()) return;
+  cronReg().then(reg => reg && reg.getNotifications()).then(ns => (ns || []).forEach(n => { if ((n.tag || "").startsWith("stek-cron-")) n.close(); })).catch(() => {});
+}
+// para o cronômetro na hora em que o Pausar da notificação foi tocado (não na hora em que o app abriu)
+function cronStopAt(mod, at, start) {
+  const same = t => t && (!start || t.startedAt === start);
+  if (mod === "inteligencia") { const t = intel && intel.timer; if (!same(t)) return false; addTime(t.startedAt, Math.max(t.startedAt, at), t.sid); intel.timer = null; saveIntel(); return true; }
+  if (mod === "estamina") { const t = stamina && stamina.timer; if (!same(t)) return false; stAddTime(t.startedAt, Math.min(Math.max(t.startedAt, at), t.startedAt + stCap(t) * 1000), t.pid); stamina.timer = null; stWakeOff(); saveStamina(); return true; }
+  if (mod === "graca") {
+    const t = graca && graca.timer; if (!same(t)) return false;
+    const cap = grCap(t), run = Math.floor(Math.max(0, Math.min((at - t.startedAt) / 1000, cap))), rec = grRecW(t.day, t.rid);
+    rec.sec += run; if (isFinite(cap) && run >= Math.floor(cap)) { rec.count = (rec.count || 0) + 1; rec.cur = 0; } else rec.cur = (t.startCur || 0) + run;
+    graca.timer = null; stWakeOff(); saveGraca(); return true;
+  }
+  if (mod === "missoes") {
+    const t = mis && mis.timer; if (!same(t)) return false;
+    const end = Math.max(t.startedAt, at); msAddTime(t.startedAt, end, t.tid); mis.timer = null;
+    if (t.tid !== MS_GERAL && mis.work) mis.timer = { tid: MS_GERAL, startedAt: end }; else if (t.tid === MS_GERAL) mis.work = false;
+    saveMs(); return true;
+  }
+  return false;
+}
+async function cronApplyPauses() {
+  cronBusy = true;
+  let n = 0;
+  try {
+    if ("caches" in window) {
+      const c = await caches.open(CRON_CACHE), url = new URL("pausas", location.href).href, r = await c.match(url);
+      if (r) { const list = await r.json(); await c.delete(url); (Array.isArray(list) ? list : []).forEach(p => { if (cronStopAt(p.mod, Number(p.at) || Date.now(), p.start)) n++; }); }
+    }
+  } catch (e) {}
+  cronBusy = false;
+  if (n) {
+    setStatus(n > 1 ? "Cronômetros pausados pela notificação" : "Cronômetro pausado pela notificação", "ok");
+    const v = state.view;
+    if (v === "home") renderHome(); else if (v === "rotina") renderRotina(); else if (v === "intel") renderIntel(); else if (v === "est") renderStamina(); else if (v === "graca") renderGraca(); else if (v === "ms") renderMissoes();
+  }
+  return n;
+}
+function cronOpen(h) { const tab = String(h).replace(/^#?abrir-/, ""); if (location.hash !== "#" + tab) location.hash = "#" + tab; }
+function cronSection(container) {
+  const s = el("section", "guide rt-set"); s.id = "cron-set";
+  s.appendChild(el("h3", null, "Cronômetro na notificação"));
+  s.appendChild(el("p", "note muted", "Ao sair do app com um cronômetro ligado, ele fica na barra de notificações com o nome da tarefa, a hora em que começou e o botão Pausar. O celular mostra no canto há quanto tempo começou."));
+  const msg = el("p", "note"); msg.id = "cron-msg"; msg.setAttribute("aria-live", "polite");
+  if (!cronCan()) { s.appendChild(el("p", "note muted", "Este navegador não aceita notificações.")); container.appendChild(s); return; }
+  const perm = Notification.permission, on = cronOn();
+  s.appendChild(el("p", "note", !on ? "Desligado neste aparelho." : perm === "granted" ? "Ligado neste aparelho." : perm === "denied" ? "As notificações estão bloqueadas para o app. Libere nas configurações do navegador (site sutofinance-creator.github.io)." : "Falta permitir as notificações neste aparelho."));
+  const bb = el("div", "btns");
+  const b = el("button", on && perm === "granted" ? "btn ghost" : "btn", on && perm === "granted" ? "Desligar" : on && perm === "default" ? "Permitir notificações" : "Ligar"); b.type = "button"; b.id = "cron-toggle";
+  b.disabled = on && perm === "denied";
+  b.addEventListener("click", async () => {
+    if (on && perm === "granted") { try { localStorage.setItem(CRON_LS, "off"); } catch (e) {} renderRotina(); return; }
+    try { localStorage.removeItem(CRON_LS); } catch (e) {}
+    if (Notification.permission === "default") { try { await Notification.requestPermission(); } catch (e) {} }
+    renderRotina();
+  });
+  bb.appendChild(b); s.append(bb, msg);
+  container.appendChild(s);
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") cronShow(); else { cronBusy = true; cronApplyPauses().then(cronHide); } });
+
 setInterval(() => { if (document.visibilityState === "visible") pushSync(false); }, 60000);
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") pushSync(true); });
-if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.type === "stek-go" && e.data.hash) rtGoTaskHash(e.data.hash); });
+if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", e => {
+  const d = e.data || {};
+  if (d.type === "stek-cron") { cronApplyPauses(); return; }
+  if (d.type !== "stek-go" || !d.hash) return;
+  if (d.hash.startsWith("#abrir-")) cronOpen(d.hash); else rtGoTaskHash(d.hash);
+});
 
 setInterval(() => {
   if (document.visibilityState !== "visible") return;
@@ -6786,6 +6897,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 window.addEventListener("hashchange", () => {
   const h = location.hash.replace("#", "");
   if (h.startsWith("tarefa-")) { rtGoTaskHash(h); return; }
+  if (h.startsWith("abrir-")) { cronOpen(h); return; }
   if (h === "inicio" || h === "") { if (state.view !== "home") renderHome(); return; }
   if (h === "conta") { if (state.view !== "conta") enterConta(); return; }
   if (INTEL_TABS.some(t => t.id === h)) { if (state.view !== "intel" || h !== state.itab) enterIntel(h); return; }
@@ -6796,6 +6908,7 @@ window.addEventListener("hashchange", () => {
   if (ROT_TABS.some(t => t.id === h)) { if (state.view !== "rotina" || h !== state.rtab) enterRotina(h); return; }
   if (profileId && TABS.some(t => t.id === h) && (state.view !== "forca" || h !== state.tab)) enterForca(h);
 });
+cronBusy = true; // até ver se houve "Pausar" pela notificação (senão a sessão com tempo fecharia cheia)
 loadCloud();
 loadIntel();
 loadFin();
@@ -6812,6 +6925,8 @@ const startHash = location.hash;
 history.replaceState(null, "", "#inicio");
 renderHome();
 if (startHash.startsWith("#tarefa-")) rtGoTaskHash(startHash);
+else if (startHash.startsWith("#abrir-")) cronOpen(startHash);
+cronBusy = true; cronApplyPauses().then(cronHide);
 updateAcct();
 cloudStartup().then(() => { fLateMigrate(); fSerial(fPublish); });
 if ("serviceWorker" in navigator) {

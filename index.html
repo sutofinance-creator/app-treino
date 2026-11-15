@@ -271,6 +271,10 @@ body[data-view="home"] header.top { padding-bottom: 8px; }
 .tile { min-width: 0; }
 .tiles.tiles-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (min-width: 560px) { .fin-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+/* 5 cards: no celular a Sobra ocupa a linha toda; no computador, dinheiro em cima (3) e essencialidade embaixo (2) */
+.fin-tiles5 > :nth-child(3) { grid-column: span 2; }
+@media (min-width: 560px) { .fin-tiles5 { grid-template-columns: repeat(6, minmax(0, 1fr)); } .fin-tiles5 > * { grid-column: span 2; } .fin-tiles5 > :nth-child(n+4) { grid-column: span 3; } }
+.rep-cap { margin: 0 0 8px; font: 600 12px var(--font-display); color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
 .tile-num.money { font-size: clamp(17px, 5.4vw, 24px); white-space: nowrap; letter-spacing: .01em; }
 .tiles-3 .tile-num.money { font-size: clamp(15px, 4.2vw, 22px); }
 .tile-sub.up { color: var(--good); }
@@ -5008,12 +5012,33 @@ function renderClassificados(main) {
 }
 
 /* ---------- aba Relatório ---------- */
+function finTile(label, num, sub, mod, dl) { const t = el("div", "tile" + (mod ? " " + mod : "")); t.append(el("span", "tile-label", label), el("span", "tile-num money", num)); if (dl) t.appendChild(el("span", "tile-sub " + dl.c, dl.t)); if (sub) t.appendChild(el("span", "tile-sub", sub)); return t; }
+// cards do mês k (a = números do mês, p = do mês antes dele, est = andamento do mês)
+function finTiles(k, a, p, est) {
+  const delta = (cur, prev, goodUp) => { if (!prev) return { t: "sem base no mês anterior", c: "" }; const d = (cur - prev) / Math.abs(prev); return { t: (d > 0 ? "▲ " : d < 0 ? "▼ " : "") + pctf(Math.abs(d)) + " vs " + monthShort(addMonths(k, -1)), c: (goodUp ? d >= 0 : d <= 0) ? "up" : "down" }; };
+  const tiles = el("div", "tiles fin-tiles fin-tiles5"), tile = finTile;
+  const sup = (a.byEss.superfluo || 0) + (a.byEss.luxo || 0), nec = (a.byEss.necessario || 0) + (a.byEss.substituivel || 0);
+  tiles.append(
+    tile("Recebido", brl(a.recebido), "", "", delta(a.recebido, p.recebido, true)),
+    tile("Gastos", brl(a.gastos), est.partial ? "No ritmo atual: " + brl(a.gastos * est.dim / est.elapsed) : "", "", delta(a.gastos, p.gastos, false)),
+    tile("Sobra", brl(a.saldo), a.recebido ? "Taxa de poupança " + pctf(a.saldo / a.recebido) : "", a.saldo >= 0 ? "good" : "bad"),
+    tile("Supérfluo + luxo", brl(sup), a.gastos ? pctf(sup / a.gastos) + " dos gastos" : "", sup / (a.gastos || 1) > 0.3 ? "warn" : ""),
+    tile("Necessário + Substituível", brl(nec), a.gastos ? pctf(nec / a.gastos) + " dos gastos" : ""));
+  return tiles;
+}
 function renderRelatorio(main) {
   const months = finMonths();
   const k = finUI.month && months.includes(finUI.month) ? finUI.month : (monthAgg(monthKey(todayISO())).n ? monthKey(todayISO()) : months.filter(m => monthAgg(m).n).pop() || monthKey(todayISO()));
   finUI.month = k;
   const a = monthAgg(k), p = monthAgg(addMonths(k, -1)), est = estimateNext(k);
   head2(main, "Relatório", "Para onde foi o dinheiro e onde dá para otimizar.");
+  // mesmos cards, do mês anterior ao escolhido, para comparar de relance
+  const kp = addMonths(k, -1), ap = monthAgg(kp), pv = el("section", "rep-prev"); pv.id = "rep-prev";
+  pv.appendChild(el("p", "rep-cap", "Mês anterior · " + monthLabel(kp)));
+  if (ap.n) pv.appendChild(finTiles(kp, ap, monthAgg(addMonths(kp, -1)), estimateNext(kp)));
+  else pv.appendChild(el("p", "note muted", "Sem lançamentos classificados em " + monthLabel(kp) + "."));
+  if (ap.n && ap.pending) pv.appendChild(el("p", "note muted", ap.pending + " lançamento(s) de " + monthLabel(kp) + " ainda estão pendentes e não entram nesses números."));
+  main.appendChild(pv);
   const f = el("div", "datebar"); const ml = el("label", null, "Mês"); ml.htmlFor = "rep-month";
   const ms = el("select", "sel"); ms.id = "rep-month"; ms.style.width = "auto";
   months.slice().reverse().forEach(m => { const o = el("option", null, monthLabel(m)); o.value = m; if (m === k) o.selected = true; ms.appendChild(o); });
@@ -5023,16 +5048,8 @@ function renderRelatorio(main) {
   if (a.pending) main.appendChild(el("p", "banner", a.pending + " lançamento(s) deste mês ainda estão pendentes e não entram nos números abaixo."));
   if (!a.n) { main.appendChild(el("p", "note muted", "Sem lançamentos classificados neste mês.")); return; }
 
-  const delta = (cur, prev, goodUp) => { if (!prev) return { t: "sem base no mês anterior", c: "" }; const d = (cur - prev) / Math.abs(prev); return { t: (d > 0 ? "▲ " : d < 0 ? "▼ " : "") + pctf(Math.abs(d)) + " vs " + monthShort(addMonths(k, -1)), c: (goodUp ? d >= 0 : d <= 0) ? "up" : "down" }; };
-  const tiles = el("div", "tiles fin-tiles");
-  const tile = (label, num, sub, mod, dl) => { const t = el("div", "tile" + (mod ? " " + mod : "")); t.append(el("span", "tile-label", label), el("span", "tile-num money", num)); if (dl) t.appendChild(el("span", "tile-sub " + dl.c, dl.t)); if (sub) t.appendChild(el("span", "tile-sub", sub)); return t; };
-  const sup = (a.byEss.superfluo || 0) + (a.byEss.luxo || 0);
-  tiles.append(
-    tile("Recebido", brl(a.recebido), "", "", delta(a.recebido, p.recebido, true)),
-    tile("Gastos", brl(a.gastos), est.partial ? "No ritmo atual: " + brl(a.gastos * est.dim / est.elapsed) : "", "", delta(a.gastos, p.gastos, false)),
-    tile("Sobra", brl(a.saldo), a.recebido ? "Taxa de poupança " + pctf(a.saldo / a.recebido) : "", a.saldo >= 0 ? "good" : "bad"),
-    tile("Supérfluo + luxo", brl(sup), a.gastos ? pctf(sup / a.gastos) + " dos gastos" : "", sup / (a.gastos || 1) > 0.3 ? "warn" : ""));
-  main.appendChild(tiles);
+  main.appendChild(finTiles(k, a, p, est));
+  const tile = finTile;
 
   // destaques e otimização
   const ins = el("section", "guide"); ins.appendChild(el("h3", null, "Como otimizar"));

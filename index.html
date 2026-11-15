@@ -5569,9 +5569,10 @@ function moduleStatus(m) {
 
 // Tela inicial em três abas: Início (módulos), Rotina (de hoje) e Atributos (nível e hexágono)
 const HOME_TABS = [{ id: "inicio", label: "Início" }, { id: "rotina", label: "Rotina" }, { id: "atributos", label: "Atributos" }];
+const HOME_DEF = "rotina"; // aba em que o app abre (e para onde o logo leva quando já está na tela inicial)
 function renderHome() {
   state.view = "home"; document.body.dataset.view = "home";
-  if (!HOME_TABS.some(t => t.id === state.htab)) state.htab = "inicio";
+  if (!HOME_TABS.some(t => t.id === state.htab)) state.htab = HOME_DEF;
   document.getElementById("crumb").textContent = "";
   const sel = document.getElementById("tab-" + state.htab);
   if (!sel || !document.getElementById("tab-atributos") || sel.getAttribute("aria-selected") !== "true") renderTabs();
@@ -5650,7 +5651,7 @@ function fillModuleBody(body, m) {
 }
 
 function goHome() {
-  if (state.view === "home" || !state.htab) state.htab = "inicio";
+  if (state.view === "home" || !state.htab) state.htab = HOME_DEF;
   history.replaceState(null, "", "#" + state.htab);
   renderHome(); window.scrollTo(0, 0);
 }
@@ -7477,7 +7478,7 @@ window.addEventListener("hashchange", () => {
   const h = location.hash.replace("#", "");
   if (h.startsWith("tarefa-")) { rtGoTaskHash(h); return; }
   if (h.startsWith("abrir-")) { cronOpen(h); return; }
-  if (h === "inicio" || h === "" || HOME_TABS.some(t => t.id === h)) { const t = h || "inicio"; if (state.view !== "home" || state.htab !== t) { state.htab = t; renderHome(); } return; }
+  if (h === "inicio" || h === "" || HOME_TABS.some(t => t.id === h)) { const t = h || HOME_DEF; if (state.view !== "home" || state.htab !== t) { state.htab = t; renderHome(); } return; }
   if (h === "conta") { if (state.view !== "conta") enterConta(); return; }
   if (INTEL_TABS.some(t => t.id === h)) { if (state.view !== "intel" || h !== state.itab) enterIntel(h); return; }
   if (FIN_TABS.some(t => t.id === h)) { if (state.view !== "fin" || h !== state.ftab) enterFin(h); return; }
@@ -7501,7 +7502,7 @@ fMigrateLegacy();
 const savedProfile = readProfile();
 if (savedProfile) loadProfile(savedProfile);
 const startHash = location.hash;
-state.htab = HOME_TABS.some(t => "#" + t.id === startHash) ? startHash.slice(1) : "inicio";
+state.htab = HOME_TABS.some(t => "#" + t.id === startHash) ? startHash.slice(1) : HOME_DEF;
 history.replaceState(null, "", "#" + state.htab);
 renderHome();
 if (startHash.startsWith("#tarefa-")) rtGoTaskHash(startHash);

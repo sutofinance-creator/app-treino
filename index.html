@@ -5602,9 +5602,14 @@ const HX_CALC = {
     return { val: wk / HX_REF.forca, you: "Você: " + n + (n === 1 ? " treino" : " treinos") + " nos últimos " + hxDias(days.length) + " (" + hxH(wk) + " por semana).", ref };
   },
   financas() {
+    // 100% = a média do grupo mais específico informado: escolaridade (o que mais separa a renda), depois idade, depois sexo
     const R = HX_REF.renda, age = perfAge();
-    const grp = age != null ? R.idade.find(([a, b]) => age >= a && age <= b) : null, refV = grp ? grp[2] : R.geral;
-    const ref = "Referência: " + brl(refV) + " por mês, a média " + (grp ? "de quem tem " + grp[3] : "dos brasileiros que trabalham") + " (IBGE, fim de 2025).";
+    const gEsc = perfil && R.esc[perfil.esc] ? R.esc[perfil.esc] : null;
+    const gIdade = age != null ? R.idade.find(([a, b]) => age >= a && age <= b) : null;
+    const gSexo = perfil && R.sexo[perfil.sexo] ? R.sexo[perfil.sexo] : null;
+    const refV = gEsc ? gEsc[0] : gIdade ? gIdade[2] : gSexo ? gSexo[0] : R.geral;
+    const refTxt = gEsc ? "de quem tem " + gEsc[1] : gIdade ? "de quem tem " + gIdade[3] : gSexo ? gSexo[1] : "dos brasileiros que trabalham";
+    const ref = "Referência: " + brl(refV) + " por mês, a média " + refTxt + " (IBGE, fim de 2025).";
     let inc = null, how = "", fromApp = false;
     if (perfil && perfil.renda > 0) { inc = perfil.renda; how = "informada em Meus dados"; }
     else if (fin) {
@@ -5612,8 +5617,9 @@ const HX_CALC = {
       if (ms.length) { inc = ms.reduce((a, x) => a + x.recebido, 0) / ms.length; how = ms.length === 1 ? "receitas do mês passado na Economia" : "média das receitas dos últimos " + ms.length + " meses na Economia"; fromApp = true; }
     }
     const extra = [];
-    if (perfil && R.esc[perfil.esc]) extra.push("média de quem tem " + R.esc[perfil.esc][1] + ": " + brl(R.esc[perfil.esc][0]));
-    if (perfil && R.sexo[perfil.sexo]) extra.push("média " + R.sexo[perfil.sexo][1] + ": " + brl(R.sexo[perfil.sexo][0]));
+    // os outros grupos do seu perfil aparecem só como comparação
+    if (gIdade && gEsc) extra.push("média de quem tem " + gIdade[3] + ": " + brl(gIdade[2]));
+    if (gSexo && (gEsc || gIdade)) extra.push("média " + gSexo[1] + ": " + brl(gSexo[0]));
     let src = extra.length ? capFirst(extra.join(" · ")) + "." : "";
     if (fromApp || inc == null) src += (src ? " " : "") + "O IBGE compara a renda bruta; o que cai na conta já vem com descontos, então informe a bruta em Meus dados para comparar certo.";
     if (inc == null) return { you: "Classifique suas entradas como Receita na Economia ou informe sua renda em Meus dados.", ref, src };

@@ -295,6 +295,9 @@ details.imp[open] { gap: 10px; }
 .tx-val.in { color: var(--good); }
 .tx-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
 .sug-list { display: grid; gap: 8px; margin-top: 12px; }
+.ld-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; color: var(--muted); margin-top: 8px; }
+.ld-line .linkbtn { font-size: 13px; }
+.ld-opts { flex-basis: 100%; display: grid; gap: 6px; }
 .sug-row { background: var(--surface-2); border: 1px solid var(--line); border-left: 3px solid var(--accent); padding: 10px 12px; display: grid; gap: 6px; }
 .sug-row.off { border-left-color: var(--line); opacity: .55; }
 .sug-row.editing { border-color: var(--accent); }
@@ -613,9 +616,9 @@ function todayISO() { const d = new Date(); d.setMinutes(d.getMinutes() - d.getT
 function fmtDate(iso) { const [y, m, d] = iso.split("-"); return d + "/" + m + "/" + y.slice(2); }
 function parseNum(v) { if (v == null) return null; const s = String(v).trim().replace(",", "."); if (s === "") return null; const n = Number(s); return isFinite(n) && n >= 0 ? n : null; }
 function fmtNum(n) { return n == null ? "" : String(n).replace(".", ","); }
-function entryText(e) {
+function entryText(e, id) {
   const parts = [];
-  if (e.kg != null) parts.push(fmtNum(e.kg) + " kg");
+  if (e.kg != null) { const ld = id ? fLoad(id) : null; parts.push(fmtNum(e.kg) + " kg" + (ld && ld.side ? " por lado" : "")); }
   if (e.sets != null && e.reps != null) parts.push(fmtNum(e.sets) + " × " + fmtNum(e.reps) + " reps");
   else if (e.sets != null) parts.push(fmtNum(e.sets) + " séries");
   else if (e.reps != null) parts.push(fmtNum(e.reps) + " reps");
@@ -740,9 +743,42 @@ function buildCard(ex, n) {
   const ul = document.createElement("ul"); ul.className = "hist"; ul.dataset.role = "hist";
   det.append(sum, ul);
 
-  card.append(top, meta, last, inputs, det);
+  const ld = document.createElement("div"); ld.className = "ld-line"; ld.dataset.role = "ld";
+  card.append(top, meta, last, inputs, ld, det);
   fillCard(card, ex);
   return card;
+}
+/* Carga por lado: nos exercícios de barra e anilha a carga costuma ser anotada de um lado só.
+   O total (usado na comparação de força) = 2 × lado + barra. Dá para mudar em cada exercício. */
+// barra livre olímpica: 20 kg; barra W/de rosca: 10 kg; smith, leg press e hack: só as anilhas
+const FX_PLATES = { agach: 20, agFrontal: 20, stiff: 20, terra: 20, goodMorning: 20, hipThrust: 20, ponte: 20, remadaCurvada: 20, supino: 20, supinoInc: 20, supinoFechado: 20, desenvBarra: 20, encolhBarra: 20, remadaAlta: 20, roscaBarra: 10, roscaW: 10, testa: 10, agSmith: 0, supinoSmith: 0, legpress: 0, hack: 0 };
+const F_BARS = [[0, "Sem"], [10, "10 kg"], [15, "15 kg"], [20, "20 kg"]];
+let fLdOpen = null;
+function fExById(id) { let ex = null; (PLAN || []).forEach(w => w.ex.forEach(x => { if (x.id === id) ex = x; })); return ex; }
+function fLoadAuto(name) { const k = fxStdKey(name); return k && k in FX_PLATES ? { side: true, bar: FX_PLATES[k] } : { side: false, bar: 0 }; }
+function fLoad(id, name) {
+  const s = settings && settings.load && settings.load[id]; if (s) return s;
+  if (name == null) { const ex = fExById(id); name = ex ? ex.name : ""; }
+  return fLoadAuto(name);
+}
+function fLoadable(ex) { return !!(settings && settings.load && settings.load[ex.id]) || fLoadAuto(ex.name).side; }
+function fTotal(kg, ld) { return kg == null ? null : ld.side ? kg * 2 + (ld.bar || 0) : kg; }
+function fillLoad(card, ex) {
+  const box = card.querySelector('[data-role="ld"]'); if (!box) return;
+  box.innerHTML = ""; box.hidden = !fLoadable(ex) && fLdOpen !== ex.id; if (box.hidden) return;
+  const ld = fLoad(ex.id, ex.name), cur = state.logs[state.date] && state.logs[state.date].e && state.logs[state.date].e[ex.id];
+  const txt = ld.side ? "Carga anotada por lado" + (ld.bar ? " + barra de " + ld.bar + " kg" : "") : "Carga anotada é o total";
+  box.appendChild(el("span", null, txt + (ld.side && cur && cur.kg != null ? " · total " + fmtNum(Math.round(fTotal(cur.kg, ld) * 10) / 10) + " kg" : "")));
+  const open = fLdOpen === ex.id;
+  const mb = el("button", "linkbtn", open ? "Fechar" : "Mudar"); mb.type = "button"; mb.id = "ld-" + ex.id;
+  mb.addEventListener("click", () => { fLdOpen = open ? null : ex.id; fillLoad(card, ex); });
+  box.appendChild(mb);
+  if (!open) return;
+  const set = v => { settings.load = settings.load || {}; settings.load[ex.id] = Object.assign({}, ld, v); saveSettings(); refreshCards(); };
+  const g = el("div", "ld-opts");
+  g.appendChild(chipGroup("Como você anota a carga", [["lado", "Um lado (×2)"], ["total", "Total"]], ld.side ? "lado" : "total", v => set({ side: v === "lado" }), "ldm-" + ex.id));
+  if (ld.side) g.appendChild(chipGroup("Peso da barra ou do aparelho", F_BARS, ld.bar || 0, v => set({ bar: v }), "ldb-" + ex.id));
+  box.appendChild(g);
 }
 
 function fillCard(card, ex) {
@@ -758,11 +794,12 @@ function fillCard(card, ex) {
   last.textContent = "";
   if (prev) {
     last.append("Última vez (" + fmtDate(prev.date) + "): ");
-    const b = document.createElement("b"); b.textContent = entryText(prev.e); last.appendChild(b);
+    const b = document.createElement("b"); b.textContent = entryText(prev.e, ex.id); last.appendChild(b);
   } else {
     last.textContent = state.loaded === true ? "Sem registro anterior." : "";
   }
   card.querySelector('[data-role="chip"]').hidden = !(prev && prev.e.reps != null && ex.hi != null && prev.e.reps >= ex.hi);
+  fillLoad(card, ex);
   const sum = card.querySelector('[data-role="sum"]');
   sum.textContent = "Histórico (" + all.length + ")";
   const ul = card.querySelector('[data-role="hist"]');
@@ -771,7 +808,7 @@ function fillCard(card, ex) {
   all.forEach(x => {
     const li = document.createElement("li");
     const a = document.createElement("span"); a.textContent = fmtDate(x.date);
-    const b = document.createElement("span"); b.textContent = entryText(x.e);
+    const b = document.createElement("span"); b.textContent = entryText(x.e, ex.id);
     li.append(a, b); ul.appendChild(li);
   });
 }
@@ -936,7 +973,7 @@ function dayDetail(iso) {
     let ex = null; PLAN.forEach(w => w.ex.forEach(x => { if (x.id === id) ex = x; }));
     const li = el("li");
     const top = el("div", "dd-top"); top.append(el("span", "dd-ex", ex ? ex.name : id), el("span", "dd-g", GROUP[id] || ""));
-    li.append(top, el("span", "dd-v", entryText(l.e[id])));
+    li.append(top, el("span", "dd-v", entryText(l.e[id], id)));
     ul.appendChild(li);
   });
   box.appendChild(ul);
@@ -5546,9 +5583,13 @@ const HX_OCUP = [["emp", "Empregado"], ["cp", "Conta própria"], ["empr", "Empre
 /* Força: carga máxima (1RM) de cada exercício comparada à média de quem treina, pelo peso do corpo.
    Referência: Strength Level (strengthlevel.com), nível Intermediário = mais forte que 50% de quem registra treinos lá.
    Valores: 1RM em kg da comunidade inteira [homens, mulheres] (consulta de nov/2026). Exercícios com halter: carga de cada halter.
-   O padrão para o seu peso = valor × seu peso / peso médio da comunidade (cerca de 77 kg nos homens e 63 kg nas mulheres).
+   O padrão para o seu peso = valor × (seu peso / peso médio da comunidade)^expoente (peso médio ~77 kg nos homens e ~63 kg nas mulheres).
    Os marcados com * não têm o valor feminino publicado e usam a proporção de um exercício parecido. */
 const FX_BW = { m: 77, f: 63 };
+// como o padrão cresce com o peso do corpo (tabela do agachamento por peso no Strength Level): nos homens quase na mesma
+// proporção (expoente ~1,0), nas mulheres menos que proporcional (~0,7)
+const FX_EXP = { m: 1, f: 0.7 };
+function fxRef(st, bw, sx) { const one = x => st[x === "m" ? 1 : 2] * Math.pow(bw / FX_BW[x], FX_EXP[x]); return sx ? one(sx) : (one("m") + one("f")) / 2; }
 const FX_STD = {
   agach: ["Agachamento livre", 131, 76], agFrontal: ["Agachamento frontal", 105, 62], agSmith: ["Agachamento no smith", 120, 66],
   hack: ["Hack", 157, 94], legpress: ["Leg press 45°", 226, 145], legpressH: ["Leg press horizontal", 168, 112],
@@ -5649,13 +5690,13 @@ function fxForca(p) {
   Object.keys(state.logs).forEach(d => {
     if (d < from || d > todayISO()) return;
     const e = (state.logs[d] && state.logs[d].e) || {};
-    Object.keys(e).forEach(id => { const r = e[id], x = exs[id]; if (!r || !x) return; const v = fx1rm(r.kg, r.reps != null ? r.reps : (x.hi || x.lo)); if (v > (best[id] || 0)) best[id] = v; });
+    Object.keys(e).forEach(id => { const r = e[id], x = exs[id]; if (!r || !x || !(r.kg > 0)) return; const v = fx1rm(fTotal(r.kg, fLoad(id, x.name)), r.reps != null ? r.reps : (x.hi || x.lo)); if (v > (best[id] || 0)) best[id] = v; });
   });
   const groups = {}, semRef = [];
   Object.keys(best).forEach(id => {
     const x = exs[id], g = GROUP[id] || x.group || fGroup(x.name); if (!FX_PESO[g]) return;
     const k = fxStdKey(x.name); if (!k) { semRef.push(x.name); return; }
-    const st = FX_STD[k], refKg = sx ? st[sx === "m" ? 1 : 2] * bw / FX_BW[sx] : (st[1] * bw / FX_BW.m + st[2] * bw / FX_BW.f) / 2;
+    const st = FX_STD[k], refKg = fxRef(st, bw, sx);
     const pct = Math.min(3, best[id] / refKg);
     (groups[g] = groups[g] || []).push({ name: x.name, rm: best[id], ref: refKg, pct });
   });
@@ -5714,7 +5755,7 @@ const HX_CALC = {
   },
   forca() {
     const ref = "Referência: 100% = a carga máxima de quem treina, na média, para o seu peso em cada exercício (nível intermediário do Strength Level: mais forte que metade de quem registra treinos lá).";
-    const how = "Carga máxima (1RM) estimada pela carga e repetições que você registrou (fórmula de Epley). Grupos maiores pesam mais na média: quadríceps e costas ×3, glúteos ×2,5, posteriores e peito ×2, ombros ×1,5, braços e panturrilhas ×1.";
+    const how = "Carga máxima (1RM) estimada pela carga total e repetições que você registrou (fórmula de Epley). Nos exercícios de barra e anilha, a carga anotada por lado vira total: 2 × lado + barra (dá para mudar em cada exercício, na Força). Grupos maiores pesam mais na média: quadríceps e costas ×3, glúteos ×2,5, posteriores e peito ×2, ombros ×1,5, braços e panturrilhas ×1.";
     if (!profileId) return { you: "Escolha seu plano de treino na Força.", ref };
     if (!perfil || !perfil.peso) return { you: "Informe seu peso em Meus dados para comparar a sua força com o peso do corpo.", ref, more: [how] };
     const r = fxForca();
@@ -6948,7 +6989,7 @@ function mergeKey(k, a, b) {
     Object.keys(L).forEach(d => { const l = L[d]; if (!l || !l.e) return; const r = out[d] && out[d].e ? out[d] : null; out[d] = Object.assign({}, l, r || {}, { e: Object.assign({}, l.e, r ? r.e : {}) }); });
     return JSON.stringify(out);
   }
-  if (/^treino-settings/.test(k)) return JSON.stringify(Object.assign({}, L, R, { goals: Object.assign({}, L.goals, R.goals), days: Object.assign({}, L.days, R.days) }));
+  if (/^treino-settings/.test(k)) return JSON.stringify(Object.assign({}, L, R, { goals: Object.assign({}, L.goals, R.goals), days: Object.assign({}, L.days, R.days), load: Object.assign({}, L.load, R.load) }));
   if (k === "stek-intel-v1") {
     if (!Array.isArray(L.subjects)) return b; if (!Array.isArray(R.subjects)) return a;
     const out = Object.assign({}, R, { subjects: R.subjects.slice(), days: Object.assign({}, R.days) });

@@ -3234,7 +3234,9 @@ const MS_PRI_RANK = { alta: 0, media: 1, baixa: 2 };
 const MS_GERAL = "_geral";
 const MS_REC = [["", "Não repete"], ["util", "Todo dia útil"], ["diaria", "Todos os dias"], ["semanal", "Toda semana"], ["mensal", "Todo mês"]];
 let mis = null;
-const msUI = { open: null, closing: null, closeDraft: null, draft: null, period: "semana", proj: "", msg: "", confirm: null, q: "", newAtt: [], attOpen: null };
+const msUI = { open: null, closing: null, closeDraft: null, draft: null, period: "semana", proj: "", msg: "", confirm: null, q: "", newAtt: [], attOpen: null, newOpen: false, dayNewOpen: false };
+// fecha o formulário de missão nova; arquivos já enviados para o rascunho saem do servidor
+function msCloseNew() { const a = msUI.newAtt; msUI.newAtt = []; msUI.newOpen = false; msDropFiles(a); }
 
 function loadMs() {
   try { const v = JSON.parse(localStorage.getItem(MS_KEY)); mis = v && Array.isArray(v.tasks) ? v : null; } catch (e) { mis = null; }
@@ -3584,7 +3586,7 @@ function missoesTasks() {
     const nx = andamento.find(t => t.due) || andamento[0];
     tasks.push({ id: "task-ms-andamento", title: andamento.length + (andamento.length === 1 ? " missão em andamento" : " missões em andamento"), optional: true, complete: false, pct: 0, label: "Ver",
       sub: (nx.due ? "Próximo prazo: " + nx.title + " · " + fmtDate(nx.due).slice(0, 5) + "." : nx.title + ", sem prazo.") + " Não conta como pendência; planeje para hoje se quiser adiantar.", go: () => enterMissoes("ms-lista") });
-  } else if (!list.length) tasks.push({ id: "task-ms-nova", title: "Registrar missões", optional: true, complete: false, pct: 0, label: "Criar", sub: "Nenhuma missão cadastrada ainda. Anote as demandas para acompanhar prazos e entregas.", go: () => { enterMissoes("ms-lista"); const n = document.getElementById("msn-title"); if (n) { n.scrollIntoView({ block: "center" }); n.focus(); } } });
+  } else if (!list.length) tasks.push({ id: "task-ms-nova", title: "Registrar missões", optional: true, complete: false, pct: 0, label: "Criar", sub: "Nenhuma missão cadastrada ainda. Anote as demandas para acompanhar prazos e entregas.", go: () => { msUI.newOpen = true; enterMissoes("ms-lista"); const n = document.getElementById("msn-title"); if (n) { n.scrollIntoView({ block: "center" }); n.focus(); } } });
   return { tasks };
 }
 
@@ -3693,8 +3695,14 @@ function renderMsHoje(main) {
       p.appendChild(ul);
       if (cand.length > 8) p.appendChild(el("p", "note muted", "+ " + (cand.length - 8) + " na aba Missões."));
     }
-    p.appendChild(el("span", "field-l", "Nova missão para este dia"));
-    p.appendChild(msForm(msUI.draft || {}, v => { const n = msNew(Object.assign(v, { plan: [iso] })); if (n.rec && n.rec.type && n.due !== iso) n.plan = []; saveMs(); msUI.draft = null; msUI.msg = "Missão criada" + (n.rec && n.rec.type ? " (recorrente, próxima execução " + fmtDate(n.due).slice(0, 5) + ")." : " para o dia."); renderMissoes(); }, "msq-", true));
+    if (msUI.dayNewOpen) {
+      p.appendChild(el("span", "field-l", "Nova missão para este dia"));
+    p.appendChild(msForm(msUI.draft || {}, v => { const n = msNew(Object.assign(v, { plan: [iso] })); if (n.rec && n.rec.type && n.due !== iso) n.plan = []; saveMs(); msUI.draft = null; msUI.dayNewOpen = false; msUI.msg = "Missão criada" + (n.rec && n.rec.type ? " (recorrente, próxima execução " + fmtDate(n.due).slice(0, 5) + ")." : " para o dia."); renderMissoes(); }, "msq-", true, null, () => { msUI.dayNewOpen = false; msUI.draft = null; renderMissoes(); }));
+    } else {
+      const nb = el("div", "btns"); const bt = el("button", "btn ghost", "＋ Nova missão para " + (iso === today ? "hoje" : fmtDate(iso).slice(0, 5))); bt.type = "button"; bt.id = "ms-daynew-btn";
+      bt.addEventListener("click", () => { msUI.dayNewOpen = true; renderMissoes(); const t = document.querySelector("#ms-plan input"); if (t) { t.scrollIntoView({ block: "center" }); t.focus(); } });
+      nb.appendChild(bt); p.appendChild(nb);
+    }
     main.appendChild(p);
   }
 }
@@ -3813,7 +3821,7 @@ function msCloseForm(x, iso) {
   return f;
 }
 
-function msForm(v, onSave, idp, compact, extra) {
+function msForm(v, onSave, idp, compact, extra, onCancel) {
   const form = el("div", "ms-form");
   const grid = el("div", "inputs two");
   const fld = (k, label, type, ph, list) => {
@@ -3873,7 +3881,9 @@ function msForm(v, onSave, idp, compact, extra) {
   });
   ti.addEventListener("keydown", e => { if (e.key === "Enter") sv.click(); });
   if (extra) form.appendChild(extra);
-  b.appendChild(sv); form.append(b, msg);
+  b.appendChild(sv);
+  if (onCancel) { const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = idp + "cancel"; cc.addEventListener("click", onCancel); b.appendChild(cc); }
+  form.append(b, msg);
   return form;
 }
 
@@ -3887,6 +3897,16 @@ function renderMsLista(main) {
     const ch = el("div", "chips"); ch.setAttribute("aria-label", "Filtrar por projeto");
     [["", "Todos"]].concat(projs.map(p => [p, p])).forEach(([k, t]) => { const c = el("button", "gchip", t); c.type = "button"; c.id = "ms-f-" + (k || "todos").replace(/\W+/g, "_"); c.setAttribute("aria-pressed", String(msUI.proj === k)); c.addEventListener("click", () => { msUI.proj = k; renderMissoes(); }); ch.appendChild(c); });
     main.appendChild(ch);
+  }
+  if (msUI.newOpen) {
+    const add = el("section", "guide"); add.id = "ms-new"; add.appendChild(el("h3", null, "Nova missão"));
+    add.appendChild(msForm({ proj: msUI.proj }, v => { v.att = msUI.newAtt.slice(); msUI.newAtt = []; msUI.newOpen = false; const n = msNew(v); msUI.msg = "Missão criada" + (n.rec && n.rec.type ? " (recorrente, próxima execução " + fmtDate(n.due).slice(0, 5) + ")." : "."); renderMissoes(); }, "msn-", false,
+      msAttachBox(() => msUI.newAtt, () => {}, "msn-", true), () => { msCloseNew(); renderMissoes(); }));
+    main.appendChild(add);
+  } else {
+    const nb = el("div", "btns ms-newbar"); const bt = el("button", "btn", "＋ Nova missão"); bt.type = "button"; bt.id = "ms-new-btn";
+    bt.addEventListener("click", () => { msUI.newOpen = true; renderMissoes(); const t = document.getElementById("msn-title"); if (t) { t.scrollIntoView({ block: "center" }); t.focus(); } });
+    nb.appendChild(bt); main.appendChild(nb);
   }
   const flt = x => (!msUI.proj || (x.proj || "") === msUI.proj) && msMatch(x);
   const open = g.tasks.filter(x => x.status === "aberta" && flt(x));
@@ -3905,10 +3925,6 @@ function renderMsLista(main) {
     arr.sort(msSort).forEach(x => s.appendChild(msRow(x)));
     main.appendChild(s);
   });
-  const add = el("section", "guide"); add.id = "ms-new"; add.appendChild(el("h3", null, "Nova missão"));
-  add.appendChild(msForm({ proj: msUI.proj }, v => { v.att = msUI.newAtt.slice(); msUI.newAtt = []; const n = msNew(v); msUI.msg = "Missão criada" + (n.rec && n.rec.type ? " (recorrente, próxima execução " + fmtDate(n.due).slice(0, 5) + ")." : "."); renderMissoes(); }, "msn-", false,
-    msAttachBox(() => msUI.newAtt, () => {}, "msn-", true)));
-  main.appendChild(add);
   const cl = g.tasks.filter(x => x.status !== "aberta" && flt(x)).sort((a, b) => (b.closed || "").localeCompare(a.closed || ""));
   if (cl.length) {
     const dt = el("details", "guide gr-others"); dt.appendChild(el("summary", null, "Encerradas (" + cl.length + ")"));

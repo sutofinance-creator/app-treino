@@ -302,6 +302,7 @@ details.imp[open] { gap: 10px; }
 .sug-l { display: grid; gap: 2px; min-width: 0; }
 .sug-cls { margin: 0; font-size: 14px; }
 .sug-act { display: flex; gap: 16px; flex-wrap: wrap; }
+.mini.sug-ed { color: var(--accent); border-color: var(--accent); }
 .mini { font: 700 11px var(--font-display); letter-spacing: .08em; text-transform: uppercase; padding: 1px 7px; border: 1px solid var(--line); color: var(--muted); }
 .mini.ess-necessario, .gchip.ess-necessario[aria-pressed="true"] { color: var(--good); border-color: var(--good); }
 .mini.ess-substituivel, .gchip.ess-substituivel[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
@@ -4218,7 +4219,7 @@ const ESS_COLOR = { necessario: "var(--good)", substituivel: "var(--accent)", su
 const LABEL = Object.fromEntries([...ESS, ...FREQ, ...NAT, ...KIND_OUT, ...KIND_IN, ["rateio", "Rateio"]]);
 const RATE_MES = 0.01; // premissa de rendimento usada nas simulações (1% ao mês)
 let fin = null;
-const finUI = { open: null, month: null, cmonth: "", q: "", confirm: null, msg: "", sugOpen: false, sugEdit: null, sugSkip: {} };
+const finUI = { open: null, month: null, cmonth: "", q: "", confirm: null, msg: "", sugOpen: false, sugEdit: null, sugSkip: {}, sugDraft: {} };
 
 function loadFin() {
   try { const v = JSON.parse(localStorage.getItem(FIN_KEY)); fin = v && Array.isArray(v.tx) ? v : null; } catch (e) { fin = null; }
@@ -4812,38 +4813,60 @@ function renderPendentes(main) {
   main.appendChild(list);
 }
 /* Sugestões prontas: dá para ver a classificação de cada uma, editar as que estiverem erradas
-   (editar e salvar já classifica aquela) e deixar algumas de fora antes de aceitar o resto de uma vez. */
+   (a edição fica guardada na lista) e deixar algumas de fora. Aceitar classifica tudo de uma vez:
+   as editadas do jeito que você deixou, as outras como sugerido. */
+function sugFields(t) { const dr = finUI.sugDraft[t.id]; return dr ? dr.fields : Object.assign(pickAll(suggestFor(t)), { split: undefined }); }
 function sugSection(sug) {
-  const skip = finUI.sugSkip, take = sug.filter(t => !skip[t.id]), out = sug.length - take.length;
+  const skip = finUI.sugSkip, drafts = finUI.sugDraft, take = sug.filter(t => !skip[t.id]), out = sug.length - take.length, ned = take.filter(t => drafts[t.id]).length;
   const s = el("section", "guide sug-box"); s.id = "sug-box";
-  s.append(el("h3", null, "Sugestões prontas"), el("p", "note", sug.length + " lançamento(s) têm a mesma origem de algo que você já classificou. Revise a classificação sugerida, edite as que não estiverem certas e aceite o resto de uma vez." + (out ? " " + out + " deixado(s) de fora continuam pendentes." : "")));
+  s.append(el("h3", null, "Sugestões prontas"), el("p", "note", sug.length + " lançamento(s) têm a mesma origem de algo que você já classificou. Revise a classificação sugerida, edite as que não estiverem certas e aceite tudo de uma vez." + (ned ? " " + ned + " editado(s) entram do jeito que você deixou." : "") + (out ? " " + out + " deixado(s) de fora continuam pendentes." : "")));
   const bb = el("div", "btns");
   const tg = el("button", "btn ghost", finUI.sugOpen ? "Ocultar sugestões" : "Revisar sugestões"); tg.type = "button"; tg.id = "sug-toggle"; tg.setAttribute("aria-expanded", String(!!finUI.sugOpen));
   tg.addEventListener("click", () => { finUI.sugOpen = !finUI.sugOpen; finUI.sugEdit = null; renderFin(); });
   const b = el("button", "btn", take.length ? "Aceitar " + take.length + " sugestão(ões)" : "Nenhuma para aceitar"); b.type = "button"; b.id = "accept-all"; b.disabled = !take.length;
-  b.addEventListener("click", () => { take.forEach(t => { Object.assign(t, pickAll(suggestFor(t)), { status: "done", split: undefined }); learnRule(t); }); finUI.msg = ""; finUI.sugEdit = null; saveFin(); renderFin(); });
+  b.addEventListener("click", () => {
+    // as editadas por último: a correção é o que fica aprendido para as próximas sugestões
+    take.slice().sort((x, y) => (drafts[x.id] ? 1 : 0) - (drafts[y.id] ? 1 : 0)).forEach(t => {
+      const dr = drafts[t.id];
+      if (dr && dr.amount != null) { t.amount = dr.amount; t.fxManual = true; delete t.fxPending; }
+      Object.assign(t, sugFields(t), { status: "done" }); learnRule(t); delete drafts[t.id];
+    });
+    finUI.msg = ""; finUI.sugEdit = null; saveFin(); renderFin();
+  });
   bb.append(tg, b); s.appendChild(bb);
   if (!finUI.sugOpen) return s;
   const list = el("div", "sug-list");
   sug.forEach(t => {
-    const r = pickAll(suggestFor(t)), off = !!skip[t.id], editing = finUI.sugEdit === t.id;
+    const r = sugFields(t), off = !!skip[t.id], editing = finUI.sugEdit === t.id, edited = !!drafts[t.id];
     const row = el("div", "sug-row" + (off ? " off" : "") + (editing ? " editing" : "")); row.id = "sug-" + t.id;
     const top = el("div", "sug-top");
     const l = el("div", "sug-l"); l.append(el("span", "tx-desc", t.desc), el("span", "tx-meta", fmtDate(t.date) + (t.method ? " · " + t.method : "")));
-    top.append(l, el("span", "tx-val " + (t.dir === "in" ? "in" : "out"), (t.dir === "in" ? "+ " : "− ") + brl(t.amount)));
+    const amt = edited && drafts[t.id].amount != null ? drafts[t.id].amount : t.amount;
+    top.append(l, el("span", "tx-val " + (t.dir === "in" ? "in" : "out"), (t.dir === "in" ? "+ " : "− ") + brl(amt)));
     row.appendChild(top);
     if (!editing) {
-      const line = el("p", "sug-cls"); line.append(el("b", null, LABEL[r.kind] || r.kind), " · " + (r.kind === "receita" ? "Origem: " : "Categoria: ") + r.cat + (r.kind === "gasto" && r.item ? " · Item: " + r.item : ""));
+      const line = el("p", "sug-cls");
+      if (edited) line.append(el("span", "mini sug-ed", "Editado"), " ");
+      if (r.split) line.append(el("b", null, "Rateio"), " · " + r.split.map(p => (p.item || p.cat) + " " + brl(p.amount)).join(" + "));
+      else line.append(el("b", null, LABEL[r.kind] || r.kind), " · " + (r.kind === "receita" ? "Origem: " : "Categoria: ") + r.cat + (r.kind === "gasto" && r.item ? " · Item: " + r.item : ""));
       row.appendChild(line);
-      if (r.kind === "gasto") { const ch = el("div", "tx-chips"); ch.append(el("span", "mini ess-" + r.ess, LABEL[r.ess] || ""), el("span", "mini", LABEL[r.freq] || ""), el("span", "mini", LABEL[r.nat] || "")); row.appendChild(ch); }
+      if (!r.split && r.kind === "gasto") { const ch = el("div", "tx-chips"); ch.append(el("span", "mini ess-" + r.ess, LABEL[r.ess] || ""), el("span", "mini", LABEL[r.freq] || ""), el("span", "mini", LABEL[r.nat] || "")); row.appendChild(ch); }
     }
     const act = el("div", "sug-act");
     const ed = el("button", "linkbtn", editing ? "Fechar edição" : "Editar"); ed.type = "button"; ed.id = "sug-ed-" + t.id;
     ed.addEventListener("click", () => { finUI.sugEdit = editing ? null : t.id; if (finUI.open === t.id) finUI.open = null; finUI.confirm = null; renderFin(); const n = document.getElementById("sug-" + t.id); if (n) n.scrollIntoView({ block: "nearest" }); });
     const sk = el("button", "linkbtn", off ? "Incluir de novo" : "Deixar de fora"); sk.type = "button"; sk.id = "sug-sk-" + t.id;
     sk.addEventListener("click", () => { if (off) delete skip[t.id]; else skip[t.id] = true; renderFin(); });
-    act.append(ed, sk); row.appendChild(act);
-    if (editing) { row.appendChild(el("p", "note muted", "Ajuste o que estiver errado e toque em Salvar classificação: este lançamento já fica classificado.")); row.appendChild(txEditor(t)); }
+    act.append(ed);
+    if (edited && !editing) { const un = el("button", "linkbtn", "Voltar à sugestão"); un.type = "button"; un.id = "sug-un-" + t.id; un.addEventListener("click", () => { delete drafts[t.id]; renderFin(); }); act.appendChild(un); }
+    act.appendChild(sk); row.appendChild(act);
+    if (editing) {
+      row.appendChild(el("p", "note muted", "Ajuste o que estiver errado e toque em Guardar edição. O lançamento continua na lista e é classificado assim quando você tocar em Aceitar."));
+      row.appendChild(txEditor(t, { draft: true, initial: drafts[t.id], onSave: (fields, amount) => {
+        drafts[t.id] = { fields, amount }; delete skip[t.id]; finUI.sugEdit = null; renderFin();
+        const n = document.getElementById("sug-" + t.id); if (n) n.scrollIntoView({ block: "nearest" });
+      } }));
+    }
     list.appendChild(row);
   });
   s.appendChild(list);
@@ -4891,7 +4914,9 @@ function chipGroup(label, opts, value, onPick, idp) {
   g.appendChild(row); return g;
 }
 
-function txEditor(t) {
+// opts.draft: não classifica na hora; devolve os campos em opts.onSave (revisão das sugestões)
+function txEditor(t, opts) {
+  const draft = !!(opts && opts.draft);
   const d = Object.assign({}, t);
   if (isSplit(t)) d.split = t.split.map(p => Object.assign({}, p)); else delete d.split;
   const defKind = t.dir === "in" ? "receita" : "gasto", kinds = t.dir === "in" ? KIND_IN : KIND_OUT;
@@ -4900,6 +4925,12 @@ function txEditor(t) {
     const s = suggestFor(t);
     if (s && s.split) { if (!d.split) { d.split = scaleSplit(s.split, t.amount); sugSplit = true; } }
     else if (s) Object.keys(pick(s)).forEach(k => { if (d[k] == null || d[k] === "") d[k] = s[k]; });
+  }
+  if (draft && opts.initial) {
+    const ini = opts.initial;
+    if (ini.fields.split) { d.split = ini.fields.split.map(p => Object.assign({}, p)); sugSplit = false; }
+    else { delete d.split; Object.assign(d, ini.fields); }
+    if (ini.amount != null) { d.amount = ini.amount; d.fxPending = false; }
   }
   if (!d.kind || d.kind === "rateio") d.kind = defKind;
   const box = el("div", "tx-edit");
@@ -4976,11 +5007,11 @@ function txEditor(t) {
       off.addEventListener("click", () => { const p0 = d.split[0]; Object.assign(d, { kind: p0.kind || defKind, cat: p0.cat || "", item: p0.item || "", ess: p0.ess || null, freq: p0.freq || null, nat: p0.nat || null }); delete d.split; sugSplit = false; draw(); });
       rb.append(add, fillBtn, off); box.appendChild(rb);
     }
-    const same = fin.tx.filter(x => x.id !== t.id && x.status !== "done" && x.dir === t.dir && ruleKey(x.desc) === ruleKey(t.desc));
+    const same = draft ? [] : fin.tx.filter(x => x.id !== t.id && x.status !== "done" && x.dir === t.dir && ruleKey(x.desc) === ruleKey(t.desc));
     let cb = null;
     if (same.length) { const lab = el("label", "theory"); cb = el("input"); cb.type = "checkbox"; cb.id = "same-" + t.id; lab.htmlFor = cb.id; lab.append(cb, el("span", null, (d.split ? "Aplicar o mesmo rateio, na mesma proporção, aos outros " : "Aplicar a mesma classificação aos outros ") + same.length + " pendente(s) de \"" + t.desc + "\"")); box.appendChild(lab); }
     const btns = el("div", "btns");
-    const sv = el("button", "btn", t.status === "done" ? "Salvar alterações" : "Salvar classificação"); sv.type = "button"; sv.id = "save-" + t.id;
+    const sv = el("button", "btn", draft ? "Guardar edição" : t.status === "done" ? "Salvar alterações" : "Salvar classificação"); sv.type = "button"; sv.id = "save-" + t.id;
     const hint = el("p", "note muted"); hint.id = "hint-" + t.id;
     function upd() {
       const ok = isComplete(d); sv.disabled = !ok;
@@ -4995,6 +5026,18 @@ function txEditor(t) {
     }
     sv.addEventListener("click", () => {
       if (!isComplete(d)) return;
+      if (draft) {
+        let fields;
+        if (d.split) {
+          const parts = d.split.map(p => { const o = { amount: Math.round(p.amount * 100) / 100, kind: p.kind, cat: (p.cat || "").trim(), item: (p.item || "").trim() }; if (p.kind === "gasto") Object.assign(o, { ess: p.ess, freq: p.freq, nat: p.nat }); else Object.assign(o, { ess: null, freq: null, nat: null }); return o; });
+          fields = { kind: "rateio", cat: "Rateio", item: parts.map(p => p.item || p.cat).join(" + "), ess: null, freq: null, nat: null, split: parts };
+        } else {
+          fields = { kind: d.kind, cat: (d.cat || "").trim(), item: (d.item || "").trim(), split: undefined };
+          if (d.kind === "gasto") Object.assign(fields, { ess: d.ess, freq: d.freq, nat: d.nat }); else Object.assign(fields, { ess: null, freq: null, nat: null });
+        }
+        opts.onSave(fields, t.cur && cents(d.amount) !== cents(t.amount) ? d.amount : null);
+        return;
+      }
       if (t.cur) { if (cents(d.amount) !== cents(t.amount)) { t.amount = d.amount; t.fxManual = true; } delete t.fxPending; }
       let fields;
       if (d.split) {

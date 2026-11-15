@@ -198,8 +198,6 @@ button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .home-btn { display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; margin: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
 .crumb { font-size: 15px; color: var(--muted); letter-spacing: .1em; }
 .crumb:empty { display: none; }
-body[data-view="home"] nav.tabs { display: none; }
-body[data-view="home"] header.top { padding-bottom: 8px; }
 .mods { display: grid; gap: 14px; }
 @media (min-width: 640px) { .mods { grid-template-columns: 1fr 1fr; align-items: start; } }
 .module { display: grid; }
@@ -578,7 +576,7 @@ ol.steps a { color: var(--accent); }
 .rt-fx-h { margin: 4px 0 0; font: 700 14px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
 .rt-presets { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .rt-presets .field-l { margin-right: 4px; }
-.rt-homesec { display: grid; gap: 12px; margin-top: 26px; }
+.rt-homesec { display: grid; gap: 12px; }
 .rt-homesec .wk-head { margin-bottom: 0; }
 .rt-headbtns { margin: 6px 0 4px; }
 .rt-row { grid-template-areas: "main conc" "links links" "act skip"; }
@@ -672,8 +670,8 @@ function renderTabs() {
   const nav = document.getElementById("tabs");
   nav.innerHTML = "";
   const v = state.view;
-  if (v === "home") return;
   const cfg = {
+    home: { tabs: HOME_TABS, cur: state.htab, label: "Telas do início", set: id => { state.htab = id; }, draw: () => renderHome() },
     forca: { tabs: TABS, cur: state.tab, label: "Treinos do módulo Força", set: id => { state.tab = id; }, draw: () => renderMain() },
     intel: { tabs: INTEL_TABS, cur: state.itab, label: "Seções do módulo Inteligência", set: id => { state.itab = id; if (id === "estudo") state.idate = todayISO(); }, draw: () => renderIntel() },
     ms: { tabs: MS_TABS, cur: state.mtab, label: "Seções do módulo Missões", set: id => { state.mtab = id; if (id === "ms-hoje") state.mdate = todayISO(); msUI.confirm = null; msUI.open = null; msUI.closing = null; }, draw: () => renderMissoes() },
@@ -5569,13 +5567,21 @@ function moduleStatus(m) {
   return { cls: "ok", text: "Sem pendências" };
 }
 
+// Tela inicial em três abas: Início (módulos), Rotina (de hoje) e Atributos (nível e hexágono)
+const HOME_TABS = [{ id: "inicio", label: "Início" }, { id: "rotina", label: "Rotina" }, { id: "atributos", label: "Atributos" }];
 function renderHome() {
   state.view = "home"; document.body.dataset.view = "home";
+  if (!HOME_TABS.some(t => t.id === state.htab)) state.htab = "inicio";
   document.getElementById("crumb").textContent = "";
-  document.getElementById("tabs").innerHTML = "";
+  const sel = document.getElementById("tab-" + state.htab);
+  if (!sel || !document.getElementById("tab-atributos") || sel.getAttribute("aria-selected") !== "true") renderTabs();
   const main = document.getElementById("main"); main.innerHTML = "";
-  if (!hexUI.edit) main.appendChild(xpCard());
-  main.appendChild(hexCard());
+  if (state.htab === "atributos") {
+    if (!hexUI.edit) main.appendChild(xpCard());
+    main.appendChild(hexCard());
+    return;
+  }
+  if (state.htab === "rotina") { main.appendChild(rtHomeSection()); return; }
   const now = new Date();
   const head = el("div", "wk-head");
   head.append(el("h2", null, "Início"), el("p", null, WEEKDAYS[now.getDay()].replace(/^./, c => c.toUpperCase()) + ", " + now.getDate() + " de " + MONTHS[now.getMonth()] + ". Toque num módulo para entrar ou na seta para ver as pendências."));
@@ -5589,7 +5595,6 @@ function renderHome() {
   const grid = el("div", "mods");
   MODULES.filter(m => modAllowed(m.id)).forEach(m => grid.appendChild(buildModule(m)));
   main.appendChild(grid);
-  main.appendChild(rtHomeSection());
 }
 
 function buildModule(m) {
@@ -5645,7 +5650,8 @@ function fillModuleBody(body, m) {
 }
 
 function goHome() {
-  history.replaceState(null, "", "#inicio");
+  if (state.view === "home" || !state.htab) state.htab = "inicio";
+  history.replaceState(null, "", "#" + state.htab);
   renderHome(); window.scrollTo(0, 0);
 }
 
@@ -6857,7 +6863,8 @@ function rtHomeSection() {
   const h = el("button", "btn ghost", "Horários"); h.type = "button"; h.id = "rt-open-hor"; h.addEventListener("click", () => enterRotina("rot-horarios"));
   bb.append(w, h);
   if (pushSupported() && loggedIn() && !pushOn()) { const a = el("button", "btn ghost", "Ativar avisos"); a.type = "button"; a.id = "rt-open-avisos"; a.title = "Avisos antes de cada tarefa, mesmo com o app fechado"; a.addEventListener("click", () => { enterRotina("rot-horarios"); rtFocus("rt-avisos"); }); bb.appendChild(a); }
-  head.append(el("h2", null, "Rotina de hoje"), bb, el("p", null, "Montada às " + minToHM(nowMin) + " com o que falta nos módulos. Toque numa tarefa para ir direto a ela."));
+  const now = new Date();
+  head.append(el("h2", null, "Rotina de hoje"), bb, el("p", null, capFirst(WEEKDAYS[now.getDay()]) + ", " + now.getDate() + " de " + MONTHS[now.getMonth()] + ". Montada às " + minToHM(nowMin) + " com o que falta nos módulos. Toque numa tarefa para ir direto a ela."));
   sec.appendChild(head);
   rtDefaultsBanner(sec);
   rtTodayNodes(R, nowMin).forEach(n => sec.appendChild(n));
@@ -7470,7 +7477,7 @@ window.addEventListener("hashchange", () => {
   const h = location.hash.replace("#", "");
   if (h.startsWith("tarefa-")) { rtGoTaskHash(h); return; }
   if (h.startsWith("abrir-")) { cronOpen(h); return; }
-  if (h === "inicio" || h === "") { if (state.view !== "home") renderHome(); return; }
+  if (h === "inicio" || h === "" || HOME_TABS.some(t => t.id === h)) { const t = h || "inicio"; if (state.view !== "home" || state.htab !== t) { state.htab = t; renderHome(); } return; }
   if (h === "conta") { if (state.view !== "conta") enterConta(); return; }
   if (INTEL_TABS.some(t => t.id === h)) { if (state.view !== "intel" || h !== state.itab) enterIntel(h); return; }
   if (FIN_TABS.some(t => t.id === h)) { if (state.view !== "fin" || h !== state.ftab) enterFin(h); return; }
@@ -7494,7 +7501,8 @@ fMigrateLegacy();
 const savedProfile = readProfile();
 if (savedProfile) loadProfile(savedProfile);
 const startHash = location.hash;
-history.replaceState(null, "", "#inicio");
+state.htab = HOME_TABS.some(t => "#" + t.id === startHash) ? startHash.slice(1) : "inicio";
+history.replaceState(null, "", "#" + state.htab);
 renderHome();
 if (startHash.startsWith("#tarefa-")) rtGoTaskHash(startHash);
 else if (startHash.startsWith("#abrir-")) cronOpen(startHash);

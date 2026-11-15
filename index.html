@@ -541,6 +541,9 @@ ol.steps a { color: var(--accent); }
 .rt-presets .field-l { margin-right: 4px; }
 .rt-homesec { display: grid; gap: 12px; margin-top: 26px; }
 .rt-homesec .wk-head { margin-bottom: 0; }
+.rt-headrow { display: flex; align-items: center; gap: 10px 18px; flex-wrap: wrap; }
+.rt-headbtns { gap: 6px; }
+.rt-headbtns .btn { font-size: 11px; letter-spacing: .06em; padding: 6px 9px; }
 .rt-row { grid-template-areas: "main skip" "links links"; }
 .rt-row > .rt-main { grid-area: main; }
 .rt-row > .rt-skip { grid-area: skip; }
@@ -6180,16 +6183,17 @@ function rtHomeSection() {
   const sec = el("section", "rt-homesec"); sec.id = "rt-home";
   const nowMin = rtNow(), R = rtToday();
   const head = el("div", "wk-head");
-  head.append(el("h2", null, "Rotina de hoje"), el("p", null, "Montada às " + minToHM(nowMin) + " com o que falta nos módulos. Toque numa tarefa para ir direto a ela."));
-  sec.appendChild(head);
-  rtDefaultsBanner(sec);
-  rtTodayNodes(R, nowMin).forEach(n => sec.appendChild(n));
-  const bb = el("div", "btns");
+  // Botões no título: com muitas tarefas no dia, embaixo eles ficavam longe.
+  const bb = el("div", "btns rt-headbtns");
   const w = el("button", "btn", "Ver a semana"); w.type = "button"; w.id = "rt-open"; w.addEventListener("click", () => enterRotina("rot-semana"));
   const h = el("button", "btn ghost", "Horários"); h.type = "button"; h.id = "rt-open-hor"; h.addEventListener("click", () => enterRotina("rot-horarios"));
   bb.append(w, h);
-  if (pushSupported() && loggedIn() && !pushOn()) { const a = el("button", "btn ghost", "Avisos 10 min antes"); a.type = "button"; a.id = "rt-open-avisos"; a.addEventListener("click", () => { enterRotina("rot-horarios"); rtFocus("rt-avisos"); }); bb.appendChild(a); }
-  sec.appendChild(bb);
+  if (pushSupported() && loggedIn() && !pushOn()) { const a = el("button", "btn ghost", "Ativar avisos"); a.type = "button"; a.id = "rt-open-avisos"; a.title = "Avisos antes de cada tarefa, mesmo com o app fechado"; a.addEventListener("click", () => { enterRotina("rot-horarios"); rtFocus("rt-avisos"); }); bb.appendChild(a); }
+  const row = el("div", "rt-headrow"); row.append(el("h2", null, "Rotina de hoje"), bb);
+  head.append(row, el("p", null, "Montada às " + minToHM(nowMin) + " com o que falta nos módulos. Toque numa tarefa para ir direto a ela."));
+  sec.appendChild(head);
+  rtDefaultsBanner(sec);
+  rtTodayNodes(R, nowMin).forEach(n => sec.appendChild(n));
   return sec;
 }
 /* ---------- Avisos antes de cada tarefa (Web Push pelo Worker) ---------- */

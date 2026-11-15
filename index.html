@@ -295,6 +295,19 @@ details.imp[open] { gap: 10px; }
 .tx-val.in { color: var(--good); }
 .tx-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
 .sug-list { display: grid; gap: 8px; margin-top: 12px; }
+.im-grid { display: grid; gap: 10px; }
+@media (min-width: 640px) { .im-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.im-card { display: grid; gap: 6px; text-align: left; align-content: start; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); font: inherit; padding: 12px 14px; cursor: pointer; }
+.im-card:hover, .im-card:focus-visible { border-color: var(--accent); }
+.im-card.on { border-color: var(--accent); box-shadow: 0 0 14px rgba(166, 107, 255, .35); }
+.im-n { font: 700 16px var(--font-display); letter-spacing: .06em; text-transform: uppercase; }
+.im-d { font-size: 14px; }
+.im-w { font-size: 13px; color: var(--muted); }
+.im-ev { justify-self: start; font: 700 11px var(--font-display); letter-spacing: .08em; text-transform: uppercase; padding: 1px 7px; border: 1px solid var(--line); color: var(--muted); }
+.im-ev.hi { color: var(--good); border-color: var(--good); }
+.im-st { font: 600 12px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin-top: 2px; }
+.im-card.on .im-st { color: var(--good); }
+.im-live { color: var(--accent); font-variant-numeric: tabular-nums; }
 .ld-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; color: var(--muted); margin-top: 8px; }
 .ld-line .linkbtn { font-size: 13px; }
 .ld-opts { flex-basis: 100%; display: grid; gap: 6px; }
@@ -1699,7 +1712,54 @@ function prescText(ex) {
 const INTEL_KEY = "stek-intel-v1";
 const UNITS = { exercicios: ["exercício", "exercícios"], modulos: ["módulo", "módulos"], aulas: ["aula", "aulas"], licoes: ["lição", "lições"], paginas: ["página", "páginas"], capitulos: ["capítulo", "capítulos"] };
 const UNIT_OPTS = [["exercicios", "Exercícios"], ["modulos", "Módulos"], ["aulas", "Aulas"], ["licoes", "Lições"], ["paginas", "Páginas"], ["capitulos", "Capítulos"]];
-const INTEL_TABS = [{ id: "estudo", label: "Hoje" }, { id: "estudo-progresso", label: "Progresso" }, { id: "materias", label: "Matérias" }];
+const INTEL_TABS = [{ id: "estudo", label: "Hoje" }, { id: "estudo-progresso", label: "Progresso" }, { id: "materias", label: "Matérias" }, { id: "metodos", label: "Métodos" }];
+/* Métodos de estudo: o ritmo escolhido define o tamanho dos blocos e das pausas na rotina; as técnicas se somam.
+   Evidência: Dunlosky et al. (2013, Psychological Science in the Public Interest) avaliaram 10 técnicas:
+   prática de teste e prática distribuída (revisão espaçada) com utilidade alta; estudo intercalado, moderada;
+   reler e grifar, baixa. Os ritmos (Pomodoro, 52/17, 90 min) organizam o tempo; não há número mágico comprovado. */
+const IM_RITMO = {
+  padrao: { name: "Blocos de 50 min", work: 50, brk: 10, min: 25, test: 10, desc: "50 min de estudo e 10 de pausa. É o ritmo que a rotina já usava.", why: "Bom equilíbrio para listas de exercícios e leitura." },
+  pomo: { name: "Pomodoro", work: 25, brk: 5, min: 25, every: 4, long: 20, test: 5, desc: "25 min de estudo e 5 de pausa; a cada 4 blocos, pausa longa de 20 min.", why: "Criado por Francesco Cirillo no fim dos anos 1980. Ajuda a começar e a não se distrair; os 25 min vieram da experiência dele, não de pesquisa." },
+  r52: { name: "52 + 17", work: 52, brk: 17, min: 26, test: 10, desc: "52 min de estudo e 17 de pausa.", why: "Ritmo observado entre os usuários mais produtivos do aplicativo DeskTime (2014). Pausas maiores para dias longos." },
+  r90: { name: "Blocos de 90 min", work: 90, brk: 20, min: 45, test: 15, desc: "90 min de estudo e 20 de pausa.", why: "Para conteúdo que pede concentração longa, como provas antigas ou projetos. Exige mais foco por bloco." }
+};
+const IM_TEC = [
+  ["rev", "Revisão espaçada", "Alta eficácia", "Volta ao conteúdo 1, 7 e 30 dias depois de estudar, em vez de estudar tudo de uma vez.", "Na rotina: entram revisões curtas (10 a 20 min) de cada matéria nesses dias, dentro da sua meta de estudo. Comece cada revisão testando a memória."],
+  ["teste", "Prática de teste", "Alta eficácia", "Tentar lembrar sem olhar (exercícios, perguntas, flashcards) fixa mais do que reler.", "Na rotina e no cronômetro: o fim de cada bloco vira teste de memória; o cronômetro avisa quando começar e quando pausar."],
+  ["inter", "Estudo intercalado", "Eficácia moderada", "Alternar matérias e tipos de problema em vez de passar horas num assunto só.", "Na rotina: cada bloco recebe uma matéria, alternando entre as que têm meta no dia."]
+];
+function imCfg() { const m = (intel && intel.method) || {}; return { ritmo: IM_RITMO[m.ritmo] ? m.ritmo : "padrao", rev: !!m.rev, teste: !!m.teste, inter: !!m.inter }; }
+function imR() { return IM_RITMO[imCfg().ritmo]; }
+function imSet(v) { intel.method = Object.assign({}, imCfg(), v); saveIntel(); }
+function imResumo() { const c = imCfg(), t = IM_TEC.filter(x => c[x[0]]).map(x => x[1].toLowerCase()); return IM_RITMO[c.ritmo].name + (t.length ? " + " + t.join(", ") : ""); }
+function renderMetodos(main) {
+  head2(main, "Métodos de estudo", "Escolha como a rotina monta os seus blocos de estudo. O ritmo define o tamanho dos blocos e das pausas; as técnicas se somam a ele.");
+  const c = imCfg();
+  const s1 = el("section", "guide"); s1.id = "im-ritmo";
+  s1.append(el("h3", null, "Ritmo dos blocos"), el("p", "note muted", "Escolha um."));
+  const g1 = el("div", "im-grid");
+  Object.keys(IM_RITMO).forEach(k => {
+    const r = IM_RITMO[k], on = c.ritmo === k;
+    const b = el("button", "im-card" + (on ? " on" : "")); b.type = "button"; b.id = "im-r-" + k; b.setAttribute("aria-pressed", String(on));
+    b.append(el("span", "im-n", r.name), el("span", "im-d", r.desc), el("span", "im-w", r.why), el("span", "im-st", on ? "Em uso" : "Usar este"));
+    b.addEventListener("click", () => { if (!on) { imSet({ ritmo: k }); renderIntel(); } });
+    g1.appendChild(b);
+  });
+  s1.appendChild(g1); main.appendChild(s1);
+  const s2 = el("section", "guide"); s2.id = "im-tec";
+  s2.append(el("h3", null, "Técnicas"), el("p", "note muted", "Combine quantas quiser. A eficácia vem da revisão de Dunlosky e colegas (2013), que comparou 10 técnicas de estudo."));
+  const g2 = el("div", "im-grid");
+  IM_TEC.forEach(([k, name, ev, what, how]) => {
+    const on = c[k];
+    const b = el("button", "im-card" + (on ? " on" : "")); b.type = "button"; b.id = "im-t-" + k; b.setAttribute("aria-pressed", String(on));
+    b.append(el("span", "im-n", name), el("span", "im-ev" + (/Alta/.test(ev) ? " hi" : ""), ev), el("span", "im-d", what), el("span", "im-w", how), el("span", "im-st", on ? "Em uso · tocar para tirar" : "Usar"));
+    b.addEventListener("click", () => { imSet({ [k]: !on }); renderIntel(); });
+    g2.appendChild(b);
+  });
+  s2.appendChild(g2);
+  s2.appendChild(el("p", "note muted", "No mesmo estudo, reler e grifar tiveram utilidade baixa: costumam dar sensação de que aprendeu sem fixar. Troque por teste e revisão."));
+  main.appendChild(s2);
+}
 let intel = null;
 const intelConfirm = new Set();
 
@@ -2143,7 +2203,7 @@ function addTime(startMs, endMs, sid) {
     s = e;
   }
 }
-function startTimer(sid) { cronAsk(); msHoldMission(); if (intel.timer) stopTimer(true); intel.timer = { sid, startedAt: Date.now() }; saveIntel(); }
+function startTimer(sid) { cronAsk(); stSoundInit(); imLast = null; msHoldMission(); if (intel.timer) stopTimer(true); intel.timer = { sid, startedAt: Date.now() }; saveIntel(); }
 function stopTimer(silent) { const t = intel.timer; if (!t) return; addTime(t.startedAt, Date.now(), t.sid); intel.timer = null; if (!silent) saveIntel(); }
 
 function subjTask(sub, iso) {
@@ -2193,6 +2253,7 @@ function enterIntel(tab, focusSid) {
 function renderIntel() {
   const main = document.getElementById("main"); main.innerHTML = "";
   if (state.itab === "materias") renderMaterias(main);
+  else if (state.itab === "metodos") renderMetodos(main);
   else if (state.itab === "estudo-progresso") renderIntelProgress(main);
   else renderEstudo(main);
 }
@@ -2243,6 +2304,9 @@ function renderEstudo(main) {
     const e = el("section", "guide"); e.append(el("p", "note muted", "Nenhuma matéria cadastrada. Adicione na aba Matérias."));
     main.appendChild(e); return;
   }
+  const mt = el("p", "note muted im-now"); mt.id = "im-now"; mt.append("Método: " + imResumo() + ". ");
+  const ml = el("button", "linkbtn", "Mudar"); ml.type = "button"; ml.id = "im-go"; ml.addEventListener("click", () => enterIntel("metodos")); mt.appendChild(ml);
+  main.appendChild(mt);
   intel.subjects.forEach((s, i) => main.appendChild(buildSubjCard(s, i + 1, iso)));
 }
 
@@ -2281,7 +2345,7 @@ function buildSubjCard(s, n, iso) {
   tbtns.append(adj(-300, "−5 min"), adj(300, "+5 min"));
   trow.append(tdisp, tbtns);
   card.appendChild(trow);
-  if (running) card.appendChild(el("p", "ex-note", "Cronômetro rodando. Ele continua contando mesmo se você fechar o app."));
+  if (running) { const lv = el("p", "ex-note im-live"); lv.id = "im-live"; lv.textContent = imLiveText(); card.append(lv, el("p", "ex-note", "Cronômetro rodando. Ele continua contando mesmo se você fechar o app.")); }
 
   // plano do dia
   const p = planFor(s, iso), r = getRec(iso, s.id);
@@ -2567,9 +2631,28 @@ function intelAddSection() {
   return add;
 }
 
+/* ritmo do método no cronômetro: quanto falta para o teste e para a pausa; sinal sonoro na troca */
+let imLast = null;
+function imPhase() {
+  const t = intel && intel.timer; if (!t) return null;
+  const c = imCfg(), R = IM_RITMO[c.ritmo], W = R.work * 60, e = Math.max(0, Math.floor((Date.now() - t.startedAt) / 1000));
+  const k = Math.floor(e / W), left = W - e % W, test = c.teste && left <= R.test * 60, brk = R.every && (k + 1) % R.every === 0 ? R.long : R.brk;
+  return { k, left, test, brk, R };
+}
+function imLiveText() {
+  const p = imPhase(); if (!p) return "";
+  return (p.k ? "Bloco " + (p.k + 1) + " · " : "") + (p.test ? "Teste de memória: feche o material e responda sem olhar. " : "") + "Faltam " + fmtMS(p.left) + " para a pausa de " + p.brk + " min (" + p.R.name + ").";
+}
 /* atualiza o que está contando ao vivo (cronômetro) */
 function updateLive() {
   if (!intel || !intel.timer) return;
+  const ph = imPhase();
+  if (ph) {
+    const tag = ph.k + (ph.test ? "t" : "");
+    if (imLast != null && imLast !== tag) { if (ph.test) stBeep(660, 300, 1); else stBeep(528, 700, 3); }
+    imLast = tag;
+    document.querySelectorAll("#im-live").forEach(n => { n.textContent = imLiveText(); });
+  }
   const today = todayISO();
   const sec = daySec(today), goal = goalSec(today);
   document.querySelectorAll('[data-live="subj-time"]').forEach(n => { n.textContent = fmtHMS(subjSec(today, n.dataset.sid)); });
@@ -6112,13 +6195,24 @@ function rtDemand(iso, plan, sim) {
     else if (goal && have) done.push("Trabalho " + rtDur(have));
   }
   if (modAllowed("inteligencia") && intel) {
-    const goal = Math.round(goalSec(iso) / 60), have = isT ? Math.floor(daySec(iso) / 60) : 0, need = goal - have;
+    const im = imCfg(), IR = IM_RITMO[im.ritmo];
+    // revisão espaçada: o que foi estudado há 1, 7 e 30 dias volta como revisão curta (dentro da meta do dia)
+    let revMin = 0;
+    if (im.rev) intel.subjects.forEach(sb => {
+      const ds = [1, 7, 30].map(o => addDaysISO(iso, -o)).filter(d => d <= today && (() => { const r = getRec(d, sb.id); return r.sec >= 600 || r.count > 0 || r.theory; })());
+      if (!ds.length) return;
+      const key = "rev-" + sb.id, dur = Math.min(20, 10 + 5 * (ds.length - 1));
+      const it = { key, mod: "inteligencia", title: "Revisão: " + sb.name, sub: "Do que você estudou em " + ds.map(d => fmtDate(d).slice(0, 5)).join(", ") + ". Comece tentando lembrar sem olhar; depois confira o material. Toque em Concluir ao terminar.",
+        subjects: [{ id: sb.id, label: sb.name }], dur, rank: 3.5, review: true, running: !!run.estudo && run.rtKey === key, go: () => rtGoSubj(sb.id) };
+      const before = items.length; add(it); if (items.length > before) revMin += dur;
+    });
+    const goal = Math.round(goalSec(iso) / 60), have = isT ? Math.floor(daySec(iso) / 60) : 0, need = goal - have - revMin;
     const subs = intel.subjects.map(s => {
       const p = planFor(s, iso); if (!p || p.doneAll) return null;
       if (isT) { const st = subjTask(s, iso); if (st && st.complete) return null; }
       return { id: s.id, label: s.name + (p.qty ? " (" + p.qty + " " + unitWord(s, p.qty) + ")" : "") };
     }).filter(Boolean);
-    if (need > 0) add({ key: "estudo", mod: "inteligencia", running: !!run.estudo, title: "Estudo", sub: subs.map(x => x.label).join(" · "), subjects: subs, dur: need, split: 50, minChunk: 25, gapAfter: 10, rank: 4, go: () => rtGoSubj(subs.length ? subs[0].id : null) });
+    if (need > 0) add({ key: "estudo", mod: "inteligencia", running: !!run.estudo && !/^rev-/.test(run.rtKey || ""), title: "Estudo", sub: subs.map(x => x.label).join(" · "), subjects: subs, dur: need, split: IR.work, minChunk: IR.min, gapAfter: IR.brk, longEvery: IR.every, longGap: IR.long, rank: 4, go: () => rtGoSubj(subs.length ? subs[0].id : null) });
     else if (have) done.push("Estudo " + rtDur(have));
   }
   if (isT && modAllowed("financas") && fin) {
@@ -6158,7 +6252,8 @@ function rtSchedule(iso, items, from, cfg) {
         const mc = it.minChunk || 15, extra = lead ? lead.dur : 0, c = cands(mc + extra, w); if (!c.length) return;
         const [a, b] = c[0], s0 = a + extra, want = rem - it.split < mc ? Math.max(rem, mc) : it.split, ch = Math.min(want, b - s0);
         if (lead) { blocks.push({ s: a, e: s0, it: lead }); lead = null; }
-        free = rtCut(free, a, s0 + ch + gap); blocks.push({ s: s0, e: s0 + ch, it, part: part++ }); rem -= ch;
+        const gp = it.longEvery && (part + 1) % it.longEvery === 0 ? it.longGap : gap;
+        free = rtCut(free, a, s0 + ch + gp); blocks.push({ s: s0, e: s0 + ch, it, part: part++ }); rem -= ch;
         if (once) return;
       }
     };
@@ -6207,17 +6302,32 @@ function rtPlan(iso, items, from) {
     wss.forEach(ws => sss.forEach(ss => combos.forEach(fx => { const r = run({ ws, ss, flex: fx }); if (r.score < best.score) best = r; })));
   }
   rtFillExtra(best, iso);
+  rtInterleave(best);
   return best;
+}
+// Estudo intercalado: cada bloco de estudo recebe uma matéria, alternando (o bloco em andamento fica com a matéria do cronômetro)
+function rtInterleave(r) {
+  if (!intel || !imCfg().inter) return;
+  const idx = {};
+  r.blocks.forEach(b => {
+    const it = b.it; if (it.key !== "estudo" && it.key !== "extra") return;
+    if (it.running && !b.part && intel.timer) { const x = intel.subjects.find(v => v.id === intel.timer.sid); if (x) { b.subj = { id: x.id, label: x.name }; return; } }
+    const subs = it.subjects || []; if (subs.length < 2) return;
+    const i = idx[it.key] = (idx[it.key] == null ? 0 : idx[it.key] + 1); b.subj = subs[i % subs.length];
+  });
 }
 // Sobrou mais de 20 min livres? Vira estudo (dá tempo de resolver exercícios).
 function rtFillExtra(r, iso) {
   if (!modAllowed("inteligencia") || !intel || !intel.subjects.length || (rt().skip[iso] || []).includes("extra") || (rt().done[iso] || []).includes("extra")) return;
   const subs = intel.subjects.filter(s => !(s.total && subjDoneUpTo(s) >= s.total)).map(s => ({ id: s.id, label: s.name }));
   const it = { key: "extra", mod: "inteligencia", title: "Estudo extra", sub: subs.map(x => x.label).join(" · "), subjects: subs, go: () => rtGoSubj(subs.length ? subs[0].id : null), extra: true };
-  let part = 0;
+  let part = 0; const IR = imR();
   r.free.forEach(([a, b]) => {
     let s = a, len = b - a - (b < r.day.sleep ? 5 : 0);
-    while (len > 20) { const ch = len <= 80 ? len : 50; r.blocks.push({ s, e: s + ch, it, part: part++ }); s += ch + 10; len -= ch + 10; }
+    while (len > 20) {
+      const ch = len <= IR.work + Math.min(30, IR.min) ? len : IR.work, gp = IR.every && (part + 1) % IR.every === 0 ? IR.long : IR.brk;
+      r.blocks.push({ s, e: s + ch, it, part: part++ }); s += ch + gp; len -= ch + gp;
+    }
   });
   r.blocks.sort((x, y) => x.s - y.s);
 }
@@ -6262,14 +6372,15 @@ function rtIcon(mod) { const s = el("span", "rt-ico"); s.innerHTML = ICONS[mod] 
 let rtPick = null;
 function rtRunning() {
   const o = {};
-  if (intel && intel.timer) o.estudo = intel.timer.sid;
+  if (intel && intel.timer) { o.estudo = intel.timer.sid; o.rtKey = intel.timer.rt || ""; }
   const st = stamina && stamina.timer; if (st) o[practice(st.pid).kind] = st.pid;
   if (graca && graca.timer) o.graca = graca.timer.rid;
   if (mis && mis.timer) o.trabalho = mis.timer.tid;
   return o;
 }
 function rtCanStart(it) { return ["graca", "estamina", "missoes", "inteligencia"].includes(it.mod); }
-function rtStudyOpts(it) {
+function rtStudyOpts(it, b) {
+  if (b && b.subj) return [b.subj];
   if (it.subjects && it.subjects.length) return it.subjects;
   return intel ? intel.subjects.filter(s => !(s.total && subjDoneUpTo(s) >= s.total)).map(s => ({ id: s.id, label: s.name })) : [];
 }
@@ -6287,7 +6398,7 @@ function rtRefresh(fid) {
 }
 function rtStart(it, b, sid) {
   rtStopOthers(it.mod); rtPick = null;
-  if (it.mod === "inteligencia") startTimer(sid);
+  if (it.mod === "inteligencia") { startTimer(sid); intel.timer.rt = it.key; saveIntel(); }
   else if (it.key === "cardio") { stUI.cardio = it.pid; stStart(it.pid); }
   else if (it.key === "foco") { const pid = stUI.foco || "med"; stUI.foco = pid; stStart(pid); }
   else if (it.mod === "graca") grStart(it.rid);
@@ -6336,7 +6447,7 @@ function rtActRow(it, b, suf, running) {
     return act;
   }
   if (it.mod === "inteligencia") {
-    const opts = rtStudyOpts(it); if (!opts.length) return null;
+    const opts = rtStudyOpts(it, b); if (!opts.length) return null;
     if (rtPick === suf && opts.length > 1) {
       act.appendChild(el("span", "rt-pickq", "Qual matéria?"));
       opts.forEach(x => act.appendChild(mk("rt-link", "▶ " + x.label, "rt-pick-" + suf + "-" + x.id, () => rtStart(it, b, x.id))));
@@ -6391,7 +6502,7 @@ function rtTodayNodes(R, nowMin) {
   const tl = el("ol", "rt-list"); tl.id = "rt-list";
   const rows = R.blocks.map(b => ({ s: b.s, e: b.e, b })).concat(d.fixed.filter(f => f.b > nowMin).map(f => ({ s: f.a, e: f.b, f }))).sort((x, y) => x.s - y.s);
   if (d.wake > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.wake) + " · Acordar" + (R.cfg.ws ? " (" + rtDur(R.cfg.ws) + " antes, para caber tudo)" : "")));
-  const studyRun = !!(intel && intel.timer) && !R.blocks.some(b => b.it.key === "estudo");
+  const studyRun = !!(intel && intel.timer) && !R.blocks.some(b => b.it.key === "estudo" || (b.it.review && b.it.running));
   rows.forEach(r => {
     const running = !!r.b && !r.b.part && (r.b.it.running || (r.b.it.extra && studyRun));
     const isNow = running || (nowMin >= r.s && nowMin < r.e);
@@ -6413,8 +6524,11 @@ function rtTodayNodes(R, nowMin) {
     if (r.b.missions) {
       if (r.b.missions.length) { links = r.b.missions.map(m => ({ id: "rt-ms-" + suf + "-" + m.t.id, label: m.t.title + " · " + rtDur(m.min), go: () => rtGoMission(m.t.id) })); go = links[0].go; }
       else tx.appendChild(el("span", "rt-sub", "Tempo de trabalho livre: escolha as missões do dia."));
+    } else if (it.review) {
+      tx.appendChild(el("span", "rt-sub", it.sub));
     } else if (it.subjects && it.subjects.length) {
-      links = it.subjects.map(x => ({ id: "rt-sb-" + suf + "-" + x.id, label: x.label, go: () => rtGoSubj(x.id) }));
+      links = (r.b.subj ? [r.b.subj] : it.subjects).map(x => ({ id: "rt-sb-" + suf + "-" + x.id, label: x.label, go: () => rtGoSubj(x.id) }));
+      if (imCfg().teste && r.e - r.s >= 20) tx.appendChild(el("span", "rt-sub", "Últimos " + imR().test + " min: teste de memória (sem olhar o material), depois corrija."));
     } else if (it.sub) tx.appendChild(el("span", "rt-sub", it.sub));
     if (isNow && !running) tx.appendChild(el("span", "st pend rt-now", "Agora"));
     btn.appendChild(tx); btn.addEventListener("click", go); li.appendChild(btn);
@@ -6477,10 +6591,11 @@ function renderRtSemana(main) {
     card.appendChild(hd);
     const bar = el("div", "goalbar"); const f = el("span"); f.style.width = Math.min(100, freeMin ? load / freeMin * 100 : 100) + "%"; bar.appendChild(f); if (load > freeMin) bar.classList.add("over"); card.appendChild(bar);
     const ul = el("ul", "rt-items");
-    const grp = {}; dem.items.forEach(it => { const k = it.key.startsWith("gr-") ? "graca" : it.key; (grp[k] = grp[k] || []).push(it); });
+    const grp = {}; dem.items.forEach(it => { const k = it.key.startsWith("gr-") ? "graca" : it.key.startsWith("rev-") ? "rev" : it.key; (grp[k] = grp[k] || []).push(it); });
     const line = (mod, title, sub, opt) => { const li = el("li", "rt-it" + (opt ? " opt" : "")); li.appendChild(rtIcon(mod)); const t = el("span", "rt-txt"); t.appendChild(el("span", "rt-title", title)); if (sub) t.appendChild(el("span", "rt-sub", sub)); li.appendChild(t); ul.appendChild(li); };
-    ["forca", "cardio", "trabalho", "estudo", "foco", "graca", "eco"].forEach(k => {
+    ["forca", "cardio", "trabalho", "rev", "estudo", "foco", "graca", "eco"].forEach(k => {
       const g = grp[k]; if (!g) return; const it = g[0];
+      if (k === "rev") { line("inteligencia", "Revisões · " + rtDur(g.reduce((a, x) => a + x.dur, 0)), g.map(x => x.title.replace(/^Revisão: /, "")).join(" · ")); return; }
       if (k === "graca") { const names = {}; g.forEach(x => { const n = x.title.replace(/ \(\dª vez\)$/, ""); names[n] = (names[n] || 0) + 1; }); line("graca", "Graça · " + rtDur(g.reduce((s, x) => s + x.dur, 0)), Object.keys(names).map(n => n + (names[n] > 1 ? " ×" + names[n] : "")).join(" · ")); return; }
       if (k === "trabalho") { line("missoes", "Trabalho · " + rtDur(it.dur), it.missions.length ? it.missions.map(x => x.t.title + " (" + rtDur(x.need) + (x.t.est ? "" : ", sem estimativa") + ")").join(" · ") : "Nenhuma missão marcada: tempo para as demandas que chegarem."); return; }
       line(it.mod, it.title + " · " + rtDur(it.dur) + (it.optional ? " (opcional)" : ""), k === "cardio" ? "" : it.sub, it.optional);
@@ -6666,11 +6781,11 @@ function pushItems() {
     r.blocks.forEach(b => {
       const at = base + (b.s - lead) * 60000; if (at < now - 30000) return;
       const it = b.it, ms = b.missions && b.missions.length ? ": " + b.missions.map(x => x.t.title).join(", ") : "";
-      const sub = it.subjects && it.subjects.length ? it.subjects.map(x => x.label).join(", ") : (it.sub || "");
+      const sub = b.subj ? b.subj.label : it.review ? (it.subjects[0] || {}).label || "" : it.subjects && it.subjects.length ? it.subjects.map(x => x.label).join(", ") : (it.sub || "");
       out.push({ tag: iso + "-" + it.key + "-" + b.s, at, title: ("Em " + lead + " min: " + it.title + ms).slice(0, 118), body: (minToHM(b.s) + " às " + minToHM(b.e) + (sub && !ms ? " · " + sub : "")).slice(0, 290), url: "./#tarefa-" + it.key + "@" + b.s + "@" + iso });
     });
   });
-  cronItems().filter(c => c.end && c.end > now).forEach(c => out.push({ tag: "cron-end-" + c.mod + "-" + c.start, at: c.end, title: ("Tempo concluído: " + c.title).slice(0, 118), body: "Terminou às " + minToHM(new Date(c.end).getHours() * 60 + new Date(c.end).getMinutes()) + ". Toque para abrir.", url: "./#abrir-" + c.tab }));
+  cronItems().filter(c => c.end && c.end > now).forEach(c => out.push({ tag: "cron-end-" + c.mod + "-" + c.start, at: c.end, title: (c.endTitle || "Tempo concluído: " + c.title).slice(0, 118), body: c.endBody || "Terminou às " + minToHM(new Date(c.end).getHours() * 60 + new Date(c.end).getMinutes()) + ". Toque para abrir.", url: "./#abrir-" + c.tab }));
   return out.sort((a, b) => a.at - b.at).slice(0, 60);
 }
 async function pushSync(force) {
@@ -6734,8 +6849,12 @@ function cronAsk() {
 }
 function cronItems() {
   const out = [], hm = ms => { const d = new Date(ms); return minToHM(d.getHours() * 60 + d.getMinutes()); };
-  const add = (mod, title, t, end, tab) => out.push({ mod, title, start: t.startedAt, end: end || 0, tab, hm });
-  if (intel && intel.timer) { const t = intel.timer, x = intel.subjects.find(v => v.id === t.sid); add("inteligencia", "Estudo · " + (x ? x.name : "matéria"), t, 0, "estudo"); }
+  const add = (mod, title, t, end, tab, extra) => out.push(Object.assign({ mod, title, start: t.startedAt, end: end || 0, tab, hm }, extra || {}));
+  if (intel && intel.timer) {
+    // estudo: o "fim" é a próxima pausa do ritmo escolhido em Métodos
+    const t = intel.timer, x = intel.subjects.find(v => v.id === t.sid), ph = imPhase(), end = t.startedAt + (ph.k + 1) * ph.R.work * 60000;
+    add("inteligencia", "Estudo · " + (x ? x.name : "matéria"), t, end, "estudo", { endWord: "pausa às", endTitle: "Hora da pausa de " + ph.brk + " min: " + (x ? x.name : "estudo"), endBody: "Bloco de " + ph.R.work + " min concluído (" + ph.R.name + "). Pause o cronômetro e volte depois da pausa." });
+  }
   if (stamina && stamina.timer) { const t = stamina.timer, p = practice(t.pid), c = stCap(t); add("estamina", (p.kind === "cardio" ? "Cardio · " : "Foco · ") + p.name, t, isFinite(c) ? t.startedAt + c * 1000 : 0, "est-hoje"); }
   if (graca && graca.timer) { const t = graca.timer, r = ritual(t.rid), c = grCap(t); add("graca", r ? r.name : "Ritual", t, isFinite(c) ? t.startedAt + c * 1000 : 0, "gr-hoje"); }
   if (mis && mis.timer) { const t = mis.timer, x = t.tid !== MS_GERAL ? msTask(t.tid) : null; add("missoes", x ? "Missão · " + x.title : "Trabalho geral", t, 0, "ms-hoje"); }
@@ -6748,7 +6867,7 @@ function cronShow() {
   cronReg().then(reg => { if (!reg) return; list.forEach(c => {
     const hm = c.hm(c.start);
     reg.showNotification("▶ " + c.title, {
-      tag: "stek-cron-" + c.mod, body: "Desde " + hm + (c.end ? " · termina às " + c.hm(c.end) : "") + ". Toque para abrir.",
+      tag: "stek-cron-" + c.mod, body: "Desde " + hm + (c.end ? " · " + (c.endWord || "termina às") + " " + c.hm(c.end) : "") + ". Toque para abrir.",
       timestamp: c.start, silent: true, renotify: false, requireInteraction: true,
       icon: "icon-192.png?v=4", badge: "icon-192.png?v=4",
       data: { url: "./#abrir-" + c.tab, cron: c.mod, start: c.start, title: c.title },

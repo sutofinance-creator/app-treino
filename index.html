@@ -105,6 +105,7 @@ details summary { cursor: pointer; font: 600 14px var(--font-display); letter-sp
 .hist li span:first-child { color: var(--muted); }
 .guide { padding: 18px 16px 16px; display: grid; gap: 10px; }
 .guide h3 { font-family: var(--font-display); font-weight: 700; font-size: 22px; text-transform: uppercase; margin: 0; letter-spacing: .1em; }
+.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .guide p, .guide li { max-width: 65ch; }
 .guide ul { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
 .guide li::marker { color: var(--accent); }
@@ -3712,7 +3713,18 @@ function renderMsHoje(main) {
       const da = a.due || "9999", db = b.due || "9999"; return (da < db ? -1 : da > db ? 1 : 0) || msSort(a, b);
     });
     const p = el("section", "guide"); p.id = "ms-plan";
-    p.appendChild(el("h3", null, iso === today ? "Planejar o dia" : "Planejar " + fmtDate(iso).slice(0, 5)));
+    const ph = el("div", "sec-head"); ph.appendChild(el("h3", null, iso === today ? "Planejar o dia" : "Planejar " + fmtDate(iso).slice(0, 5)));
+    if (!msUI.dayNewOpen) {
+      const bt = el("button", "btn ghost", "＋ Nova missão"); bt.type = "button"; bt.id = "ms-daynew-btn";
+      bt.setAttribute("aria-label", "Nova missão para " + (iso === today ? "hoje" : fmtDate(iso).slice(0, 5)));
+      bt.addEventListener("click", () => { msUI.dayNewOpen = true; renderMissoes(); const t = document.querySelector("#ms-plan input"); if (t) { t.scrollIntoView({ block: "center" }); t.focus(); } });
+      ph.appendChild(bt);
+    }
+    p.appendChild(ph);
+    if (msUI.dayNewOpen) {
+      p.appendChild(el("span", "field-l", "Nova missão para " + (iso === today ? "hoje" : fmtDate(iso).slice(0, 5))));
+      p.appendChild(msForm(msUI.draft || {}, v => { const n = msNew(Object.assign(v, { plan: [iso] })); if (n.rec && n.rec.type && n.due !== iso) n.plan = []; saveMs(); msUI.draft = null; msUI.dayNewOpen = false; msUI.msg = "Missão criada" + (n.rec && n.rec.type ? " (recorrente, próxima execução " + fmtDate(n.due).slice(0, 5) + ")." : " para o dia."); renderMissoes(); }, "msq-", true, null, () => { msUI.dayNewOpen = false; msUI.draft = null; renderMissoes(); }));
+    }
     if (cand.length) {
       p.appendChild(el("p", "note muted", "Missões abertas, das de prazo mais curto para as mais longas. Toque em + para colocar no dia."));
       const ul = el("ul", "ms-pick");
@@ -3728,14 +3740,6 @@ function renderMsHoje(main) {
       });
       p.appendChild(ul);
       if (cand.length > 8) p.appendChild(el("p", "note muted", "+ " + (cand.length - 8) + " na aba Missões."));
-    }
-    if (msUI.dayNewOpen) {
-      p.appendChild(el("span", "field-l", "Nova missão para este dia"));
-    p.appendChild(msForm(msUI.draft || {}, v => { const n = msNew(Object.assign(v, { plan: [iso] })); if (n.rec && n.rec.type && n.due !== iso) n.plan = []; saveMs(); msUI.draft = null; msUI.dayNewOpen = false; msUI.msg = "Missão criada" + (n.rec && n.rec.type ? " (recorrente, próxima execução " + fmtDate(n.due).slice(0, 5) + ")." : " para o dia."); renderMissoes(); }, "msq-", true, null, () => { msUI.dayNewOpen = false; msUI.draft = null; renderMissoes(); }));
-    } else {
-      const nb = el("div", "btns"); const bt = el("button", "btn ghost", "＋ Nova missão para " + (iso === today ? "hoje" : fmtDate(iso).slice(0, 5))); bt.type = "button"; bt.id = "ms-daynew-btn";
-      bt.addEventListener("click", () => { msUI.dayNewOpen = true; renderMissoes(); const t = document.querySelector("#ms-plan input"); if (t) { t.scrollIntoView({ block: "center" }); t.focus(); } });
-      nb.appendChild(bt); p.appendChild(nb);
     }
     main.appendChild(p);
   }

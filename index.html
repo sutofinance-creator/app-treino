@@ -544,7 +544,9 @@ ol.steps a { color: var(--accent); }
 .rt-headbtns { margin: 6px 0 4px; }
 .rt-row { grid-template-areas: "main skip" "links links" "act act"; }
 .rt-row > .rt-main { grid-area: main; }
-.rt-row > .rt-skip { grid-area: skip; }
+.rt-row > .rt-skip, .rt-row > .rt-side { grid-area: skip; }
+.rt-side { display: grid; justify-items: end; gap: 8px; }
+.rt-conc { color: var(--good); }
 .rt-links { grid-area: links; display: flex; flex-wrap: wrap; gap: 6px; padding: 0 10px 10px 124px; }
 .rt-link { background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); font: inherit; font-size: 13px; padding: 5px 10px; cursor: pointer; text-align: left; }
 .rt-link:hover, .rt-link:focus-visible { border-color: var(--accent); color: var(--accent); }
@@ -5677,17 +5679,17 @@ const rtFxBlank = days => ({ kind: "fixo", name: "", start: "", end: "", dur: ""
 const rtUI = { msg: "", kind: "", fx: rtFxBlank() };
 
 function loadRotina() { try { const v = JSON.parse(localStorage.getItem(ROT_KEY)); rotina = v && typeof v === "object" ? v : null; } catch (e) { rotina = null; } }
-function ensureRotina() { if (!rotina) rotina = {}; rotina.fixed = rotina.fixed || []; rotina.skip = rotina.skip || {}; return rotina; }
+function ensureRotina() { if (!rotina) rotina = {}; rotina.fixed = rotina.fixed || []; rotina.skip = rotina.skip || {}; rotina.done = rotina.done || {}; return rotina; }
 function saveRotina() {
   const r = ensureRotina(); r.upd = Date.now();
-  const lim = addDaysISO(todayISO(), -7); Object.keys(r.skip).forEach(d => { if (d < lim) delete r.skip[d]; });
+  const lim = addDaysISO(todayISO(), -7); [r.skip, r.done].forEach(m => Object.keys(m).forEach(d => { if (d < lim) delete m[d]; }));
   try { localStorage.setItem(ROT_KEY, JSON.stringify(r)); setStatus("Salvo no celular", "ok"); }
   catch (e) { setStatus("Não foi possível salvar neste navegador", "err"); }
 }
 function rt() {
   const r = rotina || {};
   return { wake: Object.assign({}, ROT_DEF.wake, r.wake), sleep: Object.assign({}, ROT_DEF.sleep, r.sleep), work: Object.assign({}, ROT_DEF.work, r.work),
-    treino: r.treino || ROT_DEF.treino, fixed: Array.isArray(r.fixed) ? r.fixed : [], skip: r.skip || {}, set: !!(r.wake || r.sleep),
+    treino: r.treino || ROT_DEF.treino, fixed: Array.isArray(r.fixed) ? r.fixed : [], skip: r.skip || {}, done: r.done || {}, set: !!(r.wake || r.sleep),
     extWake: r.extWake ?? 30, extSleep: r.extSleep ?? 60 };
 }
 function hmToMin(s) { const m = /^(\d{1,2}):(\d{2})/.exec(s || ""); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
@@ -5768,8 +5770,8 @@ function rtMissionPlan(days) {
 // O que cada módulo pede no dia (hoje: só o que falta)
 function rtDemand(iso, plan, sim) {
   const today = todayISO(), isT = iso === today, c = rt(), d = rtBase(iso), skip = c.skip[iso] || [];
-  const items = [], done = [], skipped = [], run = isT ? rtRunning() : {};
-  const add = it => { if (skip.includes(it.key)) skipped.push(it); else items.push(it); };
+  const items = [], done = [], skipped = [], concl = [], okd = c.done[iso] || [], run = isT ? rtRunning() : {};
+  const add = it => { if (skip.includes(it.key)) skipped.push(it); else if (okd.includes(it.key)) concl.push(it); else items.push(it); };
   if (modAllowed("graca")) grTodayPlan(iso).forEach(r => {
     const need = Math.max(1, r.times || 1), did = isT ? Math.min(need, grRec(iso, r.id).count || 0) : 0, dur = Math.max(5, Math.round(r.limit || 15));
     for (let k = did; k < need; k++) {
@@ -5833,7 +5835,7 @@ function rtDemand(iso, plan, sim) {
     const n = fin.tx.filter(t => t.status !== "done").length;
     if (n) add({ key: "eco", mod: "financas", title: "Classificar " + n + (n === 1 ? " lançamento" : " lançamentos"), sub: "Pendentes da Economia.", dur: Math.min(30, Math.max(5, Math.ceil(n * 1.5 / 5) * 5)), win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6, go: () => rtGoFin() });
   }
-  return { items, done, skipped, day: d };
+  return { items, done, skipped, concl, day: d };
 }
 
 // Encaixa os itens no tempo livre, do mais fixo ao mais flexível
@@ -5912,7 +5914,7 @@ function rtPlan(iso, items, from) {
 }
 // Sobrou mais de 20 min livres? Vira estudo (dá tempo de resolver exercícios).
 function rtFillExtra(r, iso) {
-  if (!modAllowed("inteligencia") || !intel || !intel.subjects.length || (rt().skip[iso] || []).includes("extra")) return;
+  if (!modAllowed("inteligencia") || !intel || !intel.subjects.length || (rt().skip[iso] || []).includes("extra") || (rt().done[iso] || []).includes("extra")) return;
   const subs = intel.subjects.filter(s => !(s.total && subjDoneUpTo(s) >= s.total)).map(s => ({ id: s.id, label: s.name }));
   const it = { key: "extra", mod: "inteligencia", title: "Estudo extra", sub: subs.map(x => x.label).join(" · "), subjects: subs, go: () => rtGoSubj(subs.length ? subs[0].id : null), extra: true };
   let part = 0;
@@ -5994,6 +5996,24 @@ function rtStart(it, b, sid) {
   else if (it.key === "trabalho") msWorkStart(); // sempre o trabalho geral; a missão específica se inicia nas Missões
   rtRefresh("rt-stop-" + it.key);
 }
+// Concluir: Graça conta uma vez (como "Marcar feito"); nos outros, para o cronômetro (se estiver rodando) e tira a tarefa de hoje
+function rtConclude(it, on) {
+  const r = ensureRotina(), iso = todayISO(), run = rtRunning();
+  if (on && it.mod === "graca") {
+    if (graca && graca.timer && graca.timer.rid === it.rid) grStop(true);
+    else { const w = grRecW(iso, it.rid); w.count = (w.count || 0) + 1; w.cur = 0; saveGraca(); }
+  } else {
+    if (on) {
+      if (it.mod === "inteligencia" && run.estudo) stopTimer();
+      else if ((it.key === "cardio" && run.cardio) || (it.key === "foco" && run.foco)) stStop();
+      else if (it.key === "trabalho" && mis && (mis.timer || mis.work)) msWorkPause();
+    }
+    const s = new Set(r.done[iso] || []); if (on) s.add(it.key); else s.delete(it.key); r.done[iso] = [...s]; saveRotina();
+  }
+  if (on) rtPick = null;
+  if (state.view === "home") renderHome(); else if (state.view === "rotina") renderRotina();
+  pushLastSig = ""; pushSync(true);
+}
 function rtStop(it, finish) {
   if (it.mod === "inteligencia") stopTimer();
   else if (it.mod === "estamina") stStop();
@@ -6015,7 +6035,6 @@ function rtActRow(it, b, suf, running) {
   const mk = (cls, txt, id, fn) => { const x = el("button", cls, txt); x.type = "button"; x.id = id; x.addEventListener("click", fn); return x; };
   if (running) {
     act.append(rtLive(it.mod), mk("btn stop", "Pausar", "rt-stop-" + it.key, () => rtStop(it, false)));
-    if (it.mod === "graca") act.appendChild(mk("btn ghost", "Concluir", "rt-done-" + it.key, () => rtStop(it, true)));
     return act;
   }
   if (it.mod === "inteligencia") {
@@ -6101,7 +6120,12 @@ function rtTodayNodes(R, nowMin) {
     } else if (it.sub) tx.appendChild(el("span", "rt-sub", it.sub));
     if (isNow && !running) tx.appendChild(el("span", "st pend rt-now", "Agora"));
     btn.appendChild(tx); btn.addEventListener("click", go); li.appendChild(btn);
-    if (!r.b.part) { const sk = el("button", "linkbtn rt-skip", "Pular hoje"); sk.type = "button"; sk.id = "rt-skip-" + it.key; sk.addEventListener("click", () => rtSkip(it.key, true)); li.appendChild(sk); }
+    if (!r.b.part) {
+      const side = el("div", "rt-side");
+      const ok = el("button", "linkbtn rt-skip rt-conc", "Concluir"); ok.type = "button"; ok.id = "rt-conc-" + it.key; ok.addEventListener("click", () => rtConclude(it, true));
+      const sk = el("button", "linkbtn rt-skip", "Pular hoje"); sk.type = "button"; sk.id = "rt-skip-" + it.key; sk.addEventListener("click", () => rtSkip(it.key, true));
+      side.append(ok, sk); li.appendChild(side);
+    }
     if (links) {
       const lc = el("div", "rt-links");
       links.forEach(l => { const b = el("button", "rt-link", l.label); b.type = "button"; b.id = l.id; b.addEventListener("click", l.go); lc.appendChild(b); });
@@ -6119,7 +6143,12 @@ function rtTodayNodes(R, nowMin) {
     const ul = el("ul", "hist"); R.left.forEach(x => { const li = el("li"); li.append(el("span", null, x.it.title), el("span", null, rtDur(x.min))); ul.appendChild(li); }); s.appendChild(ul); out.push(s);
   }
   const extra = el("div", "rt-foot");
-  if (R.dem.done.length) extra.appendChild(el("p", "note muted", "Já feito hoje: " + R.dem.done.join(" · ") + "."));
+  const conc = R.dem.concl.concat((rt().done[todayISO()] || []).includes("extra") ? [{ key: "extra", title: "Estudo extra" }] : []);
+  if (R.dem.done.length || conc.length) {
+    const p = el("p", "note muted"); p.id = "rt-done-line"; p.append("Já feito hoje: " + R.dem.done.join(" · "));
+    conc.forEach((it, i) => { if (i || R.dem.done.length) p.append(" · "); const b = el("button", "linkbtn", it.title + " (desfazer)"); b.type = "button"; b.id = "rt-unconc-" + it.key; b.addEventListener("click", () => rtConclude(it, false)); p.appendChild(b); });
+    p.append("."); extra.appendChild(p);
+  }
   const skExtra = (rt().skip[todayISO()] || []).includes("extra") ? [{ key: "extra", title: "Estudo extra" }] : [];
   if (R.dem.skipped.length || skExtra.length) {
     const p = el("p", "note muted"); p.append("Pulado hoje: ");

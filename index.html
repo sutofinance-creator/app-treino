@@ -294,6 +294,14 @@ details.imp[open] { gap: 10px; }
 .tx-val.out { color: var(--ink); }
 .tx-val.in { color: var(--good); }
 .tx-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+.sug-list { display: grid; gap: 8px; margin-top: 12px; }
+.sug-row { background: var(--surface-2); border: 1px solid var(--line); border-left: 3px solid var(--accent); padding: 10px 12px; display: grid; gap: 6px; }
+.sug-row.off { border-left-color: var(--line); opacity: .55; }
+.sug-row.editing { border-color: var(--accent); }
+.sug-top { display: flex; justify-content: space-between; gap: 10px; align-items: start; }
+.sug-l { display: grid; gap: 2px; min-width: 0; }
+.sug-cls { margin: 0; font-size: 14px; }
+.sug-act { display: flex; gap: 16px; flex-wrap: wrap; }
 .mini { font: 700 11px var(--font-display); letter-spacing: .08em; text-transform: uppercase; padding: 1px 7px; border: 1px solid var(--line); color: var(--muted); }
 .mini.ess-necessario, .gchip.ess-necessario[aria-pressed="true"] { color: var(--good); border-color: var(--good); }
 .mini.ess-substituivel, .gchip.ess-substituivel[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
@@ -4210,7 +4218,7 @@ const ESS_COLOR = { necessario: "var(--good)", substituivel: "var(--accent)", su
 const LABEL = Object.fromEntries([...ESS, ...FREQ, ...NAT, ...KIND_OUT, ...KIND_IN, ["rateio", "Rateio"]]);
 const RATE_MES = 0.01; // premissa de rendimento usada nas simulações (1% ao mês)
 let fin = null;
-const finUI = { open: null, month: null, cmonth: "", q: "", confirm: null, msg: "" };
+const finUI = { open: null, month: null, cmonth: "", q: "", confirm: null, msg: "", sugOpen: false, sugEdit: null, sugSkip: {} };
 
 function loadFin() {
   try { const v = JSON.parse(localStorage.getItem(FIN_KEY)); fin = v && Array.isArray(v.tx) ? v : null; } catch (e) { fin = null; }
@@ -4798,16 +4806,48 @@ function renderPendentes(main) {
 
   if (!pend.length) return;
   const sug = pend.filter(t => { const r = suggestFor(t); return r && !r.split && isComplete(Object.assign({}, t, pickAll(r), { split: undefined })); });
-  if (sug.length) {
-    const s = el("section", "guide");
-    s.append(el("h3", null, "Sugestões prontas"), el("p", "note", sug.length + " lançamento(s) têm a mesma origem de algo que você já classificou. Dá para aceitar todos de uma vez e revisar depois em Classificados."));
-    const b = el("button", "btn", "Aceitar " + sug.length + " sugestão(ões)"); b.type = "button"; b.id = "accept-all";
-    b.addEventListener("click", () => { sug.forEach(t => { Object.assign(t, pickAll(suggestFor(t)), { status: "done", split: undefined }); learnRule(t); }); finUI.msg = ""; saveFin(); renderFin(); });
-    const bb = el("div", "btns"); bb.appendChild(b); s.appendChild(bb); main.appendChild(s);
-  }
+  if (sug.length) main.appendChild(sugSection(sug));
   const list = el("div", "txlist");
   pend.forEach(t => list.appendChild(txRow(t, true)));
   main.appendChild(list);
+}
+/* Sugestões prontas: dá para ver a classificação de cada uma, editar as que estiverem erradas
+   (editar e salvar já classifica aquela) e deixar algumas de fora antes de aceitar o resto de uma vez. */
+function sugSection(sug) {
+  const skip = finUI.sugSkip, take = sug.filter(t => !skip[t.id]), out = sug.length - take.length;
+  const s = el("section", "guide sug-box"); s.id = "sug-box";
+  s.append(el("h3", null, "Sugestões prontas"), el("p", "note", sug.length + " lançamento(s) têm a mesma origem de algo que você já classificou. Revise a classificação sugerida, edite as que não estiverem certas e aceite o resto de uma vez." + (out ? " " + out + " deixado(s) de fora continuam pendentes." : "")));
+  const bb = el("div", "btns");
+  const tg = el("button", "btn ghost", finUI.sugOpen ? "Ocultar sugestões" : "Revisar sugestões"); tg.type = "button"; tg.id = "sug-toggle"; tg.setAttribute("aria-expanded", String(!!finUI.sugOpen));
+  tg.addEventListener("click", () => { finUI.sugOpen = !finUI.sugOpen; finUI.sugEdit = null; renderFin(); });
+  const b = el("button", "btn", take.length ? "Aceitar " + take.length + " sugestão(ões)" : "Nenhuma para aceitar"); b.type = "button"; b.id = "accept-all"; b.disabled = !take.length;
+  b.addEventListener("click", () => { take.forEach(t => { Object.assign(t, pickAll(suggestFor(t)), { status: "done", split: undefined }); learnRule(t); }); finUI.msg = ""; finUI.sugEdit = null; saveFin(); renderFin(); });
+  bb.append(tg, b); s.appendChild(bb);
+  if (!finUI.sugOpen) return s;
+  const list = el("div", "sug-list");
+  sug.forEach(t => {
+    const r = pickAll(suggestFor(t)), off = !!skip[t.id], editing = finUI.sugEdit === t.id;
+    const row = el("div", "sug-row" + (off ? " off" : "") + (editing ? " editing" : "")); row.id = "sug-" + t.id;
+    const top = el("div", "sug-top");
+    const l = el("div", "sug-l"); l.append(el("span", "tx-desc", t.desc), el("span", "tx-meta", fmtDate(t.date) + (t.method ? " · " + t.method : "")));
+    top.append(l, el("span", "tx-val " + (t.dir === "in" ? "in" : "out"), (t.dir === "in" ? "+ " : "− ") + brl(t.amount)));
+    row.appendChild(top);
+    if (!editing) {
+      const line = el("p", "sug-cls"); line.append(el("b", null, LABEL[r.kind] || r.kind), " · " + (r.kind === "receita" ? "Origem: " : "Categoria: ") + r.cat + (r.kind === "gasto" && r.item ? " · Item: " + r.item : ""));
+      row.appendChild(line);
+      if (r.kind === "gasto") { const ch = el("div", "tx-chips"); ch.append(el("span", "mini ess-" + r.ess, LABEL[r.ess] || ""), el("span", "mini", LABEL[r.freq] || ""), el("span", "mini", LABEL[r.nat] || "")); row.appendChild(ch); }
+    }
+    const act = el("div", "sug-act");
+    const ed = el("button", "linkbtn", editing ? "Fechar edição" : "Editar"); ed.type = "button"; ed.id = "sug-ed-" + t.id;
+    ed.addEventListener("click", () => { finUI.sugEdit = editing ? null : t.id; if (finUI.open === t.id) finUI.open = null; finUI.confirm = null; renderFin(); const n = document.getElementById("sug-" + t.id); if (n) n.scrollIntoView({ block: "nearest" }); });
+    const sk = el("button", "linkbtn", off ? "Incluir de novo" : "Deixar de fora"); sk.type = "button"; sk.id = "sug-sk-" + t.id;
+    sk.addEventListener("click", () => { if (off) delete skip[t.id]; else skip[t.id] = true; renderFin(); });
+    act.append(ed, sk); row.appendChild(act);
+    if (editing) { row.appendChild(el("p", "note muted", "Ajuste o que estiver errado e toque em Salvar classificação: este lançamento já fica classificado.")); row.appendChild(txEditor(t)); }
+    list.appendChild(row);
+  });
+  s.appendChild(list);
+  return s;
 }
 function pick(r) { return { cat: r.cat, item: r.item, kind: r.kind, ess: r.ess, freq: r.freq, nat: r.nat }; }
 function pickAll(r) { const o = pick(r); if (!o.item) o.item = r.cat; return o; }
@@ -4838,9 +4878,9 @@ function txRow(t, pending) {
     if (s) left.appendChild(el("span", "tx-sug", s.split ? "Sugestão: rateio em " + s.split.length + " partes, como da última vez" : "Sugestão: " + s.cat + (s.kind === "gasto" && s.ess ? " · " + LABEL[s.ess] : "")));
   }
   b.append(left, r);
-  b.addEventListener("click", () => { finUI.open = finUI.open === t.id ? null : t.id; finUI.confirm = null; renderFin(); const n = document.getElementById("tx-" + t.id); if (n) n.scrollIntoView({ block: "nearest" }); });
+  b.addEventListener("click", () => { finUI.open = finUI.open === t.id ? null : t.id; if (finUI.sugEdit === t.id) finUI.sugEdit = null; finUI.confirm = null; renderFin(); const n = document.getElementById("tx-" + t.id); if (n) n.scrollIntoView({ block: "nearest" }); });
   wrap.appendChild(b);
-  if (finUI.open === t.id) wrap.appendChild(txEditor(t));
+  if (finUI.open === t.id && finUI.sugEdit !== t.id) wrap.appendChild(txEditor(t));
   return wrap;
 }
 

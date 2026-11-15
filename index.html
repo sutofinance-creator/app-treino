@@ -295,6 +295,15 @@ details.imp[open] { gap: 10px; }
 .tx-val.in { color: var(--good); }
 .tx-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
 .sug-list { display: grid; gap: 8px; margin-top: 12px; }
+.xp-card { display: grid; gap: 10px; }
+.xp-top { display: flex; gap: 16px; align-items: center; }
+.xp-lvl { display: grid; place-items: center; min-width: 84px; padding: 8px 10px; border: 1px solid var(--accent); background: var(--accent-soft); box-shadow: 0 0 16px rgba(166, 107, 255, .35); }
+.xp-lvl-l { font: 600 11px var(--font-display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.xp-lvl-n { font: 700 40px var(--font-display); line-height: 1; color: var(--accent); text-shadow: 0 0 12px rgba(166, 107, 255, .6); font-variant-numeric: tabular-nums; }
+.xp-info { display: grid; gap: 6px; flex: 1; min-width: 0; }
+.xp-num { font: 700 16px var(--font-display); letter-spacing: .06em; font-variant-numeric: tabular-nums; }
+.xp-sub { font-size: 14px; }
+.xp-sub.muted { color: var(--muted); font-size: 13px; }
 .im-grid { display: grid; gap: 10px; }
 @media (min-width: 640px) { .im-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .im-card { display: grid; gap: 6px; text-align: left; align-content: start; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); font: inherit; padding: 12px 14px; cursor: pointer; }
@@ -4345,8 +4354,21 @@ function loadFin() {
   try { const v = JSON.parse(localStorage.getItem(FIN_KEY)); fin = v && Array.isArray(v.tx) ? v : null; } catch (e) { fin = null; }
   if (!fin) fin = { version: 1, tx: [], rules: {}, invest: { ops: [], quotes: {}, token: "" }, habit: {} };
   fin.of = fin.of || {}; fin.rules = fin.rules || {}; fin.invest = fin.invest || { ops: [], quotes: {}, token: "" }; fin.invest.ops = fin.invest.ops || []; fin.invest.quotes = fin.invest.quotes || {}; fin.habit = fin.habit || {};
+  finStampTx(true);
+}
+// added = dia em que o lançamento entrou no app; doneAt = dia em que foi classificado. Os de antes desta versão:
+// classificados contam como feitos no próprio dia; pendentes contam a partir de hoje.
+function finStampTx(load) {
+  if (!fin) return;
+  const today = todayISO(), mig = !fin.xpMig;
+  fin.tx.forEach(t => {
+    if (!t.added) t.added = mig ? (t.status === "done" ? t.date : today) : today;
+    if (t.status === "done") { if (!t.doneAt) t.doneAt = mig ? t.date : today; } else if (t.doneAt) delete t.doneAt;
+  });
+  if (mig) fin.xpMig = today;
 }
 function saveFin() {
+  finStampTx();
   try { localStorage.setItem(FIN_KEY, JSON.stringify(fin)); setStatus("Salvo no celular", "ok"); }
   catch (e) { setStatus("Não foi possível salvar neste navegador", "err"); }
 }
@@ -5551,6 +5573,7 @@ function renderHome() {
   document.getElementById("crumb").textContent = "";
   document.getElementById("tabs").innerHTML = "";
   const main = document.getElementById("main"); main.innerHTML = "";
+  if (!hexUI.edit) main.appendChild(xpCard());
   main.appendChild(hexCard());
   const now = new Date();
   const head = el("div", "wk-head");
@@ -6028,6 +6051,111 @@ function hexForm() {
   cc.addEventListener("click", () => { hexUI.edit = false; hexUI.draft = null; renderHome(); window.scrollTo(0, 0); });
   row.append(sv, cc); box.append(msg, row);
   return box;
+}
+
+/* ======================= Nível (XP) ======================= */
+// Como num RPG: cada dia em que você bate o mínimo em todos os módulos rende XP; quanto maior o nível, mais XP para o próximo.
+// Mínimo em todos = 100 XP; 100% em todos = 200 XP; entre os dois, proporcional. Abaixo do mínimo em algum módulo: 0 XP no dia.
+// Módulo sem nada para o dia (folga do treino, dia sem trabalho) conta como feito. Recalculado a partir do histórico.
+const XP_NAMES = { inteligencia: "Inteligência", estamina: "Estamina", forca: "Força", financas: "Economia", graca: "Graça", missoes: "Missões" };
+function xpNeed(n) { return Math.round(12 * Math.pow(n, 1.5)) * 10; } // XP para ir do nível n ao n+1
+function xpFirstDay(obj, test) { let f = null; Object.keys(obj || {}).forEach(d => { if (/^\d{4}-\d{2}-\d{2}$/.test(d) && (!f || d < f) && test(d)) f = d; }); return f; }
+function xpStarts() {
+  const today = todayISO(), st = {};
+  if (modAllowed("inteligencia") && intel) st.inteligencia = xpFirstDay(intel.days, d => Object.values(intel.days[d] || {}).some(r => r && (r.sec > 0 || r.count > 0 || r.theory))) || today;
+  if (modAllowed("estamina") && stamina) st.estamina = xpFirstDay(stamina.days, d => Object.values(stamina.days[d] || {}).some(r => r && r.sec > 0)) || today;
+  if (modAllowed("forca") && profileId) st.forca = xpFirstDay(state.logs, hasEntries) || today;
+  if (modAllowed("graca") && graca && graca.rituals.length) { let f = xpFirstDay(graca.days, d => Object.values(graca.days[d] || {}).some(r => r && (r.count > 0 || r.sec > 0))); graca.rituals.forEach(r => { if (r.created && (!f || r.created < f)) f = r.created; }); st.graca = f || today; }
+  if (modAllowed("missoes") && mis) st.missoes = msSince();
+  if (modAllowed("financas") && fin && fin.tx.length) st.financas = fin.tx.reduce((a, t) => !a || (t.added || t.date) < a ? (t.added || t.date) : a, null) || today;
+  return st;
+}
+// avalia um módulo num dia: null = ainda não usava; { min, p (0 a 1 além do mínimo), none, txt }
+function xpMod(id, iso) {
+  const today = todayISO(), H = s => fmtHM(s);
+  if (id === "inteligencia") {
+    const goal = goalSec(iso), have = daySec(iso);
+    const tasks = intel.subjects.map(s => { const pl = planFor(s, iso); if (!pl || pl.doneAll) return null; const t = subjTask(s, iso); return t ? t.complete : null; }).filter(x => x != null);
+    const done = tasks.filter(Boolean).length, p = tasks.length ? done / tasks.length : 1;
+    if (!goal && !tasks.length) return { min: true, p: 1, none: true, txt: "Sem meta para o dia" };
+    return { min: have >= goal, p, txt: "Estudo " + H(have) + " de " + H(goal) + (tasks.length ? " · tarefas " + done + " de " + tasks.length : "") };
+  }
+  if (id === "estamina") {
+    const cp = cardioPlan(iso), cm = Math.floor(stKindSec(iso, "cardio") / 60), fm = Math.floor(stKindSec(iso, "foco") / 60), fg = stam().goals.focusMin;
+    const c = cp.optional || cm >= cp.target, f = fm >= fg;
+    return { min: c || f, p: c && f ? 1 : 0, txt: "Cardio " + (cp.optional && cm < cp.target ? "opcional" : cm + " de " + cp.target + " min") + " · foco " + fm + " de " + fg + " min" };
+  }
+  if (id === "forca") {
+    const wo = rtWorkout(iso); if (!wo) return { min: true, p: 1, none: true, txt: "Sem treino marcado" };
+    const rec = (state.logs[iso] && state.logs[iso].e) || {};
+    const tot = wo.w ? wo.w.ex.length : 1, dn = wo.w ? wo.w.ex.filter(x => exerciseDone(rec[x.id])).length : (hasEntries(iso) ? 1 : 0), fr = tot ? dn / tot : 0;
+    return { min: fr >= 0.5, p: fr >= 0.5 ? Math.min(1, (fr - 0.5) / 0.5) : 0, txt: (wo.w ? wo.w.name : "Treino") + ": " + dn + " de " + tot + " exercícios" };
+  }
+  if (id === "financas") {
+    const lim = addDaysISO(iso, -7);
+    const pend = fin.tx.filter(t => t.date <= iso && (t.added || t.date) <= iso && (t.status !== "done" || (t.doneAt && t.doneAt > iso)));
+    const old = pend.filter(t => t.date < lim).length;
+    return { min: !old, p: pend.length ? 0 : 1, txt: pend.length ? pend.length + " pendente(s)" + (old ? ", " + old + " com mais de 7 dias" : "") : "Nada pendente" };
+  }
+  if (id === "graca") {
+    const plan = grTodayPlan(iso).filter(r => !r.created || r.created <= iso);
+    if (!plan.length) return { min: true, p: 1, none: true, txt: "Sem ritual no dia" };
+    const need = plan.reduce((a, r) => a + Math.max(1, r.times || 1), 0), done = plan.reduce((a, r) => a + Math.min(Math.max(1, r.times || 1), grRec(iso, r.id).count || 0), 0);
+    return { min: done >= 1, p: need > 1 ? Math.max(0, (done - 1) / (need - 1)) : (done >= 1 ? 1 : 0), txt: done + " de " + need + " ritual(is)" };
+  }
+  if (id === "missoes") {
+    if (!msWorkDay(iso) || iso < msSince()) return { min: true, p: 1, none: true, txt: "Dia sem trabalho" };
+    const goal = msGoalSec(iso), have = msDaySec(iso), due = msData().tasks.filter(t => t.due === iso);
+    const ok = due.filter(t => t.status !== "aberta" && t.closed && t.closed <= iso).length;
+    return { min: have >= goal, p: due.length ? ok / due.length : 1, txt: "Trabalho " + H(have) + " de " + H(goal) + (due.length ? " · entregas " + ok + " de " + due.length : "") };
+  }
+  return null;
+}
+function xpDay(iso, st) {
+  const mods = Object.keys(XP_NAMES).filter(id => st[id] && iso >= st[id]).map(id => Object.assign({ id, name: XP_NAMES[id] }, xpMod(id, iso))).filter(m => m.txt != null);
+  if (!mods.length) return { xp: 0, mods, ok: false };
+  const ok = mods.every(m => m.min), avg = mods.reduce((a, m) => a + (m.min ? m.p : 0), 0) / mods.length;
+  return { xp: ok ? Math.round(100 + 100 * avg) : 0, mods, ok, full: ok && mods.every(m => m.p >= 1) };
+}
+function xpState() {
+  const st = xpStarts(), ids = Object.keys(st); if (!ids.length) return null;
+  const today = todayISO(); let d = ids.map(k => st[k]).filter(x => x !== st.financas || ids.length === 1).reduce((a, x) => !a || x < a ? x : a, null) || today;
+  const days = []; let total = 0, n = 0;
+  for (; d <= today && n < 1500; d = addDaysISO(d, 1), n++) { const r = xpDay(d, st); total += r.xp; days.push(Object.assign({ iso: d }, r)); }
+  let lvl = 1, left = total; while (left >= xpNeed(lvl)) { left -= xpNeed(lvl); lvl++; }
+  return { total, lvl, cur: left, need: xpNeed(lvl), days, today: days[days.length - 1] };
+}
+const xpUI = { open: false };
+function xpCard() {
+  const X = xpState(); if (!X) return el("div");
+  const card = el("section", "guide xp-card"); card.id = "xp";
+  let seen = 0; try { seen = Number(localStorage.getItem("stek-xp-nivel")) || 0; } catch (e) {}
+  const top = el("div", "xp-top");
+  const badge = el("div", "xp-lvl"); badge.append(el("span", "xp-lvl-l", "Nível"), el("span", "xp-lvl-n", String(X.lvl)));
+  const info = el("div", "xp-info");
+  info.appendChild(el("span", "xp-num", X.cur.toLocaleString("pt-BR") + " / " + X.need.toLocaleString("pt-BR") + " XP"));
+  const bar = el("div", "goalbar"); const f = el("span"); f.style.width = Math.min(100, X.cur / X.need * 100) + "%"; bar.appendChild(f); info.appendChild(bar);
+  const T = X.today, falta = T.mods.filter(m => !m.min).map(m => m.name);
+  info.appendChild(el("span", "xp-sub", T.ok ? "Hoje: +" + T.xp + " XP" + (T.full ? " · 100% em tudo" : " · mínimo em todos os módulos; 100% vale o dobro") : "Hoje: falta o mínimo em " + listPt(falta) + " para ganhar XP."));
+  info.appendChild(el("span", "xp-sub muted", "Faltam " + (X.need - X.cur).toLocaleString("pt-BR") + " XP para o nível " + (X.lvl + 1) + "."));
+  top.append(badge, info); card.appendChild(top);
+  if (seen && X.lvl > seen) { const m = el("p", "note flash ok", "Subiu para o nível " + X.lvl + "!"); m.id = "xp-up"; card.appendChild(m); }
+  try { localStorage.setItem("stek-xp-nivel", String(X.lvl)); } catch (e) {}
+  const more = el("details", "hex-more"); more.id = "xp-more"; more.open = xpUI.open;
+  more.addEventListener("toggle", () => { xpUI.open = more.open; });
+  more.appendChild(el("summary", null, "Como ganhar XP"));
+  const ul = el("ul", "hex-rows");
+  T.mods.forEach(m => {
+    const li = el("li", "hex-row" + (m.min ? "" : " off")); li.id = "xp-row-" + m.id;
+    li.append(el("span", "hex-row-n", m.name), el("span", "hex-row-p", m.none ? "Livre" : !m.min ? "Falta" : m.p >= 1 ? "100%" : "Mínimo"), el("span", "hex-row-l you", m.txt));
+    ul.appendChild(li);
+  });
+  more.appendChild(ul);
+  const wk = X.days.slice(-7).reverse().map(d => capFirst(DOW_SHORT[rtDow(d.iso)]) + " " + fmtDate(d.iso).slice(0, 5) + ": " + (d.xp ? "+" + d.xp : "0"));
+  more.appendChild(el("p", "note muted", "Últimos dias: " + wk.join(" · ") + ". Total: " + X.total.toLocaleString("pt-BR") + " XP."));
+  more.appendChild(el("p", "note muted", "Regras: o dia só rende XP se você bater o mínimo em todos os módulos. Mínimo em tudo = 100 XP; 100% em tudo = 200 XP; no meio, proporcional. Mínimo / 100%: Inteligência, meta de horas / horas e tarefas das matérias; Estamina, cardio ou foco / os dois; Força, metade dos exercícios / todos; Economia, nada pendente há mais de 7 dias / nada pendente; Graça, 1 ritual / todos; Missões, horas mínimas / horas e entregas do dia. Módulo sem nada no dia conta como feito. A cada nível, o próximo pede mais XP."));
+  card.appendChild(more);
+  return card;
 }
 
 /* ======================= Rotina: agenda do dia e da semana com as tarefas dos módulos ======================= */

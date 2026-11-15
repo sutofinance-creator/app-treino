@@ -541,10 +541,8 @@ ol.steps a { color: var(--accent); }
 .rt-presets .field-l { margin-right: 4px; }
 .rt-homesec { display: grid; gap: 12px; margin-top: 26px; }
 .rt-homesec .wk-head { margin-bottom: 0; }
-.rt-headrow { display: flex; align-items: center; gap: 10px 18px; flex-wrap: wrap; }
-.rt-headbtns { gap: 6px; }
-.rt-headbtns .btn { font-size: 11px; letter-spacing: .06em; padding: 6px 9px; }
-.rt-row { grid-template-areas: "main skip" "links links"; }
+.rt-headbtns { margin: 6px 0 4px; }
+.rt-row { grid-template-areas: "main skip" "links links" "act act"; }
 .rt-row > .rt-main { grid-area: main; }
 .rt-row > .rt-skip { grid-area: skip; }
 .rt-links { grid-area: links; display: flex; flex-wrap: wrap; gap: 6px; padding: 0 10px 10px 124px; }
@@ -554,6 +552,13 @@ ol.steps a { color: var(--accent); }
 @keyframes rtflash { 0%, 55% { box-shadow: 0 0 0 2px var(--accent), 0 0 22px rgba(166, 107, 255, .75); } 100% { box-shadow: none; } }
 @media (prefers-reduced-motion: reduce) { .rt-target { animation: none; outline: 2px solid var(--accent); } }
 @media (max-width: 420px) { .rt-links { padding-left: 110px; } }
+.rt-act { grid-area: act; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 2px 10px 12px 124px; }
+.rt-act .btn { padding: 8px 14px; }
+.rt-pickq { color: var(--muted); font-size: 14px; }
+.rt-live { font-size: 14px; padding: 6px 10px; }
+.rt-row.run { border-color: var(--accent); box-shadow: 0 0 14px rgba(166, 107, 255, .35); }
+.rt-row.run .rt-time b { color: var(--accent); }
+@media (max-width: 420px) { .rt-act { padding-left: 12px; } }
 .rt-time { display: grid; gap: 1px; }
 .rt-time b { font-weight: 700; }
 .rt-end { font: 600 12px var(--font-display); color: var(--muted); letter-spacing: .02em; }
@@ -2812,7 +2817,7 @@ function updateStaminaLive() {
   if (settleStamina()) {
     stBeep(t.pid === "x4" ? 660 : 528, 900, 2);
     stUI.msg = practice(t.pid).name + ": sessão concluída e registrada.";
-    if (state.view === "est") renderStamina(); else if (state.view === "home") renderHome();
+    if (state.view === "est") renderStamina(); else if (state.view === "home") renderHome(); else if (state.view === "rotina") renderRotina();
     return;
   }
   const today = todayISO();
@@ -3136,7 +3141,7 @@ function updateGracaLive() {
   if (settleGraca()) {
     const r = ritual(t.rid); stBeep(528, 1200, 3);
     grUI.msg = (r ? r.name : "Ritual") + ": tempo concluído e registrado.";
-    if (state.view === "graca") renderGraca(); else if (state.view === "home") renderHome();
+    if (state.view === "graca") renderGraca(); else if (state.view === "home") renderHome(); else if (state.view === "rotina") renderRotina();
     return;
   }
   const today = todayISO();
@@ -5763,7 +5768,7 @@ function rtMissionPlan(days) {
 // O que cada módulo pede no dia (hoje: só o que falta)
 function rtDemand(iso, plan, sim) {
   const today = todayISO(), isT = iso === today, c = rt(), d = rtBase(iso), skip = c.skip[iso] || [];
-  const items = [], done = [], skipped = [];
+  const items = [], done = [], skipped = [], run = isT ? rtRunning() : {};
   const add = it => { if (skip.includes(it.key)) skipped.push(it); else items.push(it); };
   if (modAllowed("graca")) grTodayPlan(iso).forEach(r => {
     const need = Math.max(1, r.times || 1), did = isT ? Math.min(need, grRec(iso, r.id).count || 0) : 0, dur = Math.max(5, Math.round(r.limit || 15));
@@ -5772,7 +5777,7 @@ function rtDemand(iso, plan, sim) {
       if (need === 1 || k === 0) win = [d.wake, d.wake + 180];
       else if (k === need - 1) { win = [d.sleep - 180, d.sleep]; fromEnd = true; }
       else { const mid = d.wake + (d.sleep - d.wake) * k / (need - 1); win = [mid - 90, mid + 90]; }
-      add({ key: "gr-" + r.id + "-" + k, mod: "graca", title: r.name + (need > 1 ? " (" + (k + 1) + "ª vez)" : ""), sub: r.limit ? r.limit + " min" : "", dur, win, fromEnd, rank: 0, go: () => { enterGraca("gr-hoje"); rtFocus("gr-" + r.id); } });
+      add({ key: "gr-" + r.id + "-" + k, mod: "graca", rid: r.id, running: run.graca === r.id && k === did, title: r.name + (need > 1 ? " (" + (k + 1) + "ª vez)" : ""), sub: r.limit ? r.limit + " min" : "", dur, win, fromEnd, rank: 0, go: () => { enterGraca("gr-hoje"); rtFocus("gr-" + r.id); } });
     }
     if (did) done.push(r.name + (need > 1 ? " " + did + "/" + need : ""));
   });
@@ -5801,17 +5806,17 @@ function rtDemand(iso, plan, sim) {
     }
     const have = isT ? Math.floor(stKindSec(iso, "cardio") / 60) : 0, need = cp.target - have;
     if (sim && need > 0 && !cp.optional) { if (cp.pid === "x4") sim.x4[ws] = true; sim.eq[ws] = (sim.eq[ws] || 0) + need * (practice(cp.pid).factor || 1); }
-    if (need > 0) add({ key: "cardio", mod: "estamina", title: "Cardio: " + practice(cp.pid).name, sub: cp.optional ? "Opcional · " + cp.why : cp.why, dur: Math.max(10, need), optional: !!cp.optional, win: tw, afterForca: !!wo, rank: cp.optional ? 9 : 2, go: () => { enterStamina("est-hoje"); rtFocus("st-cardio"); } });
+    if (need > 0) add({ key: "cardio", mod: "estamina", pid: cp.pid, running: !!run.cardio, title: "Cardio: " + practice(cp.pid).name, sub: cp.optional ? "Opcional · " + cp.why : cp.why, dur: Math.max(10, need), optional: !!cp.optional, win: tw, afterForca: !!wo, rank: cp.optional ? 9 : 2, go: () => { enterStamina("est-hoje"); rtFocus("st-cardio"); } });
     else if (have) done.push("Cardio");
     const fg = Math.round(stam().goals.focusMin), fh = isT ? Math.floor(stKindSec(iso, "foco") / 60) : 0;
-    if (fg - fh > 0) add({ key: "foco", mod: "estamina", title: "Foco: meditação ou respiração", sub: "Logo antes de estudar.", dur: fg - fh, beforeStudy: true, rank: 5, go: () => { enterStamina("est-hoje"); rtFocus("st-foco"); } });
+    if (fg - fh > 0) add({ key: "foco", mod: "estamina", running: !!run.foco, title: "Foco: meditação ou respiração", sub: "Logo antes de estudar.", dur: fg - fh, beforeStudy: true, rank: 5, go: () => { enterStamina("est-hoje"); rtFocus("st-foco"); } });
     else if (fh) done.push("Foco");
   }
   if (modAllowed("missoes") && mis) {
     const goal = Math.round(msGoalSec(iso) / 60), have = isT ? Math.floor(msDaySec(iso) / 60) : 0, ms = (plan && plan.byDay[iso]) || [];
     const need = Math.max(goal - have, ms.reduce((s, x) => s + x.need, 0));
     const w = rt().work, ws = hmToMin(w.start) ?? 480, we = hmToMin(w.end) ?? 1080;
-    if (need > 0) add({ key: "trabalho", mod: "missoes", title: "Trabalho", dur: need, missions: ms, split: 120, minChunk: 30, gapAfter: 10, win: [ws, we > ws ? we : we + 1440], rank: 3, go: () => { enterMissoes("ms-hoje"); rtFocus("ms-work"); } });
+    if (need > 0) add({ key: "trabalho", mod: "missoes", running: !!run.trabalho, title: "Trabalho", dur: need, missions: ms, split: 120, minChunk: 30, gapAfter: 10, win: [ws, we > ws ? we : we + 1440], rank: 3, go: () => { enterMissoes("ms-hoje"); rtFocus("ms-work"); } });
     else if (goal && have) done.push("Trabalho " + rtDur(have));
   }
   if (modAllowed("inteligencia") && intel) {
@@ -5821,7 +5826,7 @@ function rtDemand(iso, plan, sim) {
       if (isT) { const st = subjTask(s, iso); if (st && st.complete) return null; }
       return { id: s.id, label: s.name + (p.qty ? " (" + p.qty + " " + unitWord(s, p.qty) + ")" : "") };
     }).filter(Boolean);
-    if (need > 0) add({ key: "estudo", mod: "inteligencia", title: "Estudo", sub: subs.map(x => x.label).join(" · "), subjects: subs, dur: need, split: 50, minChunk: 25, gapAfter: 10, rank: 4, go: () => rtGoSubj(subs.length ? subs[0].id : null) });
+    if (need > 0) add({ key: "estudo", mod: "inteligencia", running: !!run.estudo, title: "Estudo", sub: subs.map(x => x.label).join(" · "), subjects: subs, dur: need, split: 50, minChunk: 25, gapAfter: 10, rank: 4, go: () => rtGoSubj(subs.length ? subs[0].id : null) });
     else if (have) done.push("Estudo " + rtDur(have));
   }
   if (isT && modAllowed("financas") && fin) {
@@ -5850,8 +5855,11 @@ function rtSchedule(iso, items, from, cfg) {
     const b = { s, e: s + it.dur, it }; blocks.push(b); return b;
   };
   // itens longos (trabalho, estudo) viram blocos; "lead" vai colado antes do primeiro bloco (o foco antes do estudo)
-  const many = (it, lead) => {
-    let rem = it.dur, part = 0; const gap = it.gapAfter ?? 5;
+  // once: só o bloco de agora (a tarefa com cronômetro rodando); o resto entra depois, na ordem normal
+  const prog = new Map();
+  const many = (it, lead, w0, once) => {
+    const pr = prog.get(it) || { rem: it.dur, part: 0 }; prog.set(it, pr);
+    let rem = pr.rem, part = pr.part; const gap = it.gapAfter ?? 5;
     const fill = w => {
       while (rem > 0) {
         // nenhum bloco menor que o mínimo (estudo: 25 min); o finzinho que sobraria pequeno vai junto do bloco atual
@@ -5859,21 +5867,26 @@ function rtSchedule(iso, items, from, cfg) {
         const [a, b] = c[0], s0 = a + extra, want = rem - it.split < mc ? Math.max(rem, mc) : it.split, ch = Math.min(want, b - s0);
         if (lead) { blocks.push({ s: a, e: s0, it: lead }); lead = null; }
         free = rtCut(free, a, s0 + ch + gap); blocks.push({ s: s0, e: s0 + ch, it, part: part++ }); rem -= ch;
+        if (once) return;
       }
     };
-    fill(it.win || dayWin); if (rem > 0) fill(dayWin); if (rem > 0) left.push({ it, min: rem });
+    fill(w0 || it.win || dayWin); if (rem > 0 && !(once && part > pr.part)) fill(dayWin);
+    if (!once && rem > 0) left.push({ it, min: rem });
+    pr.rem = rem; pr.part = part;
     return lead;
   };
+  // com o cronômetro rodando, a tarefa fica agora, antes das outras
   const order = items.slice().sort((a, b) => a.rank - b.rank);
-  let foco = order.find(it => it.beforeStudy) || null;
-  order.filter(it => !it.optional && !it.beforeStudy).forEach(it => {
+  order.filter(it => it.running).forEach(it => { if (it.split) many(it, null, dayWin, true); else one(it, dayWin, false); });
+  let foco = order.find(it => it.beforeStudy && !it.running) || null;
+  order.filter(it => !(it.running && !it.split) && !it.optional && !it.beforeStudy).forEach(it => {
     if (it.key === "cardio" && it.afterForca) { const fb = blocks.find(b => b.it.key === "forca"); one(it, fb ? [fb.e, fb.e + 120] : null); return; }
     if (it.key === "estudo") { foco = many(it, foco); return; }
     if (it.split) many(it); else one(it);
   });
   // foco sem estudo hoje (ou sem espaço colado): vai para onde couber
   if (foco) one(foco);
-  order.filter(it => it.optional).forEach(it => { const fb = blocks.find(b => b.it.key === "forca"); const s = take(it.dur, it.afterForca && fb ? [fb.e, fb.e + 120] : (it.win || dayWin), false, 5); if (s != null) blocks.push({ s, e: s + it.dur, it }); });
+  order.filter(it => it.optional && !it.running).forEach(it => { const fb = blocks.find(b => b.it.key === "forca"); const s = take(it.dur, it.afterForca && fb ? [fb.e, fb.e + 120] : (it.win || dayWin), false, 5); if (s != null) blocks.push({ s, e: s + it.dur, it }); });
   // distribui as missões pelos blocos de trabalho, na ordem
   const wb = blocks.filter(b => b.it.key === "trabalho").sort((a, b) => a.s - b.s), ms = ((items.find(x => x.key === "trabalho") || {}).missions || []).map(x => Object.assign({}, x, { rem: x.need }));
   wb.forEach(b => { let room = b.e - b.s; b.missions = []; while (room > 0 && ms.length) { const m = ms[0], use = Math.min(room, m.rem); b.missions.push({ t: m.t, min: use }); m.rem -= use; room -= use; if (m.rem <= 0) ms.shift(); } });
@@ -5944,6 +5957,84 @@ function rtGoFin() {
 }
 function rtIcon(mod) { const s = el("span", "rt-ico"); s.innerHTML = ICONS[mod] || ""; return s; }
 
+/* ---------- Iniciar direto na rotina ----------
+   Usa os mesmos cronômetros dos módulos (o registro fica igual a iniciar lá dentro).
+   A rotina é uma coisa de cada vez: iniciar uma tarefa aqui pausa o que estiver rodando em outro módulo. */
+let rtPick = null;
+function rtRunning() {
+  const o = {};
+  if (intel && intel.timer) o.estudo = intel.timer.sid;
+  const st = stamina && stamina.timer; if (st) o[practice(st.pid).kind] = st.pid;
+  if (graca && graca.timer) o.graca = graca.timer.rid;
+  if (mis && mis.timer) o.trabalho = mis.timer.tid;
+  return o;
+}
+function rtCanStart(it) { return ["graca", "estamina", "missoes", "inteligencia"].includes(it.mod); }
+function rtStudyOpts(it) {
+  if (it.subjects && it.subjects.length) return it.subjects;
+  return intel ? intel.subjects.filter(s => !(s.total && subjDoneUpTo(s) >= s.total)).map(s => ({ id: s.id, label: s.name })) : [];
+}
+function rtStopOthers(mod) {
+  if (mod !== "inteligencia" && intel && intel.timer) stopTimer();
+  if (mod !== "estamina" && stamina && stamina.timer) stStop();
+  if (mod !== "graca" && graca && graca.timer) grStop(false);
+  if (mod !== "missoes" && mis && (mis.timer || mis.work)) msWorkPause();
+}
+function rtRefresh(fid) {
+  if (state.view === "home") renderHome(); else if (state.view === "rotina") renderRotina();
+  pushSync(false);
+  const f = fid && document.getElementById(fid); if (f) f.focus({ preventScroll: true });
+}
+function rtStart(it, b, sid) {
+  rtStopOthers(it.mod); rtPick = null;
+  if (it.mod === "inteligencia") startTimer(sid);
+  else if (it.key === "cardio") { stUI.cardio = it.pid; stStart(it.pid); }
+  else if (it.key === "foco") { const pid = stUI.foco || "med"; stUI.foco = pid; stStart(pid); }
+  else if (it.mod === "graca") grStart(it.rid);
+  else if (it.key === "trabalho") { const m = (b.missions || [])[0]; if (m) msStartMission(m.t.id); else msWorkStart(); }
+  rtRefresh("rt-stop-" + it.key);
+}
+function rtStop(it, finish) {
+  if (it.mod === "inteligencia") stopTimer();
+  else if (it.mod === "estamina") stStop();
+  else if (it.mod === "graca") grStop(!!finish);
+  else if (it.key === "trabalho") msWorkPause();
+  rtRefresh("rt-start-" + it.key);
+}
+// texto ao vivo do que está rodando (os módulos atualizam pelo data-live)
+function rtLive(mod) {
+  const n = el("span", "st run rt-live"), today = todayISO();
+  if (mod === "inteligencia") { const t = intel.timer, x = intel.subjects.find(v => v.id === t.sid); n.dataset.live = "running"; n.textContent = "▶ " + (x ? x.name : "") + " " + fmtHMS(subjSec(today, t.sid)); }
+  else if (mod === "estamina") { const t = stamina.timer; n.dataset.live = "st-running"; n.textContent = "▶ " + practice(t.pid).name + " " + fmtHMS(stSec(today, t.pid)); }
+  else if (mod === "graca") { const t = graca.timer, r = ritual(t.rid); n.dataset.live = "gr-running"; n.textContent = "▶ " + (r ? r.name : "") + " " + fmtHMS(grSec(today, t.rid)); }
+  else { const t = mis.timer, x = t.tid !== MS_GERAL ? msTask(t.tid) : null; n.dataset.live = "ms-running"; n.textContent = "▶ " + (x ? x.title : "Trabalho") + " · " + fmtHMS(msDaySec(today)); }
+  return n;
+}
+function rtActRow(it, b, suf, running) {
+  const act = el("div", "rt-act"); act.id = "rt-act-" + suf;
+  const mk = (cls, txt, id, fn) => { const x = el("button", cls, txt); x.type = "button"; x.id = id; x.addEventListener("click", fn); return x; };
+  if (running) {
+    act.append(rtLive(it.mod), mk("btn stop", "Pausar", "rt-stop-" + it.key, () => rtStop(it, false)));
+    if (it.mod === "graca") act.appendChild(mk("btn ghost", "Concluir", "rt-done-" + it.key, () => rtStop(it, true)));
+    return act;
+  }
+  if (it.mod === "inteligencia") {
+    const opts = rtStudyOpts(it); if (!opts.length) return null;
+    if (rtPick === suf && opts.length > 1) {
+      act.appendChild(el("span", "rt-pickq", "Qual matéria?"));
+      opts.forEach(x => act.appendChild(mk("rt-link", "▶ " + x.label, "rt-pick-" + suf + "-" + x.id, () => rtStart(it, b, x.id))));
+      act.appendChild(mk("linkbtn", "Cancelar", "rt-pick-x-" + suf, () => { rtPick = null; rtRefresh("rt-start-" + it.key); }));
+      return act;
+    }
+    act.appendChild(mk("btn", "▶ Iniciar", "rt-start-" + (b.part ? suf : it.key), () => {
+      if (opts.length === 1) rtStart(it, b, opts[0].id); else { rtPick = suf; rtRefresh("rt-pick-" + suf + "-" + opts[0].id); }
+    }));
+    return act;
+  }
+  act.appendChild(mk("btn", "▶ Iniciar", "rt-start-" + (b.part ? suf : it.key), () => rtStart(it, b)));
+  return act;
+}
+
 function enterRotina(tab) {
   state.view = "rotina"; document.body.dataset.view = "rotina";
   document.getElementById("crumb").textContent = "/ Rotina";
@@ -5983,11 +6074,15 @@ function rtTodayNodes(R, nowMin) {
   const tl = el("ol", "rt-list"); tl.id = "rt-list";
   const rows = R.blocks.map(b => ({ s: b.s, e: b.e, b })).concat(d.fixed.filter(f => f.b > nowMin).map(f => ({ s: f.a, e: f.b, f }))).sort((x, y) => x.s - y.s);
   if (d.wake > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.wake) + " · Acordar" + (R.cfg.ws ? " (" + rtDur(R.cfg.ws) + " antes, para caber tudo)" : "")));
+  const studyRun = !!(intel && intel.timer) && !R.blocks.some(b => b.it.key === "estudo");
   rows.forEach(r => {
-    const isNow = nowMin >= r.s && nowMin < r.e;
-    const li = el("li", "rt-row" + (r.f ? " fixed" : " mod-" + r.b.it.mod) + (isNow ? " now" : ""));
-    const time = el("span", "rt-time"); time.append(el("b", null, minToHM(r.s)), el("span", "rt-end", "até " + minToHM(r.e)));
-    time.setAttribute("aria-label", "das " + minToHM(r.s) + " às " + minToHM(r.e));
+    const running = !!r.b && !r.b.part && (r.b.it.running || (r.b.it.extra && studyRun));
+    const isNow = running || (nowMin >= r.s && nowMin < r.e);
+    const li = el("li", "rt-row" + (r.f ? " fixed" : " mod-" + r.b.it.mod) + (running ? " run" : isNow ? " now" : ""));
+    // rodando: começa agora e vai até agora + o tempo que falta
+    const s0 = running ? nowMin : r.s, e0 = running ? nowMin + r.e - r.s : r.e;
+    const time = el("span", "rt-time"); time.append(el("b", null, running ? "Agora" : minToHM(s0)), el("span", "rt-end", "até " + minToHM(e0)));
+    time.setAttribute("aria-label", (running ? "agora" : "das " + minToHM(s0)) + " até " + minToHM(e0));
     if (r.f) {
       const fs = r.f.flex === "flex" ? (r.f.a !== r.f.ideal ? "Remanejado: o ideal era " + minToHM(r.f.ideal) : "Horário flexível") : r.f.flex === "wake" ? "Ao acordar" : r.f.flex === "sleep" ? "Antes de dormir" : "Compromisso fixo";
       li.append(time, el("span", "rt-title", r.f.name || "Compromisso"), el("span", "rt-sub", fs)); tl.appendChild(li); return;
@@ -6004,7 +6099,7 @@ function rtTodayNodes(R, nowMin) {
     } else if (it.subjects && it.subjects.length) {
       links = it.subjects.map(x => ({ id: "rt-sb-" + suf + "-" + x.id, label: x.label, go: () => rtGoSubj(x.id) }));
     } else if (it.sub) tx.appendChild(el("span", "rt-sub", it.sub));
-    if (isNow) tx.appendChild(el("span", "st pend rt-now", "Agora"));
+    if (isNow && !running) tx.appendChild(el("span", "st pend rt-now", "Agora"));
     btn.appendChild(tx); btn.addEventListener("click", go); li.appendChild(btn);
     if (!r.b.part) { const sk = el("button", "linkbtn rt-skip", "Pular hoje"); sk.type = "button"; sk.id = "rt-skip-" + it.key; sk.addEventListener("click", () => rtSkip(it.key, true)); li.appendChild(sk); }
     if (links) {
@@ -6012,6 +6107,7 @@ function rtTodayNodes(R, nowMin) {
       links.forEach(l => { const b = el("button", "rt-link", l.label); b.type = "button"; b.id = l.id; b.addEventListener("click", l.go); lc.appendChild(b); });
       li.appendChild(lc);
     }
+    if (rtCanStart(it)) { const a = rtActRow(it, r.b, suf, running); if (a) li.appendChild(a); }
     tl.appendChild(li);
   });
   if (d.sleep > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.sleep) + " · Dormir" + (R.cfg.ss ? " (" + rtDur(R.cfg.ss) + " depois, para caber tudo)" : "")));
@@ -6189,8 +6285,7 @@ function rtHomeSection() {
   const h = el("button", "btn ghost", "Horários"); h.type = "button"; h.id = "rt-open-hor"; h.addEventListener("click", () => enterRotina("rot-horarios"));
   bb.append(w, h);
   if (pushSupported() && loggedIn() && !pushOn()) { const a = el("button", "btn ghost", "Ativar avisos"); a.type = "button"; a.id = "rt-open-avisos"; a.title = "Avisos antes de cada tarefa, mesmo com o app fechado"; a.addEventListener("click", () => { enterRotina("rot-horarios"); rtFocus("rt-avisos"); }); bb.appendChild(a); }
-  const row = el("div", "rt-headrow"); row.append(el("h2", null, "Rotina de hoje"), bb);
-  head.append(row, el("p", null, "Montada às " + minToHM(nowMin) + " com o que falta nos módulos. Toque numa tarefa para ir direto a ela."));
+  head.append(el("h2", null, "Rotina de hoje"), bb, el("p", null, "Montada às " + minToHM(nowMin) + " com o que falta nos módulos. Toque numa tarefa para ir direto a ela."));
   sec.appendChild(head);
   rtDefaultsBanner(sec);
   rtTodayNodes(R, nowMin).forEach(n => sec.appendChild(n));

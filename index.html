@@ -105,7 +105,8 @@ details summary { cursor: pointer; font: 600 14px var(--font-display); letter-sp
 .hist li span:first-child { color: var(--muted); }
 .guide { padding: 18px 16px 16px; display: grid; gap: 10px; }
 .guide h3 { font-family: var(--font-display); font-weight: 700; font-size: 22px; text-transform: uppercase; margin: 0; letter-spacing: .1em; }
-.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sec-head { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; }
+.add-box { display: grid; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .guide p, .guide li { max-width: 65ch; }
 .guide ul { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
 .guide li::marker { color: var(--accent); }
@@ -4937,6 +4938,12 @@ function renderFin() {
   else renderPendentes(main);
 }
 function head2(main, title, text) { const h = el("div", "wk-head"); h.append(el("h2", null, title), el("p", null, text)); main.appendChild(h); }
+// Padrão do app: formulário de cadastro só aparece depois de tocar em "＋ Novo…", que fica logo ao lado do título da seção
+function addHead(title, label, id, open, onOpen) {
+  const h = el("div", "sec-head"); h.appendChild(el("h3", null, title));
+  if (!open) { const b = el("button", "btn ghost", "＋ " + label); b.type = "button"; b.id = id; b.addEventListener("click", onOpen); h.appendChild(b); }
+  return h;
+}
 
 /* ---------- aba Pendentes ---------- */
 function renderPendentes(main) {
@@ -4954,7 +4961,9 @@ function renderPendentes(main) {
   const fi = el("input"); fi.type = "file"; fi.id = "fin-file"; fi.accept = ".ofx,.csv,.txt,text/csv"; fi.hidden = true;
   const msg = el("p", "note"); msg.id = "imp-msg"; msg.setAttribute("aria-live", "polite"); flashAuto(msg, finUI.msg);
   fi.addEventListener("change", () => { const f = fi.files[0]; if (!f) return; importFile(f, txt => { finUI.msg = txt; renderFin(); }); fi.value = ""; });
-  fb.append(lab, fi); imp.append(fb, msg);
+  fb.append(lab, fi);
+  if (!finUI.addOpen) { const ad = el("button", "btn ghost", "＋ Adicionar à mão"); ad.type = "button"; ad.id = "fin-add-new"; ad.addEventListener("click", () => { finUI.addOpen = true; finUI.impOpen = true; renderFin(); const d = document.getElementById("add-desc"); if (d) { d.scrollIntoView({ block: "center" }); d.focus(); } }); fb.appendChild(ad); }
+  imp.append(fb, msg);
   // manual
   const form = el("form", "inputs two"); form.id = "fin-add";
   const mk = (id, label, type, ph) => { const f = el("div", "field"); const l = el("label", null, label); l.htmlFor = id; const i = el("input"); i.id = id; i.type = type || "text"; if (ph) i.placeholder = ph; f.append(l, i); form.appendChild(f); return i; };
@@ -4965,8 +4974,13 @@ function renderPendentes(main) {
   const ss = el("select", "sel"); ss.id = "add-dir"; [["out", "Saída"], ["in", "Entrada"]].forEach(([v, t]) => { const o = el("option", null, t); o.value = v; ss.appendChild(o); }); sf.append(sl, ss); form.appendChild(sf);
   const ab = el("button", "btn", "Adicionar"); ab.type = "submit"; ab.id = "add-tx"; ab.setAttribute("form", "fin-add");
   form.addEventListener("submit", e => { e.preventDefault(); const v = parseMoney(vIn.value); if (!nIn.value.trim() || !(v > 0) || !dIn.value) { finUI.msg = "Preencha data, valor e estabelecimento."; renderFin(); return; }
-    fin.tx.push({ id: uid(), date: dIn.value, desc: nIn.value.trim(), amount: Math.abs(v), dir: ss.value, bank: "", method: "", source: "manual", status: "pending" }); finUI.msg = "Lançamento adicionado."; saveFin(); renderFin(); });
-  imp.append(el("p", "plan-t", "Adicionar à mão"), form, (() => { const b = el("div", "btns"); b.appendChild(ab); return b; })());
+    fin.tx.push({ id: uid(), date: dIn.value, desc: nIn.value.trim(), amount: Math.abs(v), dir: ss.value, bank: "", method: "", source: "manual", status: "pending" }); finUI.msg = "Lançamento adicionado."; finUI.addOpen = false; saveFin(); renderFin(); });
+  if (finUI.addOpen) {
+    const box = el("div", "add-box"); box.id = "fin-add-box";
+    const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = "add-tx-cancel"; cc.addEventListener("click", () => { finUI.addOpen = false; renderFin(); });
+    box.append(el("p", "plan-t", "Adicionar à mão"), form, (() => { const b = el("div", "btns"); b.append(ab, cc); return b; })());
+    imp.appendChild(box);
+  }
   main.appendChild(imp);
 
   if (!pend.length) return;
@@ -5496,9 +5510,11 @@ function renderInvest(main) {
   }
 
   // nova operação
-  const op = el("section", "guide"); op.appendChild(el("h3", null, "Registrar operação"));
+  const op = el("section", "guide"); op.id = "inv-ops";
+  op.appendChild(addHead("Operações", "Registrar operação", "op-new", !!finUI.opOpen, () => { finUI.opOpen = true; renderFin(); const t = document.getElementById("op-ticker"); if (t) { t.scrollIntoView({ block: "center" }); t.focus(); } }));
+  const ob = el("div", "add-box"); ob.id = "op-box";
   const st = finUI.opType || "compra";
-  op.appendChild(chipGroup("Tipo", [["compra", "Compra"], ["venda", "Venda"], ["dividendo", "Dividendos reinvestidos"]], st, v => { finUI.opType = v; renderFin(); }, "op"));
+  ob.appendChild(chipGroup("Tipo", [["compra", "Compra"], ["venda", "Venda"], ["dividendo", "Dividendos reinvestidos"]], st, v => { finUI.opType = v; renderFin(); }, "op"));
   const form = el("form", "inputs two"); form.id = "op-form";
   const mk = (id, label, ph, mode, type) => { const f = el("div", "field"); const l = el("label", null, label); l.htmlFor = id; const i = el("input"); i.id = id; i.placeholder = ph || ""; if (mode) i.inputMode = mode; if (type) i.type = type; f.append(l, i); form.appendChild(f); return i; };
   const tI = mk("op-ticker", "Código da ação", "Ex.: PETR4"); tI.setAttribute("list", "tick-list"); tI.autocapitalize = "characters";
@@ -5506,7 +5522,7 @@ function renderInvest(main) {
   let qI, pI, vI;
   if (st === "dividendo") vI = mk("op-value", "Valor reinvestido no ciclo (R$)", "0,00", "decimal");
   else { qI = mk("op-qty", "Quantidade", "0", "decimal"); pI = mk("op-price", "Preço por ação (R$)", "0,00", "decimal"); }
-  const dl = el("datalist"); dl.id = "tick-list"; positions().forEach(p => { const o = el("option"); o.value = p.ticker; dl.appendChild(o); }); op.appendChild(dl);
+  const dl = el("datalist"); dl.id = "tick-list"; positions().forEach(p => { const o = el("option"); o.value = p.ticker; dl.appendChild(o); }); ob.appendChild(dl);
   const om = el("p", "note"); om.setAttribute("aria-live", "polite"); om.id = "op-msg";
   const sb = el("button", "btn", "Registrar"); sb.type = "submit"; sb.id = "op-save"; sb.setAttribute("form", "op-form");
   form.addEventListener("submit", e => {
@@ -5521,13 +5537,15 @@ function renderInvest(main) {
       if (!(o.qty > 0) || !(o.price > 0)) { flashAuto(om, "Informe quantidade e preço."); return; }
       if (st === "venda") { const p = positions().find(x => x.ticker === tick); if (!p || p.qty < o.qty) { flashAuto(om, "Você não tem essa quantidade de " + tick + " na carteira."); return; } }
     }
-    fin.invest.ops.push(o); saveFin(); renderFin();
+    fin.invest.ops.push(o); finUI.opOpen = false; saveFin(); renderFin();
   });
-  op.append(form, (() => { const b = el("div", "btns"); b.appendChild(sb); return b; })(), om);
+  const oc = el("button", "btn ghost", "Cancelar"); oc.type = "button"; oc.id = "op-cancel"; oc.addEventListener("click", () => { finUI.opOpen = false; renderFin(); });
+  ob.append(form, (() => { const b = el("div", "btns"); b.append(sb, oc); return b; })(), om);
+  if (finUI.opOpen) op.appendChild(ob);
   main.appendChild(op);
 
   if (fin.invest.ops.length) {
-    const hs = el("section", "guide"); hs.appendChild(el("h3", null, "Histórico de operações"));
+    const hs = op; hs.appendChild(el("p", "plan-t", "Histórico"));
     const ul = el("div", "ops");
     fin.invest.ops.slice().sort((a, b) => a.date < b.date ? 1 : -1).forEach(o => {
       const r = el("div", "op-row");
@@ -5537,8 +5555,8 @@ function renderInvest(main) {
       x.addEventListener("click", () => { if (finUI.confirm !== o.id) { finUI.confirm = o.id; renderFin(); return; } fin.invest.ops = fin.invest.ops.filter(y => y.id !== o.id); finUI.confirm = null; saveFin(); renderFin(); });
       r.appendChild(x); ul.appendChild(r);
     });
-    hs.appendChild(ul); main.appendChild(hs);
-  }
+    hs.appendChild(ul);
+  } else if (!finUI.opOpen) op.appendChild(el("p", "note muted", "Nenhuma operação registrada ainda."));
 }
 
 /* ---------- Tela inicial (módulos) ---------- */
@@ -6311,7 +6329,8 @@ const ROT_PRESETS = [
   { label: "Cuidados noturnos", kind: "sleep", name: "Cuidados noturnos", dur: 30 }
 ];
 const rtFxBlank = days => ({ kind: "fixo", name: "", start: "", end: "", dur: "", shift: 60, days: days || [1, 2, 3, 4, 5] });
-const rtUI = { msg: "", kind: "", fx: rtFxBlank() };
+const rtUI = { msg: "", kind: "", fx: rtFxBlank(), fxOpen: false };
+const rtFxOpen = () => rtUI.fxOpen || !!rtUI.fx.editId;
 
 function loadRotina() { try { const v = JSON.parse(localStorage.getItem(ROT_KEY)); rotina = v && typeof v === "object" ? v : null; } catch (e) { rotina = null; } }
 function ensureRotina() { if (!rotina) rotina = {}; rotina.fixed = rotina.fixed || []; rotina.skip = rotina.skip || {}; rotina.done = rotina.done || {}; return rotina; }
@@ -6922,7 +6941,10 @@ function renderRtHorarios(main) {
   main.appendChild(s2);
 
   const s3 = el("section", "guide rt-set"); s3.id = "rt-fixos";
-  s3.append(el("h3", null, "Compromissos"), el("p", "note muted", "Horário fixo: aulas, expediente, reuniões. Flexível: refeições, que a rotina pode adiantar ou atrasar dentro da janela que você der. Ao acordar e antes de dormir: cuidados que andam junto com o sono."));
+  s3.append(addHead("Compromissos", "Novo compromisso", "rt-fx-new", rtFxOpen(), () => {
+    rtUI.fx = rtFxBlank(); rtUI.fxOpen = true; renderRotina();
+    const n = document.getElementById("rt-fx-name"); if (n) { n.scrollIntoView({ block: "center" }); n.focus(); }
+  }), el("p", "note muted", "Horário fixo: aulas, expediente, reuniões. Flexível: refeições, que a rotina pode adiantar ou atrasar dentro da janela que você der. Ao acordar e antes de dormir: cuidados que andam junto com o sono."));
   const desc = f => {
     const ds = (f.days || []).slice().sort(), key = ds.join("");
     const dias = key === "0123456" ? "todos os dias" : key === "12345" ? "seg a sex" : key === "06" ? "fim de semana" : ds.map(x => DOW_SHORT[x]).join(", ");
@@ -6944,19 +6966,19 @@ function renderRtHorarios(main) {
         const n = document.getElementById("rt-fx-name"); if (n) { n.scrollIntoView({ block: "center" }); n.focus(); }
       });
       const rm = el("button", "linkbtn", "Remover"); rm.type = "button"; rm.id = "rt-fx-rm-" + f.id;
-      rm.addEventListener("click", () => { r.fixed = r.fixed.filter(x => x.id !== f.id); if (rtUI.fx.editId === f.id) rtUI.fx = rtFxBlank(); save("Compromisso removido."); });
+      rm.addEventListener("click", () => { r.fixed = r.fixed.filter(x => x.id !== f.id); if (rtUI.fx.editId === f.id) { rtUI.fx = rtFxBlank(); rtUI.fxOpen = false; } save("Compromisso removido."); });
       acts.append(ed, rm); li.appendChild(acts); ul.appendChild(li);
     });
     s3.appendChild(ul);
   }
-  const fx = rtUI.fx;
-  if (fx.editId) s3.appendChild(el("p", "rt-fx-h", "Editando: " + ((c.fixed.find(x => x.id === fx.editId) || {}).name || fx.name)));
+  const fx = rtUI.fx, fb = el("div", "add-box"); fb.id = "rt-fx-form";
+  if (fx.editId) fb.appendChild(el("p", "rt-fx-h", "Editando: " + ((c.fixed.find(x => x.id === fx.editId) || {}).name || fx.name)));
   else {
     const pr = el("div", "rt-presets"); pr.appendChild(el("span", "field-l", "Atalhos"));
     ROT_PRESETS.forEach((p, i) => { const b = el("button", "gchip", p.label); b.type = "button"; b.id = "rt-pre-" + i; b.addEventListener("click", () => { rtUI.fx = Object.assign(rtFxBlank([0, 1, 2, 3, 4, 5, 6]), { kind: p.kind, name: p.name, start: p.start || "", dur: String(p.dur), shift: p.shift || 60 }); renderRotina(); const n = document.getElementById("rt-fx-add"); if (n) n.scrollIntoView({ block: "center" }); }); pr.appendChild(b); });
-    s3.appendChild(pr);
+    fb.appendChild(pr);
   }
-  s3.appendChild(chipGroup("Tipo", ROT_FXKIND, fx.kind, v => { fx.kind = v; renderRotina(); const n = document.getElementById("rt-fx-name"); if (n) n.scrollIntoView({ block: "center" }); }, "rt-fx-k"));
+  fb.appendChild(chipGroup("Tipo", ROT_FXKIND, fx.kind, v => { fx.kind = v; renderRotina(); const n = document.getElementById("rt-fx-name"); if (n) n.scrollIntoView({ block: "center" }); }, "rt-fx-k"));
   const g3 = el("div", "inputs two");
   const nf = el("div", "field span2"), nl = el("label", null, "Nome"), ni = el("input"); nl.htmlFor = "rt-fx-name"; ni.id = "rt-fx-name";
   ni.placeholder = fx.kind === "flex" ? "Ex.: Almoço" : fx.kind === "sleep" ? "Ex.: Cuidados noturnos" : fx.kind === "wake" ? "Ex.: Café da manhã" : "Ex.: Aula na FFCLRP";
@@ -6965,12 +6987,12 @@ function renderRtHorarios(main) {
   if (fx.kind === "fixo") { tf("rt-fx-start", "Começa", "start", "time"); tf("rt-fx-end", "Termina", "end", "time"); }
   else if (fx.kind === "flex") { tf("rt-fx-start", "Horário ideal", "start", "time"); tf("rt-fx-dur", "Duração (min)", "dur"); }
   else tf("rt-fx-dur", "Duração (min)", "dur");
-  s3.appendChild(g3);
-  if (fx.kind === "flex") s3.appendChild(chipGroup("Pode adiantar ou atrasar até", ROT_SHIFT, Number(fx.shift) || 60, v => { fx.shift = v; document.querySelectorAll('[id^="rt-fx-sh-"]').forEach(b => b.setAttribute("aria-pressed", String(b.id === "rt-fx-sh-" + v))); }, "rt-fx-sh"));
+  fb.appendChild(g3);
+  if (fx.kind === "flex") fb.appendChild(chipGroup("Pode adiantar ou atrasar até", ROT_SHIFT, Number(fx.shift) || 60, v => { fx.shift = v; document.querySelectorAll('[id^="rt-fx-sh-"]').forEach(b => b.setAttribute("aria-pressed", String(b.id === "rt-fx-sh-" + v))); }, "rt-fx-sh"));
   const dg = el("div", "cg"); dg.appendChild(el("span", "field-l", "Dias"));
   const row = el("div", "chips");
   [1, 2, 3, 4, 5, 6, 0].forEach(n => { const b = el("button", "gchip", DOW_SHORT[n]); b.type = "button"; b.id = "rt-fx-d-" + n; b.setAttribute("aria-pressed", String(fx.days.includes(n))); b.addEventListener("click", () => { fx.days = fx.days.includes(n) ? fx.days.filter(x => x !== n) : fx.days.concat(n); b.setAttribute("aria-pressed", String(fx.days.includes(n))); }); row.appendChild(b); });
-  dg.appendChild(row); s3.appendChild(dg);
+  dg.appendChild(row); fb.appendChild(dg);
   const fm = el("p", "note"); fm.id = "rt-fx-msg";
   const add = el("button", "btn", fx.editId ? "Salvar alterações" : "Adicionar compromisso"); add.type = "button"; add.id = "rt-fx-add";
   add.addEventListener("click", () => {
@@ -6987,11 +7009,12 @@ function renderRtHorarios(main) {
     const cur = fx.editId && r.fixed.find(x => x.id === fx.editId);
     if (cur) { Object.keys(val).forEach(k => { if (val[k] === undefined) delete cur[k]; else cur[k] = val[k]; }); }
     else { const o = { id: "f" + Date.now().toString(36) }; Object.keys(val).forEach(k => { if (val[k] !== undefined) o[k] = val[k]; }); r.fixed.push(o); }
-    rtUI.fx = rtFxBlank(fx.days.slice()); save(cur ? "Compromisso atualizado." : "Compromisso adicionado.");
+    rtUI.fx = rtFxBlank(fx.days.slice()); rtUI.fxOpen = false; save(cur ? "Compromisso atualizado." : "Compromisso adicionado.");
   });
   const bb = el("div", "btns"); bb.appendChild(add);
-  if (fx.editId || fx.name) { const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = "rt-fx-cancel"; cc.addEventListener("click", () => { rtUI.fx = rtFxBlank(); renderRotina(); }); bb.appendChild(cc); }
-  s3.append(fm, bb);
+  const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = "rt-fx-cancel"; cc.addEventListener("click", () => { rtUI.fx = rtFxBlank(); rtUI.fxOpen = false; renderRotina(); }); bb.appendChild(cc);
+  fb.append(fm, bb);
+  if (rtFxOpen()) s3.insertBefore(fb, s3.children[2] || null); // logo abaixo do título, antes da lista
   main.insertBefore(msg, main.children[1] || null);
   main.appendChild(s3);
 }

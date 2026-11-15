@@ -5538,12 +5538,131 @@ const HX_REF = {
   },
   // IBGE, PNAD Contínua, 3º trimestre de 2025: horas habitualmente trabalhadas por semana no trabalho principal
   horas: { geral: [39.1, "dos trabalhadores brasileiros"], emp: [39.6, "dos empregados"], cp: [44.7, "de quem trabalha por conta própria"], empr: [37.5, "dos empregadores"] },
-  cardio: 150, // OMS 2020: 150 min/semana de aeróbico moderado (ou 75 vigoroso)
-  forca: 2     // OMS 2020: fortalecimento muscular em 2 ou mais dias por semana
+  cardio: 150 // OMS 2020: 150 min/semana de aeróbico moderado (ou 75 vigoroso). A Força usa FX_STD (carga pelo peso do corpo).
 };
 const HX_SEXO = [["m", "Masculino"], ["f", "Feminino"]];
 const HX_ESC = [["", "Escolha"], ["fi", "Fundamental incompleto"], ["fc", "Fundamental completo"], ["mi", "Médio incompleto"], ["mc", "Médio completo"], ["sup", "Superior completo"]];
 const HX_OCUP = [["emp", "Empregado"], ["cp", "Conta própria"], ["empr", "Empregador"]];
+/* Força: carga máxima (1RM) de cada exercício comparada à média de quem treina, pelo peso do corpo.
+   Referência: Strength Level (strengthlevel.com), nível Intermediário = mais forte que 50% de quem registra treinos lá.
+   Valores: 1RM em kg da comunidade inteira [homens, mulheres] (consulta de nov/2026). Exercícios com halter: carga de cada halter.
+   O padrão para o seu peso = valor × seu peso / peso médio da comunidade (cerca de 77 kg nos homens e 63 kg nas mulheres).
+   Os marcados com * não têm o valor feminino publicado e usam a proporção de um exercício parecido. */
+const FX_BW = { m: 77, f: 63 };
+const FX_STD = {
+  agach: ["Agachamento livre", 131, 76], agFrontal: ["Agachamento frontal", 105, 62], agSmith: ["Agachamento no smith", 120, 66],
+  hack: ["Hack", 157, 94], legpress: ["Leg press 45°", 226, 145], legpressH: ["Leg press horizontal", 168, 112],
+  extensora: ["Cadeira extensora", 97, 58], bulgaro: ["Búlgaro (halter)", 30, 18], afundo: ["Afundo/passada (halter)", 30, 19], goblet: ["Agachamento goblet", 42, 26],
+  flexDeitado: ["Mesa flexora", 64, 38], flexSentado: ["Cadeira flexora", 80, 49], flexPe: ["Flexora em pé", 51, 42],
+  stiff: ["Stiff/levantamento romeno", 120, 66], terra: ["Levantamento terra", 152, 88], goodMorning: ["Good morning", 87, 44],
+  hipThrust: ["Elevação pélvica", 129, 93], ponte: ["Ponte de glúteo com barra", 118, 92], abdutora: ["Cadeira abdutora", 96, 72],
+  puxada: ["Puxada", 82, 47], remadaBaixa: ["Remada baixa", 85, 47], remadaCurvada: ["Remada curvada", 86, 43], cavalinho: ["Remada cavalinho", 85, 46],
+  serrote: ["Remada unilateral (halter)", 42, 21], remadaMaq: ["Remada na máquina", 100, 53], pullover: ["Pullover (halter)", 34, 19],
+  supino: ["Supino reto", 98, 51], supinoInc: ["Supino inclinado", 89, 44], supinoHalter: ["Supino reto (halter)", 41, 21], supinoIncHalter: ["Supino inclinado (halter)", 39, 20],
+  supinoDecHalter: ["Supino declinado (halter)", 38, 21], supinoSmith: ["Supino no smith", 94, 49], supinoMaq: ["Supino na máquina", 88, 38], supinoFechado: ["Supino fechado*", 93, 48],
+  voador: ["Voador/peck deck", 86, 40], crucifixo: ["Crucifixo (halter)", 24, 12], crucifixoInc: ["Crucifixo inclinado (halter)", 26, 14], crossover: ["Crossover", 36, 19],
+  desenvBarra: ["Desenvolvimento com barra", 63, 34], desenvHalter: ["Desenvolvimento (halter)", 31, 15], desenvMaq: ["Desenvolvimento na máquina", 77, 34],
+  elevLateral: ["Elevação lateral", 16, 9], elevLateralMaq: ["Elevação lateral na máquina", 57, 22], elevFrontal: ["Elevação frontal (halter)", 18, 10], elevFrontalBarra: ["Elevação frontal com barra", 38, 20],
+  invertidoMaq: ["Crucifixo invertido na máquina", 64, 14], facePull: ["Face pull", 46, 33], remadaAlta: ["Remada alta", 61, 32], remadaAltaHalter: ["Remada alta (halter)", 26, 16],
+  encolhHalter: ["Encolhimento (halter)", 46, 27], encolhBarra: ["Encolhimento com barra*", 131, 77],
+  roscaBarra: ["Rosca direta com barra", 46, 25], roscaW: ["Rosca com barra W", 47, 28], roscaHalter: ["Rosca com halter", 22, 13], martelo: ["Rosca martelo", 23, 13],
+  scott: ["Rosca scott", 46, 26], roscaPolia: ["Rosca na polia", 51, 27], roscaMaq: ["Rosca na máquina", 57, 28],
+  tricepsPolia: ["Tríceps na polia", 57, 31], tricepsCorda: ["Tríceps corda*", 44, 24], testa: ["Tríceps testa", 43, 22], testaHalter: ["Tríceps testa (halter)*", 20, 10],
+  francesPolia: ["Tríceps francês na polia", 41, 22], coice: ["Tríceps coice (halter)", 17, 11], mergulhoMaq: ["Mergulho na máquina", 107, 58],
+  pantEmPe: ["Panturrilha em pé", 134, 83], pantSentado: ["Panturrilha sentado", 100, 69]
+};
+// grupos maiores pesam mais na média (pela massa muscular)
+const FX_PESO = { "Quadríceps": 3, "Costas": 3, "Glúteos": 2.5, "Posteriores": 2, "Peito": 2, "Ombros": 1.5, "Tríceps": 1, "Bíceps": 1, "Panturrilhas": 1 };
+// reconhece o exercício pelo nome que veio do plano (português, sem acento)
+function fxStdKey(name) {
+  const s = fNm(name), h = /halter|haltere|dumbbell/.test(s), maq = /maquina|articulad|aparelho/.test(s);
+  if (/punho|antebraco|abdom|prancha|crunch/.test(s)) return null;
+  if (/panturrilha|gemeos|soleo/.test(s)) return /sentad/.test(s) ? "pantSentado" : "pantEmPe";
+  if (/abdutora|abducao/.test(s)) return "abdutora";
+  if (/adutora|aducao/.test(s)) return null;
+  if (/elevacao pelvica|hip ?thrust/.test(s)) return "hipThrust";
+  if (/ponte|glute bridge/.test(s)) return "ponte";
+  if (/stiff|romeno|rdl/.test(s)) return "stiff";
+  if (/terra|deadlift/.test(s)) return "terra";
+  if (/good ?morning|bom dia/.test(s)) return "goodMorning";
+  if (/flexora|leg curl/.test(s)) return /em pe|\bpe\b|unilateral em pe/.test(s) ? "flexPe" : /sentad|cadeira/.test(s) ? "flexSentado" : "flexDeitado";
+  if (/extensora|leg extension/.test(s)) return "extensora";
+  if (/leg ?press/.test(s)) return /horizontal|sentad/.test(s) ? "legpressH" : "legpress";
+  if (/hack/.test(s)) return "hack";
+  if (/bulgaro/.test(s)) return "bulgaro";
+  if (/afundo|passada|avanco|lunge/.test(s)) return "afundo";
+  if (/goblet|taca/.test(s) || (/agachamento/.test(s) && /sumo/.test(s) && h)) return "goblet";
+  if (/agachamento|squat/.test(s)) return /smith/.test(s) ? "agSmith" : /frontal|front/.test(s) ? "agFrontal" : "agach";
+  if (/puxada|pull ?down/.test(s)) return "puxada";
+  if (/pull ?over/.test(s)) return "pullover";
+  if (/remada alta|upright/.test(s)) return h ? "remadaAltaHalter" : "remadaAlta";
+  if (/remada|row/.test(s)) {
+    if (/cavalinho|t ?bar|barra t/.test(s)) return "cavalinho";
+    if (/serrote|unilateral/.test(s) || h) return "serrote";
+    if (maq || /hammer/.test(s)) return "remadaMaq";
+    if (/baixa|sentad|polia|cabo|triangulo/.test(s)) return "remadaBaixa";
+    if (/curvad|barra/.test(s)) return "remadaCurvada";
+    return "remadaBaixa";
+  }
+  if (/face ?pull/.test(s)) return "facePull";
+  if (/invertid|inverso|reverse/.test(s)) return maq || /voador|peck/.test(s) ? "invertidoMaq" : null;
+  if (/encolhimento|shrug/.test(s)) return h ? "encolhHalter" : "encolhBarra";
+  if (/elevacao lateral|elev\.? lat/.test(s)) return maq ? "elevLateralMaq" : "elevLateral";
+  if (/elevacao frontal|elev\.? front/.test(s)) return /barra|anilha/.test(s) ? "elevFrontalBarra" : "elevFrontal";
+  if (/desenvolvimento|militar|arnold|shoulder press|overhead press/.test(s)) return maq ? "desenvMaq" : (h || /arnold/.test(s)) ? "desenvHalter" : "desenvBarra";
+  if (/supino|bench|chest press/.test(s)) {
+    if (/fechad/.test(s)) return "supinoFechado";
+    if (/smith/.test(s)) return "supinoSmith";
+    if (maq || /chest press/.test(s)) return "supinoMaq";
+    if (/inclinad/.test(s)) return h ? "supinoIncHalter" : "supinoInc";
+    if (/declinad/.test(s)) return h ? "supinoDecHalter" : "supino";
+    return h ? "supinoHalter" : "supino";
+  }
+  if (/peck ?deck|voador|fly machine/.test(s)) return "voador";
+  if (/cross ?over|crucifixo (na )?polia|crucifixo no cabo/.test(s)) return "crossover";
+  if (/crucifixo|fly/.test(s)) return /inclinad/.test(s) ? "crucifixoInc" : "crucifixo";
+  if (/coice|kickback/.test(s)) return "coice";
+  if (/testa|skull/.test(s)) return h ? "testaHalter" : "testa";
+  if (/frances/.test(s)) return /polia|cabo|corda/.test(s) ? "francesPolia" : null;
+  if (/mergulho|dip/.test(s)) return maq ? "mergulhoMaq" : null;
+  if (/triceps/.test(s)) return /corda/.test(s) ? "tricepsCorda" : "tricepsPolia";
+  if (/rosca|biceps|curl/.test(s)) {
+    if (/scott|preacher/.test(s)) return "scott";
+    if (/martelo|hammer/.test(s)) return "martelo";
+    if (/polia|cabo|cross/.test(s)) return "roscaPolia";
+    if (maq) return "roscaMaq";
+    if (/\bw\b|ez/.test(s)) return "roscaW";
+    if (h || /alternad|concentrad|inclinad/.test(s)) return "roscaHalter";
+    if (/barra|direta/.test(s)) return "roscaBarra";
+    return "roscaHalter";
+  }
+  return null;
+}
+// 1RM estimado pela fórmula de Epley (carga × (1 + reps/30)), com no máximo 15 repetições na conta
+function fx1rm(kg, reps) { if (!(kg > 0)) return 0; const r = Math.min(15, Math.max(1, Math.round(reps || 1))); return r === 1 ? kg : kg * (1 + r / 30); }
+function fxForca(p) {
+  p = p || perfil;
+  const bw = p && p.peso, sx = p && (p.sexo === "f" || p.sexo === "m") ? p.sexo : null;
+  if (!bw || !profileId) return null;
+  const exs = {}; (prof().plan || []).forEach(w => (w.ex || []).forEach(x => { exs[x.id] = x; }));
+  const from = addDaysISO(todayISO(), -27), best = {};
+  Object.keys(state.logs).forEach(d => {
+    if (d < from || d > todayISO()) return;
+    const e = (state.logs[d] && state.logs[d].e) || {};
+    Object.keys(e).forEach(id => { const r = e[id], x = exs[id]; if (!r || !x) return; const v = fx1rm(r.kg, r.reps != null ? r.reps : (x.hi || x.lo)); if (v > (best[id] || 0)) best[id] = v; });
+  });
+  const groups = {}, semRef = [];
+  Object.keys(best).forEach(id => {
+    const x = exs[id], g = GROUP[id] || x.group || fGroup(x.name); if (!FX_PESO[g]) return;
+    const k = fxStdKey(x.name); if (!k) { semRef.push(x.name); return; }
+    const st = FX_STD[k], refKg = sx ? st[sx === "m" ? 1 : 2] * bw / FX_BW[sx] : (st[1] * bw / FX_BW.m + st[2] * bw / FX_BW.f) / 2;
+    const pct = Math.min(3, best[id] / refKg);
+    (groups[g] = groups[g] || []).push({ name: x.name, rm: best[id], ref: refKg, pct });
+  });
+  const gs = Object.keys(groups).map(g => ({ g, w: FX_PESO[g], pct: groups[g].reduce((a, x) => a + x.pct, 0) / groups[g].length, ex: groups[g] })).sort((a, b) => b.w - a.w || b.pct - a.pct);
+  const wsum = gs.reduce((a, x) => a + x.w, 0);
+  return { val: wsum ? gs.reduce((a, x) => a + x.w * x.pct, 0) / wsum : null, gs, semRef, bw, sx, n: Object.keys(best).length };
+}
 let perfil = null;
 const hexUI = { edit: false, sel: null, open: false, draft: null, msg: "" };
 
@@ -5594,12 +5713,18 @@ const HX_CALC = {
     return { val: wk / HX_REF.cardio, you: "Você: cerca de " + Math.round(wk) + " min por semana nos últimos " + hxDias(days.length) + ".", ref, src };
   },
   forca() {
-    const ref = "Referência: OMS, musculação em 2 ou mais dias por semana.";
+    const ref = "Referência: 100% = a carga máxima de quem treina, na média, para o seu peso em cada exercício (nível intermediário do Strength Level: mais forte que metade de quem registra treinos lá).";
+    const how = "Carga máxima (1RM) estimada pela carga e repetições que você registrou (fórmula de Epley). Grupos maiores pesam mais na média: quadríceps e costas ×3, glúteos ×2,5, posteriores e peito ×2, ombros ×1,5, braços e panturrilhas ×1.";
     if (!profileId) return { you: "Escolha seu plano de treino na Força.", ref };
-    const first = hxFirst(Object.keys(state.logs), hasEntries);
-    if (!first) return { you: "Nenhum treino registrado ainda.", ref };
-    const days = hxWin(first, hasEntries(todayISO())), n = days.filter(hasEntries).length, wk = n / Math.max(7, days.length) * 7;
-    return { val: wk / HX_REF.forca, you: "Você: " + n + (n === 1 ? " treino" : " treinos") + " nos últimos " + hxDias(days.length) + " (" + hxH(wk) + " por semana).", ref };
+    if (!perfil || !perfil.peso) return { you: "Informe seu peso em Meus dados para comparar a sua força com o peso do corpo.", ref, more: [how] };
+    const r = fxForca();
+    if (!r.n) return { you: "Nenhuma carga registrada nos últimos 28 dias.", ref, more: [how] };
+    if (r.val == null) return { you: "Os exercícios com carga dos últimos 28 dias ainda não têm referência.", ref, more: [how, "Sem referência: " + r.semRef.join(", ") + "."] };
+    const more = r.gs.map(x => x.g + " " + hxPct(x.pct) + " (peso " + String(x.w).replace(".", ",") + "): " + x.ex.map(e => e.name + " " + hxPct(e.pct) + ", 1RM ~" + Math.round(e.rm) + " kg de " + Math.round(e.ref) + " kg").join(" · "));
+    more.push(how);
+    if (r.semRef.length) more.push("Sem referência (fora da conta): " + r.semRef.join(", ") + ".");
+    if (!r.sx) more.push("Informe o sexo em Meus dados: por enquanto a referência é a média entre homens e mulheres.");
+    return { val: r.val, you: "Você: força de " + r.gs.length + (r.gs.length === 1 ? " grupo muscular" : " grupos musculares") + " comparada ao seu peso (" + fmtNum(r.bw) + " kg), com a maior carga de cada exercício nos últimos 28 dias.", ref, more };
   },
   financas() {
     // 100% = a média do grupo mais específico informado: escolaridade (o que mais separa a renda), depois idade, depois sexo
@@ -5696,7 +5821,8 @@ function hexCard() {
   const cap = el("p", "hex-cap", "Linha tracejada = 100%: a média de quem tem o seu perfil ou a recomendação oficial. A borda é 200%. Últimos 28 dias.");
   card.append(top, chart, cap);
   if (hexUI.msg) { const m = el("p", "note flash ok", hexUI.msg); card.appendChild(m); hexUI.msg = ""; }
-  if (!perfil || !perfil.nasc) card.appendChild(el("p", "note muted", "Preencha Meus dados (idade, escolaridade e trabalho) para comparar com quem tem o seu perfil."));
+  if (!perfil || !perfil.nasc) card.appendChild(el("p", "note muted", "Preencha Meus dados (idade, escolaridade, trabalho e peso) para comparar com quem tem o seu perfil."));
+  else if (!perfil.peso) card.appendChild(el("p", "note muted", "Informe seu peso em Meus dados para a Força comparar a sua carga com o peso do corpo."));
   const more = el("details", "hex-more"); more.id = "hex-more"; more.open = hexUI.open;
   more.addEventListener("toggle", () => { hexUI.open = more.open; });
   more.appendChild(el("summary", null, "Como cada eixo é calculado"));
@@ -5707,6 +5833,7 @@ function hexCard() {
     if (a.you) li.appendChild(el("span", "hex-row-l you", a.you));
     if (a.ref) li.appendChild(el("span", "hex-row-l", a.ref));
     if (a.src) li.appendChild(el("span", "hex-row-l", a.src));
+    (a.more || []).forEach(t => li.appendChild(el("span", "hex-row-l", t)));
     ul.appendChild(li);
   });
   more.appendChild(ul); card.appendChild(more);
@@ -5724,7 +5851,7 @@ function hexCard() {
 function hexForm() {
   const d = hexUI.draft || (hexUI.draft = Object.assign({}, perfil || {}));
   const box = el("div", "hex-form");
-  box.appendChild(el("p", "note muted", "Com esses dados o hexágono compara você com a média de quem tem o seu perfil. Renda e horas são opcionais: vazias, o app calcula com a Economia e as Missões. Tudo fica só no seu aparelho e na sua conta."));
+  box.appendChild(el("p", "note muted", "Com esses dados o hexágono compara você com a média de quem tem o seu perfil. Renda e horas são opcionais: vazias, o app calcula com a Economia e as Missões. O peso e o sexo servem para comparar a sua força na Força. Tudo fica só no seu aparelho e na sua conta."));
   const grid = el("div", "inputs two");
   const fld = (k, label, ph, type, mode) => {
     const f = el("div", "field" + (k === "nasc" ? " span2" : "")), l = el("label", null, label), i = el("input"); l.htmlFor = "hx-" + k; i.id = "hx-" + k;
@@ -5738,6 +5865,7 @@ function hexForm() {
   ef.append(el2, es); grid.appendChild(ef);
   const renda = fld("renda", "Renda bruta/mês", "Da Economia", null, "decimal"); renda.value = d.renda ? fmtNum(d.renda) : "";
   const horas = fld("horas", "Horas/semana", "Das Missões", null, "decimal"); horas.value = d.horas ? fmtNum(d.horas) : "";
+  const peso = fld("peso", "Peso (kg)", "Ex.: 78", null, "decimal"); peso.value = d.peso ? fmtNum(d.peso) : "";
   box.appendChild(grid);
   const chips = (label, opts, key) => {
     const g = el("div", "cg"); g.appendChild(el("span", "field-l", label));
@@ -5754,6 +5882,8 @@ function hexForm() {
   nasc.addEventListener("input", () => { d.nasc = nasc.value; });
   es.addEventListener("change", () => { d.esc = es.value || null; });
   renda.addEventListener("input", () => { d.rendaTxt = renda.value; });
+  peso.addEventListener("input", () => { d.pesoTxt = peso.value; });
+  if (d.pesoTxt != null) peso.value = d.pesoTxt;
   horas.addEventListener("input", () => { d.horasTxt = horas.value; });
   if (d.rendaTxt != null) renda.value = d.rendaTxt;
   if (d.horasTxt != null) horas.value = d.horasTxt;
@@ -5762,11 +5892,12 @@ function hexForm() {
   const sv = el("button", "btn", "Salvar"); sv.type = "button"; sv.id = "hx-save";
   const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = "hx-cancel";
   sv.addEventListener("click", () => {
-    const rv = renda.value.trim() ? parseMoney(renda.value) : null, hv = horas.value.trim() ? parseNum(horas.value) : null;
+    const rv = renda.value.trim() ? parseMoney(renda.value) : null, hv = horas.value.trim() ? parseNum(horas.value) : null, pv = peso.value.trim() ? parseNum(peso.value) : null;
     if (nasc.value && (nasc.value > todayISO() || nasc.value < "1900-01-01" || perfAge({ nasc: nasc.value }) == null)) { flash(msg, "Confira a data de nascimento.", "err"); return; }
     if (rv != null && !(rv > 0 && rv < 10000000)) { flash(msg, "Digite a renda só com números, por exemplo 8500 ou 8.500,00.", "err"); return; }
     if (hv != null && !(hv > 0 && hv <= 120)) { flash(msg, "As horas por semana precisam ficar entre 1 e 120.", "err"); return; }
-    perfil = { nasc: nasc.value || null, sexo: d.sexo || null, esc: es.value || null, ocup: d.ocup || null, renda: rv, horas: hv };
+    if (pv != null && !(pv >= 30 && pv <= 300)) { flash(msg, "Digite o peso em kg, entre 30 e 300.", "err"); return; }
+    perfil = { nasc: nasc.value || null, sexo: d.sexo || null, esc: es.value || null, ocup: d.ocup || null, renda: rv, horas: hv, peso: pv ? Math.round(pv * 10) / 10 : null };
     savePerfil(); hexUI.edit = false; hexUI.draft = null; hexUI.msg = "Dados salvos. O hexágono já usa o seu perfil.";
     renderHome(); window.scrollTo(0, 0);
   });

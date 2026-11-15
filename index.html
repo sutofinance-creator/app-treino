@@ -542,11 +542,11 @@ ol.steps a { color: var(--accent); }
 .rt-homesec { display: grid; gap: 12px; margin-top: 26px; }
 .rt-homesec .wk-head { margin-bottom: 0; }
 .rt-headbtns { margin: 6px 0 4px; }
-.rt-row { grid-template-areas: "main skip" "links links" "act act"; }
+.rt-row { grid-template-areas: "main conc" "links links" "act skip"; }
 .rt-row > .rt-main { grid-area: main; }
-.rt-row > .rt-skip, .rt-row > .rt-side { grid-area: skip; }
-.rt-side { display: grid; justify-items: end; gap: 8px; }
-.rt-conc { color: var(--good); }
+.rt-row > .rt-skip { grid-area: skip; justify-self: end; align-self: center; margin-bottom: 12px; }
+.rt-row > .rt-conc { grid-area: conc; justify-self: end; align-self: start; margin-top: 12px; }
+.rt-conc { font-size: 12px; white-space: nowrap; color: var(--good); }
 .rt-links { grid-area: links; display: flex; flex-wrap: wrap; gap: 6px; padding: 0 10px 10px 124px; }
 .rt-link { background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); font: inherit; font-size: 13px; padding: 5px 10px; cursor: pointer; text-align: left; }
 .rt-link:hover, .rt-link:focus-visible { border-color: var(--accent); color: var(--accent); }
@@ -6121,10 +6121,10 @@ function rtTodayNodes(R, nowMin) {
     if (isNow && !running) tx.appendChild(el("span", "st pend rt-now", "Agora"));
     btn.appendChild(tx); btn.addEventListener("click", go); li.appendChild(btn);
     if (!r.b.part) {
-      const side = el("div", "rt-side");
-      const ok = el("button", "linkbtn rt-skip rt-conc", "Concluir"); ok.type = "button"; ok.id = "rt-conc-" + it.key; ok.addEventListener("click", () => rtConclude(it, true));
+      // Concluir no canto de cima e Pular hoje no de baixo, longe um do outro para não tocar errado
+      const ok = el("button", "linkbtn rt-conc", "Concluir"); ok.type = "button"; ok.id = "rt-conc-" + it.key; ok.addEventListener("click", () => rtConclude(it, true));
       const sk = el("button", "linkbtn rt-skip", "Pular hoje"); sk.type = "button"; sk.id = "rt-skip-" + it.key; sk.addEventListener("click", () => rtSkip(it.key, true));
-      side.append(ok, sk); li.appendChild(side);
+      li.append(ok, sk);
     }
     if (links) {
       const lc = el("div", "rt-links");

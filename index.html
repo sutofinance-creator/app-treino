@@ -2144,7 +2144,7 @@ function renderIntelSetup() {
   main.appendChild(pdfImportSection(renderIntelSetup, sub => enterIntel("estudo", sub.id)));
   const b = el("button", "guide pick"); b.type = "button"; b.id = "intel-empty";
   b.append(el("h3", null, "Começar do zero"), el("p", "note muted", "Cadastre as próprias matérias e use os cronômetros e contadores."));
-  b.addEventListener("click", () => { createIntel(); enterIntel("materias"); });
+  b.addEventListener("click", () => { createIntel(); intelAddOpen = true; enterIntel("materias"); const f = document.getElementById("new-name"); if (f) f.focus(); });
   main.appendChild(b);
 }
 
@@ -2341,7 +2341,7 @@ function studySVG(rows) {
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Horas de estudo por dia nos últimos 14 dias">' + g + '</svg>';
 }
 
-let intelNew = null;
+let intelNew = null, intelAddOpen = false;
 const DOW_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 function planEditor(s) {
   const box = el("div", "plan-ed"); box.id = "plan-" + s.id;
@@ -2472,7 +2472,15 @@ function renderMaterias(main) {
     main.appendChild(c);
   });
 
-  const add = el("section", "guide");
+  if (intelAddOpen) main.insertBefore(intelAddSection(), main.querySelector("#pdf-imp"));
+  else {
+    const nb = el("div", "btns"); nb.id = "subj-new-bar"; const bt = el("button", "btn", "＋ Nova matéria"); bt.type = "button"; bt.id = "subj-new-btn";
+    bt.addEventListener("click", () => { intelAddOpen = true; renderIntel(); const f = document.getElementById("new-name"); if (f) { f.scrollIntoView({ block: "center" }); f.focus(); } });
+    nb.appendChild(bt); main.insertBefore(nb, main.querySelector("#pdf-imp"));
+  }
+}
+function intelAddSection() {
+  const add = el("section", "guide"); add.id = "subj-new";
   add.appendChild(el("h3", null, "Nova matéria"));
   const form = el("form", "inputs two"); form.id = "add-subj";
   const mk = (id, label, ph, mode) => { const f = el("div", "field"); const l = el("label", null, label); l.htmlFor = id; const i = el("input"); i.id = id; i.placeholder = ph; if (mode) i.inputMode = mode; f.append(l, i); form.appendChild(f); return i; };
@@ -2489,12 +2497,13 @@ function renderMaterias(main) {
     e.preventDefault();
     const name = nm.value.trim(); if (!name) { flashAuto(msg, "Dê um nome para a matéria."); return; }
     intel.subjects.push({ id: "s" + Date.now().toString(36), name, unit: us.value, total: Math.round(parseNum(tt.value) || 0), base: Math.round(parseNum(bs.value) || 0), exams: [], plan: null });
-    intelNew = intel.subjects[intel.subjects.length - 1].id;
+    intelNew = intel.subjects[intel.subjects.length - 1].id; intelAddOpen = false;
     saveIntel(); renderIntel();
     const ne = document.getElementById("plan-" + intelNew); if (ne) ne.scrollIntoView({ block: "center" });
   });
-  add.append(form, (() => { const b = el("div", "btns"); b.appendChild(sb); sb.setAttribute("form", "add-subj"); return b; })(), msg);
-  main.appendChild(add);
+  add.append(form, (() => { const b = el("div", "btns"); b.appendChild(sb); sb.setAttribute("form", "add-subj");
+    const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = "add-cancel"; cc.addEventListener("click", () => { intelAddOpen = false; renderIntel(); }); b.appendChild(cc); return b; })(), msg);
+  return add;
 }
 
 /* atualiza o que está contando ao vivo (cronômetro) */
@@ -2913,7 +2922,7 @@ const GRACA_KEY = "stek-graca-v1";
 const GRACA_TABS = [{ id: "gr-hoje", label: "Hoje" }, { id: "gr-progresso", label: "Progresso" }, { id: "gr-rituais", label: "Rituais" }];
 const GR_SUGGEST = [["Rezar o Terço", 30, 1, [0, 1, 2, 3, 4, 5, 6]], ["Leitura da Bíblia", 15, 1, [0, 1, 2, 3, 4, 5, 6]], ["Oração da manhã", 10, 1, [0, 1, 2, 3, 4, 5, 6]]];
 let graca = null;
-const grUI = { msg: "", confirm: null, draft: null, edit: null };
+const grUI = { msg: "", confirm: null, draft: null, edit: null, newOpen: false };
 let grLastLeft = null;
 
 function loadGraca() {
@@ -2983,7 +2992,7 @@ function settleGraca() {
 /* ---------- pendências da tela inicial ---------- */
 function gracaTasks() {
   const iso = todayISO(), g = grData();
-  if (!g.rituals.length) return { setup: true, setupLabel: "Criar ritual", setupText: "Crie seus rituais (oração, leitura, terço) com tempo, dias e quantas vezes por dia.", setupGo: () => enterGraca("gr-rituais"), tasks: [] };
+  if (!g.rituals.length) return { setup: true, setupLabel: "Criar ritual", setupText: "Crie seus rituais (oração, leitura, terço) com tempo, dias e quantas vezes por dia.", setupGo: () => { grUI.newOpen = true; enterGraca("gr-rituais"); }, tasks: [] };
   return { tasks: grTodayPlan(iso).map(r => {
     const need = Math.max(1, r.times || 1), c = grRec(iso, r.id).count || 0;
     return { id: "task-gr-" + r.id, title: r.name, complete: c >= need, pct: Math.min(1, c / need), live: "gr-home",
@@ -3156,7 +3165,7 @@ function renderGrProgress(main) {
   main.appendChild(rs);
 }
 
-function grForm(r, onSave, idp) {
+function grForm(r, onSave, idp, onCancel) {
   const form = el("div", "gr-form");
   const grid = el("div", "inputs two");
   const fld = (id, label, val, mode, ph) => { const f = el("div", "field"); const l = el("label", null, label); l.htmlFor = id; const i = el("input"); i.id = id; i.value = val; if (mode) i.inputMode = mode; if (ph) i.placeholder = ph; f.append(l, i); grid.appendChild(f); return i; };
@@ -3185,13 +3194,23 @@ function grForm(r, onSave, idp) {
     if (times < 1 || times > 20) { flash(msg, "Vezes por dia: de 1 a 20.", "err"); return; }
     onSave({ name, limit: lim, times, days: Array.from(days).sort() });
   });
-  b.appendChild(sv); form.append(b, msg);
+  b.appendChild(sv);
+  if (onCancel) { const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = idp + "cancel"; cc.addEventListener("click", onCancel); b.appendChild(cc); }
+  form.append(b, msg);
   return form;
 }
 
 function renderGrRituais(main) {
   const g = grData();
   head2(main, "Rituais", "Crie e ajuste seus rituais: tempo, dias e quantas vezes por dia.");
+  if (grUI.msg) { const f = el("p", "note"); flash(f, grUI.msg, "ok"); main.appendChild(f); grUI.msg = ""; }
+  if (grUI.newOpen) main.appendChild(grNewSection(g));
+  else {
+    const nb = el("div", "btns"); const bt = el("button", "btn", "＋ Novo ritual"); bt.type = "button"; bt.id = "gr-new-btn";
+    bt.addEventListener("click", () => { grUI.newOpen = true; renderGraca(); const f = document.getElementById("grn-name"); if (f) { f.scrollIntoView({ block: "center" }); f.focus(); } });
+    nb.appendChild(bt); main.appendChild(nb);
+    if (!g.rituals.length) main.appendChild(el("p", "note muted", "Nenhum ritual ainda. Toque em Novo ritual para criar o primeiro."));
+  }
   g.rituals.forEach(r => {
     const c = el("section", "guide"); c.id = "gr-edit-" + r.id;
     c.appendChild(el("h3", null, r.name));
@@ -3207,9 +3226,10 @@ function renderGrRituais(main) {
     if (grUI.confirm === r.id) c.appendChild(el("p", "note muted", "Toque de novo para remover. O histórico desse ritual deixa de aparecer."));
     main.appendChild(c);
   });
+}
+function grNewSection(g) {
   const add = el("section", "guide"); add.id = "gr-new";
   add.appendChild(el("h3", null, "Novo ritual"));
-  if (grUI.msg) { const f = el("p", "note"); flash(f, grUI.msg, "ok"); add.appendChild(f); grUI.msg = ""; }
   const sug = el("div", "chips"); sug.setAttribute("aria-label", "Sugestões");
   GR_SUGGEST.filter(([n]) => !g.rituals.some(r => r.name === n)).forEach(([n, lim, times, days], i) => {
     const c = el("button", "gchip", n + " · " + lim + " min"); c.type = "button"; c.id = "gr-sug-" + i;
@@ -3220,10 +3240,9 @@ function renderGrRituais(main) {
   add.appendChild(grForm(grUI.draft || {}, v => {
     const gg = ensureGraca();
     gg.rituals.push(Object.assign({ id: "r" + Date.now().toString(36), created: todayISO() }, v));
-    grUI.draft = null; saveGraca(); grUI.msg = v.name + " criado. Ele já aparece na aba Hoje nos dias escolhidos."; renderGraca();
-    const n = document.getElementById("gr-new"); if (n) n.scrollIntoView({ block: "start" });
-  }, "grn-"));
-  main.appendChild(add);
+    grUI.draft = null; grUI.newOpen = false; saveGraca(); grUI.msg = v.name + " criado. Ele já aparece na aba Hoje nos dias escolhidos."; renderGraca(); window.scrollTo(0, 0);
+  }, "grn-", () => { grUI.newOpen = false; grUI.draft = null; renderGraca(); }));
+  return add;
 }
 
 /* ======================= Módulo Missões ======================= */

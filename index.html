@@ -486,6 +486,9 @@ ol.steps a { color: var(--accent); }
 
 /* ---------- Missões: busca, tags, cronômetro por missão ---------- */
 .ms-search { margin: 4px 0 12px; }
+.ms-timebtn { font-size: 13px; }
+.ms-timefields { display: grid; gap: 6px; }
+.ms-timefields .note { margin: 0; }
 .field textarea { width: 100%; font: 400 16px/1.5 var(--font-body); color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); padding: 8px 10px; resize: vertical; min-height: 140px; }
 .field textarea:focus { border-color: var(--accent); box-shadow: 0 0 12px rgba(166, 107, 255, .4); outline: none; }
 .kb-card { display: grid; gap: 8px; }
@@ -701,7 +704,7 @@ function renderTabs() {
     home: { tabs: HOME_TABS, cur: state.htab, label: "Telas do início", set: id => { state.htab = id; }, draw: () => renderHome() },
     forca: { tabs: TABS, cur: state.tab, label: "Treinos do módulo Força", set: id => { state.tab = id; }, draw: () => renderMain() },
     intel: { tabs: INTEL_TABS, cur: state.itab, label: "Seções do módulo Inteligência", set: id => { state.itab = id; if (id === "estudo") state.idate = todayISO(); }, draw: () => renderIntel() },
-    ms: { tabs: MS_TABS, cur: state.mtab, label: "Seções do módulo Missões", set: id => { state.mtab = id; if (id === "ms-hoje") state.mdate = todayISO(); msUI.confirm = null; msUI.open = null; msUI.closing = null; msUI.editing = null; msUI.waiting = null; kbUI.confirm = null; kbUI.editing = null; }, draw: () => renderMissoes() },
+    ms: { tabs: MS_TABS, cur: state.mtab, label: "Seções do módulo Missões", set: id => { state.mtab = id; if (id === "ms-hoje") state.mdate = todayISO(); msUI.confirm = null; msUI.open = null; msUI.closing = null; msUI.editing = null; msUI.waiting = null; msUI.timeEdit = null; kbUI.confirm = null; kbUI.editing = null; }, draw: () => renderMissoes() },
     graca: { tabs: GRACA_TABS, cur: state.gtab, label: "Seções do módulo Graça", set: id => { state.gtab = id; if (id === "gr-hoje") state.gdate = todayISO(); grUI.confirm = null; }, draw: () => renderGraca() },
     est: { tabs: STAM_TABS, cur: state.stab, label: "Seções do módulo Estamina", set: id => { state.stab = id; if (id === "est-hoje") state.sdate = todayISO(); }, draw: () => renderStamina() },
     rotina: { tabs: ROT_TABS, cur: state.rtab, label: "Seções da Rotina", set: id => { state.rtab = id; }, draw: () => renderRotina() },
@@ -3475,7 +3478,7 @@ const MS_PRI_RANK = { alta: 0, media: 1, baixa: 2 };
 const MS_GERAL = "_geral";
 const MS_REC = [["", "Não repete"], ["util", "Todo dia útil"], ["diaria", "Todos os dias"], ["semanal", "Toda semana"], ["mensal", "Todo mês"]];
 let mis = null;
-const msUI = { open: null, closing: null, closeDraft: null, draft: null, period: "semana", proj: "", msg: "", confirm: null, q: "", newAtt: [], attOpen: null, newOpen: false, dayNewOpen: false, editing: null, waiting: null };
+const msUI = { open: null, closing: null, closeDraft: null, draft: null, period: "semana", proj: "", msg: "", confirm: null, q: "", newAtt: [], attOpen: null, newOpen: false, dayNewOpen: false, editing: null, waiting: null, timeEdit: null, timeDraft: null };
 // fecha o formulário de missão nova; arquivos já enviados para o rascunho saem do servidor
 function msCloseNew() { const a = msUI.newAtt; msUI.newAtt = []; msUI.newOpen = false; msDropFiles(a); }
 
@@ -3548,6 +3551,79 @@ function msStartMission(tid) {
   saveMs();
 }
 function msPauseMission() { msStop(true); msResumeWork(); saveMs(); }
+/* ---------- Ajustar o tempo da missão (esqueceu o cronômetro) ---------- */
+// aceita "40", "40min", "1h", "1h20", "1:20", "1,5h" → minutos
+function parseDurMin(v) {
+  const t = String(v || "").trim().toLowerCase().replace(/\s+/g, ""); if (!t) return null; let m;
+  if ((m = t.match(/^(\d+):(\d{1,2})$/))) return +m[1] * 60 + +m[2];
+  if ((m = t.match(/^(\d+(?:[.,]\d+)?)h(?:(\d{1,2})(?:m|min)?)?$/))) return Math.round(parseFloat(m[1].replace(",", ".")) * 60) + (m[2] ? +m[2] : 0);
+  if ((m = t.match(/^(\d+)(?:m|min)?$/))) return +m[1];
+  return null;
+}
+function fmtDurIn(sec) { const m = Math.round(sec / 60), h = Math.floor(m / 60); return h ? h + "h" + (m % 60 ? String(m % 60).padStart(2, "0") : "") : m + "min"; }
+// deixa o total da missão em "sec": a diferença entra (ou sai) no dia "iso". Ao somar, pode tirar do trabalho geral do mesmo dia,
+// para não contar duas vezes o tempo em que o cronômetro geral estava rodando.
+function msSetTaskTime(x, sec, iso, fromGeral) {
+  const g = ensureMs();
+  if (g.timer && (g.timer.tid === x.id || (fromGeral && g.timer.tid === MS_GERAL))) { msStop(true); msResumeWork(); }
+  const diff = Math.round(sec) - msTaskSec(x.id); if (!diff) return 0;
+  g.days[iso] = g.days[iso] || {};
+  if (diff > 0) {
+    if (fromGeral) { const take = Math.min(diff, g.days[iso][MS_GERAL] || 0); if (take) g.days[iso][MS_GERAL] -= take; }
+    g.days[iso][x.id] = (g.days[iso][x.id] || 0) + diff;
+  } else {
+    let left = -diff;
+    const ds = Object.keys(g.days).filter(d => g.days[d] && g.days[d][x.id]).sort((a, b) => a === iso ? -1 : b === iso ? 1 : b.localeCompare(a));
+    for (const d of ds) { const v = g.days[d][x.id], cut = Math.min(v, left); g.days[d][x.id] = v - cut; if (!g.days[d][x.id]) delete g.days[d][x.id]; left -= cut; if (!left) break; }
+  }
+  x.upd = Date.now(); saveMs();
+  return diff;
+}
+// campo "Tempo que levou" + opção de descontar do trabalho geral do dia; st guarda o que foi digitado
+function msTimeFields(x, idp, iso, st) {
+  const w = el("div", "ms-timefields");
+  const f = el("div", "field"); const l = el("label", null, "Tempo que levou"); l.htmlFor = idp + "time";
+  const i = el("input"); i.id = idp + "time"; i.placeholder = "Ex.: 40 ou 1h20"; i.autocomplete = "off";
+  if (st.time == null) st.time = msTaskSec(x.id) >= 60 ? fmtDurIn(msTaskSec(x.id)) : "";
+  i.value = st.time; i.addEventListener("input", () => { st.time = i.value; });
+  f.append(l, i); w.appendChild(f);
+  w.appendChild(el("p", "note muted", "Registrado no cronômetro: " + fmtHM(msTaskSec(x.id)) + ". Se esqueceu de apertar, coloque o tempo aproximado (em minutos, ou como 1h20)."));
+  const ger = (msData().days[iso] || {})[MS_GERAL] || 0;
+  if (ger) {
+    if (st.fromGeral == null) st.fromGeral = true;
+    const lab = el("label", "theory"); lab.htmlFor = idp + "fromger";
+    const cb = el("input"); cb.type = "checkbox"; cb.id = idp + "fromger"; cb.checked = st.fromGeral; cb.addEventListener("change", () => { st.fromGeral = cb.checked; });
+    lab.append(cb, el("span", null, "Tirar o tempo a mais do trabalho geral de " + (iso === todayISO() ? "hoje" : fmtDate(iso).slice(0, 5)) + " (" + fmtHM(ger) + "), porque o cronômetro geral estava rodando"));
+    w.appendChild(lab);
+  } else st.fromGeral = false;
+  return w;
+}
+// aplica o que foi digitado; devolve mensagem de erro ou ""
+function msApplyTime(x, st, iso) {
+  const v = (st.time || "").trim(); if (!v) return "";
+  const min = parseDurMin(v); if (min == null || min > 24 * 60) return "Não entendi o tempo. Use minutos (ex.: 40) ou horas e minutos (ex.: 1h20).";
+  msSetTaskTime(x, min * 60, iso, !!st.fromGeral); return "";
+}
+function msTimeForm(x, idp, iso) {
+  const st = msUI.timeDraft && msUI.timeDraft.id === x.id ? msUI.timeDraft : (msUI.timeDraft = { id: x.id });
+  const box = el("div", "add-box"); box.id = idp + "timebox";
+  box.append(el("p", "plan-t", "Ajustar tempo"), msTimeFields(x, idp, iso, st));
+  const msg = el("p", "note"), b = el("div", "btns");
+  const ok = el("button", "btn", "Salvar"); ok.type = "button"; ok.id = idp + "timeok";
+  ok.addEventListener("click", () => {
+    if (!(st.time || "").trim()) { flash(msg, "Coloque o tempo total da missão.", "err"); return; }
+    const err = msApplyTime(x, st, iso); if (err) { flash(msg, err, "err"); return; }
+    msUI.timeEdit = null; msUI.timeDraft = null; msUI.msg = "Tempo de “" + x.title + "” ajustado para " + fmtHM(msTaskSec(x.id)) + "."; renderMissoes();
+  });
+  const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = idp + "timecancel"; cc.addEventListener("click", () => { msUI.timeEdit = null; msUI.timeDraft = null; renderMissoes(); });
+  b.append(ok, cc); box.append(b, msg);
+  return box;
+}
+function msTimeBtn(x, idp) {
+  const a = el("button", "linkbtn ms-timebtn", "Ajustar tempo"); a.type = "button"; a.id = idp + "timebtn-" + x.id;
+  a.addEventListener("click", () => { msUI.timeEdit = x.id; msUI.timeDraft = null; msUI.closing = null; msUI.editing = null; msUI.waiting = null; renderMissoes(); const t = document.getElementById(idp + x.id + "-time"); if (t) { t.scrollIntoView({ block: "center" }); t.focus(); } });
+  return a;
+}
 function msWorkStart() { cronAsk(); const g = ensureMs(); g.work = true; msResumeWork(); saveMs(); }
 function msWorkPause() { const g = ensureMs(); msStop(true); g.work = false; saveMs(); }
 function msMissionRunning() { const t = msData().timer; return t && t.tid !== MS_GERAL ? t.tid : null; }
@@ -4049,7 +4125,9 @@ function msCard(x, n, iso) {
   line.appendChild(tv);
   if (x.est && spent > x.est * 60) line.appendChild(msChip("Passou da estimativa", "pend"));
   if (!open && x.status === "feita" && x.quality) line.appendChild(el("span", "last ms-stars", msStars(x.quality) + (x.rework ? " · com retrabalho" : "")));
+  if ((!open || iso <= today) && msUI.timeEdit !== x.id && msUI.closing !== x.id) line.appendChild(msTimeBtn(x, "msh-"));
   card.appendChild(line);
+  if (msUI.timeEdit === x.id) { card.appendChild(msTimeForm(x, "msh-" + x.id + "-", open ? (iso <= today ? iso : today) : x.closed)); return card; }
   if (!open && x.closeNote) card.appendChild(el("p", "ex-note", x.closeNote));
 
   if (open && msUI.closing === x.id) { card.appendChild(msCloseForm(x, iso)); return card; }
@@ -4117,12 +4195,15 @@ function msCloseForm(x, iso) {
   const ni = el("input"); ni.id = "ms-note"; ni.value = dr.note; ni.placeholder = dr.res === "feita" ? "Ex.: cliente aprovou de primeira" : "Ex.: depende de retorno do cliente";
   ni.addEventListener("input", () => { dr.note = ni.value; });
   nf.append(nl, ni); f.appendChild(nf);
+  dr.tm = dr.tm || {};
+  f.appendChild(msTimeFields(x, "ms-close-", iso && iso <= todayISO() ? iso : todayISO(), dr.tm));
   if (x.rec && x.rec.type) f.appendChild(el("p", "note muted", "Missão recorrente: ao salvar, a próxima (" + msRecLabel(x.rec).toLowerCase() + ") é criada sozinha."));
   const msg = el("p", "note");
   const b = el("div", "btns");
   const sv = el("button", "btn", "Salvar"); sv.type = "button"; sv.id = "ms-close-save";
   sv.addEventListener("click", () => {
     if (dr.res === "feita" && !dr.q) { flash(msg, "Dê uma nota de 1 a 5 para a qualidade.", "err"); return; }
+    const terr = msApplyTime(x, dr.tm || {}, iso && iso <= todayISO() ? iso : todayISO()); if (terr) { flash(msg, terr, "err"); return; }
     const extra = dr.res === "feita" ? { quality: dr.q, rework: !!dr.rework, closeNote: dr.note.trim() } : { closeNote: dr.note.trim() };
     if (dr.res !== "feita") { delete x.quality; delete x.rework; }
     const nx = msClose(x, dr.res, extra, iso);
@@ -4264,7 +4345,7 @@ function msRow(x) {
   if (open && (x.plan || []).includes(today) && !x.wait) meta.appendChild(msChip("No dia de hoje", "run"));
   if (msMissionRunning() === x.id) meta.appendChild(msChip("▶ rodando", "run"));
   head.appendChild(meta);
-  head.addEventListener("click", () => { msUI.open = isOpen ? null : x.id; msUI.confirm = null; msUI.editing = null; renderMissoes(); });
+  head.addEventListener("click", () => { msUI.open = isOpen ? null : x.id; msUI.confirm = null; msUI.editing = null; msUI.timeEdit = null; renderMissoes(); });
   row.appendChild(head);
   if (!isOpen) return row;
   const body = el("div", "ms-row-b");
@@ -4276,9 +4357,11 @@ function msRow(x) {
     body.appendChild(box); row.appendChild(body); return row;
   }
   if (open && msUI.waiting === x.id) { body.appendChild(msWaitForm(x, "msl-" + x.id + "-")); row.appendChild(body); return row; }
+  if (msUI.timeEdit === x.id) { body.appendChild(msTimeForm(x, "msl-" + x.id + "-", open ? today : x.closed)); row.appendChild(body); return row; }
+  const totLine = () => { const d = el("div", "meta"); d.append(el("span", "ex-note", "Tempo total: " + fmtHM(msTaskSec(x.id)) + (x.est ? " de " + fmtHM(x.est * 60) + " estimados" : "")), msTimeBtn(x, "msl-")); return d; };
   if (open) {
     if (x.notes) body.appendChild(el("p", "ex-note", x.notes));
-    body.appendChild(el("p", "ex-note", "Tempo total: " + fmtHM(msTaskSec(x.id)) + (x.est ? " de " + fmtHM(x.est * 60) + " estimados" : "")));
+    body.appendChild(totLine());
     const wd = msWaitDays(x); if (wd || x.wait) body.appendChild(el("p", "ex-note", "Esperando terceiros: " + wd + (wd === 1 ? " dia" : " dias") + (x.wait ? " (desde " + fmtDate(x.wait.since).slice(0, 5) + (x.wait.who ? ", " + x.wait.who : "") + ")" : " no total") + "."));
     if ((x.att || []).length) body.appendChild(msAttachBox(() => x.att, () => {}, "msv-" + x.id + "-", false));
     const b = el("div", "btns");
@@ -4292,7 +4375,7 @@ function msRow(x) {
   } else {
     if (x.closeNote) body.appendChild(el("p", "ex-note", x.closeNote));
     if ((x.att || []).length) body.appendChild(msAttachBox(() => x.att, () => {}, "msc-" + x.id + "-", false));
-    body.appendChild(el("p", "ex-note", "Tempo total: " + fmtHM(msTaskSec(x.id)) + (x.est ? " de " + fmtHM(x.est * 60) + " estimados" : "")));
+    body.appendChild(totLine());
     const b = el("div", "btns"); const re = el("button", "btn ghost", "Reabrir"); re.type = "button"; re.id = "ms-lreopen-" + x.id; re.addEventListener("click", () => msReopen(x)); b.append(msEditBtn(x, "ms-led-"), re); body.appendChild(b);
   }
   const del = el("button", "btn danger", msUI.confirm === x.id ? "Confirmar exclusão" : "Excluir missão"); del.type = "button"; del.id = "ms-del-" + x.id;

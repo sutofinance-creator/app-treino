@@ -691,7 +691,7 @@ function renderTabs() {
     home: { tabs: HOME_TABS, cur: state.htab, label: "Telas do início", set: id => { state.htab = id; }, draw: () => renderHome() },
     forca: { tabs: TABS, cur: state.tab, label: "Treinos do módulo Força", set: id => { state.tab = id; }, draw: () => renderMain() },
     intel: { tabs: INTEL_TABS, cur: state.itab, label: "Seções do módulo Inteligência", set: id => { state.itab = id; if (id === "estudo") state.idate = todayISO(); }, draw: () => renderIntel() },
-    ms: { tabs: MS_TABS, cur: state.mtab, label: "Seções do módulo Missões", set: id => { state.mtab = id; if (id === "ms-hoje") state.mdate = todayISO(); msUI.confirm = null; msUI.open = null; msUI.closing = null; }, draw: () => renderMissoes() },
+    ms: { tabs: MS_TABS, cur: state.mtab, label: "Seções do módulo Missões", set: id => { state.mtab = id; if (id === "ms-hoje") state.mdate = todayISO(); msUI.confirm = null; msUI.open = null; msUI.closing = null; msUI.editing = null; }, draw: () => renderMissoes() },
     graca: { tabs: GRACA_TABS, cur: state.gtab, label: "Seções do módulo Graça", set: id => { state.gtab = id; if (id === "gr-hoje") state.gdate = todayISO(); grUI.confirm = null; }, draw: () => renderGraca() },
     est: { tabs: STAM_TABS, cur: state.stab, label: "Seções do módulo Estamina", set: id => { state.stab = id; if (id === "est-hoje") state.sdate = todayISO(); }, draw: () => renderStamina() },
     rotina: { tabs: ROT_TABS, cur: state.rtab, label: "Seções da Rotina", set: id => { state.rtab = id; }, draw: () => renderRotina() },
@@ -3465,7 +3465,7 @@ const MS_PRI_RANK = { alta: 0, media: 1, baixa: 2 };
 const MS_GERAL = "_geral";
 const MS_REC = [["", "Não repete"], ["util", "Todo dia útil"], ["diaria", "Todos os dias"], ["semanal", "Toda semana"], ["mensal", "Todo mês"]];
 let mis = null;
-const msUI = { open: null, closing: null, closeDraft: null, draft: null, period: "semana", proj: "", msg: "", confirm: null, q: "", newAtt: [], attOpen: null, newOpen: false, dayNewOpen: false };
+const msUI = { open: null, closing: null, closeDraft: null, draft: null, period: "semana", proj: "", msg: "", confirm: null, q: "", newAtt: [], attOpen: null, newOpen: false, dayNewOpen: false, editing: null };
 // fecha o formulário de missão nova; arquivos já enviados para o rascunho saem do servidor
 function msCloseNew() { const a = msUI.newAtt; msUI.newAtt = []; msUI.newOpen = false; msDropFiles(a); }
 
@@ -3949,6 +3949,15 @@ function renderMsHoje(main) {
   }
 }
 
+function msSaveEdit(x) { return v => { Object.assign(x, v); if (!v.rec) delete x.rec; msUI.editing = null; msUI.open = null; msUI.msg = "Missão salva."; msTouch(x); renderMissoes(); }; }
+function msEditBtn(x, idp) {
+  const ed = el("button", "btn ghost", "Editar"); ed.type = "button"; ed.id = idp + x.id;
+  ed.addEventListener("click", () => {
+    msUI.editing = x.id; msUI.closing = null; msUI.confirm = null; renderMissoes();
+    const t = document.getElementById((idp === "ms-ed-" ? "msh-ed-" : "mse-") + x.id + "-title"); if (t) { t.scrollIntoView({ block: "center" }); t.focus(); }
+  });
+  return ed;
+}
 function msCard(x, n, iso) {
   const today = todayISO(), open = x.status === "aberta";
   const running = msMissionRunning() === x.id;
@@ -3988,6 +3997,11 @@ function msCard(x, n, iso) {
   if (!open && x.closeNote) card.appendChild(el("p", "ex-note", x.closeNote));
 
   if (open && msUI.closing === x.id) { card.appendChild(msCloseForm(x, iso)); return card; }
+  if (msUI.editing === x.id) {
+    const box = el("div", "add-box"); box.id = "ms-edbox-" + x.id;
+    box.append(el("p", "plan-t", "Editar missão"), msForm(x, msSaveEdit(x), "msh-ed-" + x.id + "-", false, null, () => { msUI.editing = null; renderMissoes(); }));
+    card.appendChild(box); return card;
+  }
   const b = el("div", "btns");
   if (open) {
     if (iso <= today) {
@@ -3998,6 +4012,7 @@ function msCard(x, n, iso) {
     const ab = el("button", "btn ghost", msUI.attOpen === x.id ? "Fechar anexos" : "Anexos"); ab.type = "button"; ab.id = "ms-attbtn-" + x.id;
     ab.addEventListener("click", () => { msUI.attOpen = msUI.attOpen === x.id ? null : x.id; renderMissoes(); const c = document.getElementById("ms-" + x.id); if (c) c.scrollIntoView({ block: "nearest" }); });
     b.appendChild(ab);
+    b.appendChild(msEditBtn(x, "ms-ed-"));
     if ((x.plan || []).includes(iso)) {
       const rm = el("button", "btn ghost", "Tirar do dia"); rm.type = "button"; rm.id = "ms-unplan-" + x.id;
       rm.addEventListener("click", () => { x.plan = (x.plan || []).filter(q => q !== iso); msTouch(x); renderMissoes(); });
@@ -4006,7 +4021,7 @@ function msCard(x, n, iso) {
   } else {
     const re = el("button", "btn ghost", "Reabrir"); re.type = "button"; re.id = "ms-reopen-" + x.id;
     re.addEventListener("click", () => msReopen(x));
-    b.appendChild(re);
+    b.append(re, msEditBtn(x, "ms-ed-"));
   }
   card.appendChild(b);
   return card;
@@ -4131,7 +4146,7 @@ function msForm(v, onSave, idp, compact, extra, onCancel) {
 
 function renderMsLista(main) {
   const g = msData(), today = todayISO();
-  head2(main, "Missões", "Tudo o que está aberto, por prazo. Toque numa missão para editar.");
+  head2(main, "Missões", "Tudo o que está aberto, por prazo. Toque numa missão para ver os detalhes.");
   if (msUI.msg) { const f = el("p", "note"); flash(f, msUI.msg, "ok"); main.appendChild(f); msUI.msg = ""; }
   msSearch(main, "Pesquisar missões");
   const projs = msProjects();
@@ -4188,27 +4203,33 @@ function msRow(x) {
   if (open && (x.plan || []).includes(today)) meta.appendChild(msChip("No dia de hoje", "run"));
   if (msMissionRunning() === x.id) meta.appendChild(msChip("▶ rodando", "run"));
   head.appendChild(meta);
-  head.addEventListener("click", () => { msUI.open = isOpen ? null : x.id; msUI.confirm = null; renderMissoes(); });
+  head.addEventListener("click", () => { msUI.open = isOpen ? null : x.id; msUI.confirm = null; msUI.editing = null; renderMissoes(); });
   row.appendChild(head);
   if (!isOpen) return row;
   const body = el("div", "ms-row-b");
-  if (open) {
-    body.appendChild(el("p", "ex-note", "Tempo total: " + fmtHM(msTaskSec(x.id)) + (x.est ? " de " + fmtHM(x.est * 60) + " estimados" : "")));
+  if (msUI.editing === x.id) {
     const att = msAttachBox(() => { const t = msTask(x.id) || x; return t.att || (t.att = []); }, () => msTouch(msTask(x.id) || x), "mse-" + x.id + "-", true);
     att.appendChild(el("p", "note muted", "Os anexos são salvos na hora."));
-    body.appendChild(msForm(x, v => { Object.assign(x, v); if (!v.rec) delete x.rec; msUI.open = null; msUI.msg = "Missão salva."; msTouch(x); renderMissoes(); }, "mse-" + x.id + "-", false, att));
+    const box = el("div", "add-box"); box.id = "ms-ledbox-" + x.id;
+    box.append(el("p", "plan-t", "Editar missão"), msForm(x, msSaveEdit(x), "mse-" + x.id + "-", false, att, () => { msUI.editing = null; renderMissoes(); }));
+    body.appendChild(box); row.appendChild(body); return row;
+  }
+  if (open) {
+    if (x.notes) body.appendChild(el("p", "ex-note", x.notes));
+    body.appendChild(el("p", "ex-note", "Tempo total: " + fmtHM(msTaskSec(x.id)) + (x.est ? " de " + fmtHM(x.est * 60) + " estimados" : "")));
+    if ((x.att || []).length) body.appendChild(msAttachBox(() => x.att, () => {}, "msv-" + x.id + "-", false));
     const b = el("div", "btns");
     const inToday = (x.plan || []).includes(today);
     const pt = el("button", "btn ghost", inToday ? "Tirar de hoje" : "Fazer hoje"); pt.type = "button"; pt.id = "ms-today-" + x.id;
     pt.addEventListener("click", () => { x.plan = inToday ? (x.plan || []).filter(q => q !== today) : (x.plan || []).concat(today); msTouch(x); renderMissoes(); });
     const fin = el("button", "btn", "Concluir"); fin.type = "button"; fin.id = "ms-lfin-" + x.id;
     fin.addEventListener("click", () => { if (!inToday) x.plan = (x.plan || []).concat(today); msUI.closing = x.id; msTouch(x); enterMissoes("ms-hoje", x.id); });
-    b.append(pt, fin); body.appendChild(b);
+    b.append(msEditBtn(x, "ms-led-"), pt, fin); body.appendChild(b);
   } else {
     if (x.closeNote) body.appendChild(el("p", "ex-note", x.closeNote));
     if ((x.att || []).length) body.appendChild(msAttachBox(() => x.att, () => {}, "msc-" + x.id + "-", false));
     body.appendChild(el("p", "ex-note", "Tempo total: " + fmtHM(msTaskSec(x.id)) + (x.est ? " de " + fmtHM(x.est * 60) + " estimados" : "")));
-    const b = el("div", "btns"); const re = el("button", "btn ghost", "Reabrir"); re.type = "button"; re.id = "ms-lreopen-" + x.id; re.addEventListener("click", () => msReopen(x)); b.appendChild(re); body.appendChild(b);
+    const b = el("div", "btns"); const re = el("button", "btn ghost", "Reabrir"); re.type = "button"; re.id = "ms-lreopen-" + x.id; re.addEventListener("click", () => msReopen(x)); b.append(msEditBtn(x, "ms-led-"), re); body.appendChild(b);
   }
   const del = el("button", "btn danger", msUI.confirm === x.id ? "Confirmar exclusão" : "Excluir missão"); del.type = "button"; del.id = "ms-del-" + x.id;
   del.addEventListener("click", () => {

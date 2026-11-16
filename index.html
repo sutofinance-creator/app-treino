@@ -2744,14 +2744,23 @@ function capFirst(s) { return s.replace(/^./, c => c.toUpperCase()); }
 function sessionLen(pid) { return pid === "x4" ? 2400 : (pid === "med" || pid === "resp") ? Math.round(stam().goals.focusMin * 60) : 0; }
 function stCap(t) { const L = sessionLen(t.pid); return L ? L - ((t.startPos || 0) % L) : Infinity; }
 function stRec(iso, pid) { const d = stam().days[iso]; return (d && d[pid]) || { sec: 0 }; }
+// O cronômetro segue contando depois do fim da sessão (40 min do 4x4, minutos de foco) até você pausar.
+// O tempo além da sessão fica em "over": no 4x4 ele conta 1 para 1 (o bônus dos tiros vale só para a sessão de 40 min).
 function stRun(iso, pid) {
   const t = stam().timer; if (!t || (pid && t.pid !== pid)) return 0;
-  const [a, b] = dayBounds(iso); const s = Math.max(a, t.startedAt), e = Math.min(b, Date.now(), t.startedAt + stCap(t) * 1000);
+  const [a, b] = dayBounds(iso); const s = Math.max(a, t.startedAt), e = Math.min(b, Date.now());
   return e > s ? Math.floor((e - s) / 1000) : 0;
+}
+function stOver(iso, pid) {
+  let o = stRec(iso, pid).over || 0;
+  const t = stam().timer;
+  if (t && t.pid === pid && isFinite(stCap(t))) { const [a, b] = dayBounds(iso), s = Math.max(a, t.startedAt + stCap(t) * 1000), e = Math.min(b, Date.now()); if (e > s) o += Math.floor((e - s) / 1000); }
+  return o;
 }
 function stSec(iso, pid) { return stRec(iso, pid).sec + stRun(iso, pid); }
 function stKindSec(iso, kind) { return PRACTICES.filter(p => p.kind === kind).reduce((a, p) => a + stSec(iso, p.id), 0); }
-function stEqMin(iso) { return PRACTICES.reduce((a, p) => a + p.factor * stSec(iso, p.id) / 60, 0); }
+function stEqMin(iso) { return PRACTICES.reduce((a, p) => { const sec = stSec(iso, p.id), ov = p.factor !== 1 ? Math.min(sec, stOver(iso, p.id)) : 0; return a + (p.factor * (sec - ov) + (p.kind === "cardio" ? ov : 0)) / 60; }, 0); }
+function weekRaw(iso) { return weekDays(weekStart(iso)).reduce((a, d) => a + stKindSec(d, "cardio") / 60, 0); }
 function weekDays(start) { const [y, m, d] = start.split("-").map(Number); return Array.from({ length: 7 }, (_, i) => ymd(new Date(y, m - 1, d + i))); }
 function weekEq(iso, onlyBefore) { return weekDays(weekStart(iso)).filter(d => !onlyBefore || d < iso).reduce((a, d) => a + stEqMin(d), 0); }
 function focusStreak(iso) {
@@ -2789,37 +2798,41 @@ function cardioPlan(iso, sel) {
 }
 
 /* ---------- cronômetro ---------- */
-function stAddTime(a, b, pid) {
+function stAddTime(a, b, pid, over) {
   let x = a;
   while (x < b) {
     const dt = new Date(x); const next = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + 1).getTime(); const e = Math.min(b, next);
     const iso = ymd(dt); stamina.days[iso] = stamina.days[iso] || {};
     const r = stamina.days[iso][pid] = stamina.days[iso][pid] || { sec: 0 };
-    r.sec += Math.round((e - x) / 1000); x = e;
+    const sec = Math.round((e - x) / 1000); r.sec += sec; if (over) r.over = (r.over || 0) + sec; x = e;
   }
+}
+// grava a sessão até "end": a parte dentro da sessão e o tempo extra depois dela
+function stCommit(t, end) {
+  const c = stCap(t), ce = isFinite(c) ? Math.min(end, t.startedAt + c * 1000) : end;
+  stAddTime(t.startedAt, ce, t.pid); if (end > ce) stAddTime(ce, end, t.pid, true);
 }
 function stStart(pid) {
   cronAsk(); msHoldMission();
   const s = ensureStamina();
   if (s.timer) stStop(true);
-  s.timer = { pid, startedAt: Date.now(), startPos: stRec(todayISO(), pid).sec };
+  const rc = stRec(todayISO(), pid); s.timer = { pid, startedAt: Date.now(), startPos: Math.max(0, rc.sec - (rc.over || 0)) };
   stLastPhase = null; stSoundInit(); if (sessionLen(pid)) stWakeOn();
   saveStamina();
 }
 function stStop(silent) {
   const t = stamina && stamina.timer; if (!t) return;
-  stAddTime(t.startedAt, Math.min(Date.now(), t.startedAt + stCap(t) * 1000), t.pid);
+  stCommit(t, Date.now());
   stamina.timer = null; stWakeOff();
   if (!silent) saveStamina();
 }
-function settleStamina() {
-  if (cronBusy) return false;
-  const t = stamina && stamina.timer; if (!t || Date.now() < t.startedAt + stCap(t) * 1000) return false;
-  stStop(true); saveStamina(); return true;
-}
+function settleStamina() { return false; } // não para mais sozinho: o fim da sessão só toca o aviso
+let stEndRung = null; // início do cronômetro cujo fim de sessão já foi avisado
+function stEnded(t) { const c = stCap(t); return isFinite(c) && Date.now() >= t.startedAt + c * 1000; }
 function guideState(t) {
   const L = sessionLen(t.pid); if (!L) return null;
-  const pos = ((t.startPos || 0) % L) + Math.min((Date.now() - t.startedAt) / 1000, stCap(t));
+  const pos = ((t.startPos || 0) % L) + (Date.now() - t.startedAt) / 1000;
+  if (pos >= L) return { i: "extra", name: "Tempo extra", lvl: "leve", left: pos - L, extra: true, next: "Sessão de " + Math.round(L / 60) + " min concluída. O cronômetro continua até você pausar.", pct: 1 };
   if (t.pid === "x4") {
     let acc = 0;
     for (let i = 0; i < X4_PHASES.length; i++) {
@@ -2905,7 +2918,7 @@ function renderStHoje(main) {
     stTile("Sequência", streak, streak === 1 ? "dia de foco na meta" : "dias de foco na meta", streak ? "good" : ""));
   g.appendChild(tiles);
   const pb = el("div", "goalbar"); const pf = el("span"); pf.style.width = Math.min(100, wk / goal * 100) + "%"; pf.dataset.live = "st-weekbar"; pb.appendChild(pf); g.appendChild(pb);
-  g.appendChild(el("p", "note muted", "Minutos equivalentes: os de intensidade vigorosa contam em dobro, como na recomendação da OMS."));
+  g.appendChild(el("p", "note muted", "Cardio em minutos equivalentes (" + Math.floor(weekRaw(iso)) + " min no relógio nesta semana): os minutos vigorosos contam em dobro, como na recomendação da OMS. No 4x4, são os 16 min de tiros (40 min valem 56)."));
   main.appendChild(g);
   if (stUI.msg) { const f = el("p", "note"); flash(f, stUI.msg, "ok"); main.appendChild(f); stUI.msg = ""; }
 
@@ -2972,7 +2985,7 @@ function buildGuide(t) {
     b.append(el("span", "breath-dot"), el("span", "breath-t", gs.name));
     w.appendChild(b);
   } else w.appendChild(el("span", "gr-phase", gs.name));
-  const left = el("span", "gr-left", fmtMS(gs.left)); left.id = "st-gleft";
+  const left = el("span", "gr-left", (gs.extra ? "+" : "") + fmtMS(gs.left)); left.id = "st-gleft";
   const nx = el("span", "gr-next", gs.next); nx.id = "st-gnext";
   const pb = el("div", "goalbar thin"); const pf = el("span"); pf.id = "st-gbar"; pf.style.width = Math.min(100, gs.pct * 100) + "%"; pb.appendChild(pf);
   w.append(left, nx, pb);
@@ -2983,10 +2996,11 @@ function buildGuide(t) {
 
 function updateStaminaLive() {
   const t = stamina && stamina.timer; if (!t) return;
-  if (settleStamina()) {
-    stBeep(t.pid === "x4" ? 660 : 528, 900, 2);
-    stUI.msg = practice(t.pid).name + ": sessão concluída e registrada.";
-    if (state.view === "est") renderStamina(); else if (state.view === "home") renderHome(); else if (state.view === "rotina") renderRotina();
+  if (stEnded(t) && stEndRung !== t.startedAt) {
+    const first = stEndRung === null && Date.now() - (t.startedAt + stCap(t) * 1000) > 5000; // já tinha acabado quando o app abriu: sem bipe
+    stEndRung = t.startedAt;
+    if (!first) { stBeep(t.pid === "x4" ? 660 : 528, 900, 2); stUI.msg = practice(t.pid).name + ": sessão concluída. O cronômetro continua contando até você pausar."; }
+    if (state.view === "est") renderStamina();
     return;
   }
   const today = todayISO();
@@ -3002,14 +3016,14 @@ function updateStaminaLive() {
   const gw = document.getElementById("st-guide"); if (!gw) return;
   const gs = guideState(t); if (!gs) return;
   const set = (id, v) => { const n = document.getElementById(id); if (n && n.textContent !== v) n.textContent = v; };
-  set("st-gleft", fmtMS(gs.left)); set("st-gnext", gs.next);
+  set("st-gleft", (gs.extra ? "+" : "") + fmtMS(gs.left)); set("st-gnext", gs.next);
   const gb = document.getElementById("st-gbar"); if (gb) gb.style.width = Math.min(100, gs.pct * 100) + "%";
   if (gs.i !== stLastPhase) {
     const first = stLastPhase == null; stLastPhase = gs.i;
     gw.className = "guide-run lvl-" + gs.lvl;
     const ph = gw.querySelector(".gr-phase"); if (ph) ph.textContent = gs.name;
     const br = document.getElementById("st-breath"); if (br) { br.className = "breath " + gs.lvl; br.querySelector(".breath-t").textContent = gs.name; }
-    if (!first && t.pid === "x4") { if (gs.lvl === "forte") stBeep(880, 260, 3); else stBeep(520, 400, 1); }
+    if (!first && !gs.extra && t.pid === "x4") { if (gs.lvl === "forte") stBeep(880, 260, 3); else stBeep(520, 400, 1); }
   }
 }
 setInterval(updateStaminaLive, 250);
@@ -3040,10 +3054,11 @@ function renderStProgress(main) {
   const avg = Math.round(last4.reduce((a, w) => a + w.v, 0) / 4);
   const c = el("section", "guide"); c.appendChild(el("h3", null, "Cardio"));
   const t1 = el("div", "tiles tiles-3");
-  t1.append(stTile("Esta semana", weeks[7].v, "de " + goal + " min", weeks[7].v >= goal ? "good" : ""),
+  t1.append(stTile("Esta semana", weeks[7].v, "de " + goal + " min · " + Math.floor(weekRaw(today)) + " no relógio", weeks[7].v >= goal ? "good" : ""),
     stTile("Média", avg, "min nas 4 semanas anteriores", avg >= goal ? "good" : ""),
     stTile("Na meta", past.filter(w => w.v >= goal).length + "/7", "semanas anteriores"));
   c.appendChild(t1);
+  c.appendChild(el("p", "note muted", "Minutos equivalentes, como na recomendação da OMS: no 4x4, os 16 min de tiros contam em dobro (a sessão de 40 min vale 56); em Outro vigoroso, todo minuto conta em dobro. O tempo além da sessão conta 1 para 1."));
   c.appendChild(el("p", "chart-t", "Minutos por semana (traço = meta)"));
   c.appendChild(chartBox(stBarsSVG(weeks, "Minutos de cardio por semana nas últimas 8 semanas")));
   const x4w = weeks.filter(w => weekDays(w.st).some(dd => stSec(dd, "x4") >= 900)).length;
@@ -3136,7 +3151,10 @@ function grRec(iso, rid) { const d = grData().days[iso]; return (d && d[rid]) ||
 function grRecW(iso, rid) { const g = ensureGraca(); g.days[iso] = g.days[iso] || {}; return g.days[iso][rid] = g.days[iso][rid] || { sec: 0, count: 0, cur: 0 }; }
 function grLimit(r) { return r && r.limit ? Math.round(r.limit * 60) : 0; }
 function grCap(t) { const r = ritual(t.rid), L = grLimit(r); return L ? Math.max(0, L - (t.startCur || 0)) : Infinity; }
-function grRun(t) { return t ? Math.max(0, Math.min((Date.now() - t.startedAt) / 1000, grCap(t))) : 0; }
+// o tempo do ritual é a meta: ao chegar nele toca o sino e o cronômetro continua até você pausar ou concluir
+function grRun(t) { return t ? Math.max(0, (Date.now() - t.startedAt) / 1000) : 0; }
+function grEnded(t) { const c = grCap(t); return isFinite(c) && grRun(t) >= c; }
+let grEndRung = null;
 function grSec(iso, rid) {
   const t = grData().timer; let s = grRec(iso, rid).sec;
   if (t && t.rid === rid && t.day === iso) s += Math.floor(grRun(t));
@@ -3173,16 +3191,12 @@ function grStop(finish, silent) {
   const g = graca, t = g && g.timer; if (!t) return;
   const run = Math.floor(grRun(t)), rec = grRecW(t.day, t.rid);
   rec.sec += run;
-  if (finish) { rec.count = (rec.count || 0) + 1; rec.cur = 0; } else rec.cur = (t.startCur || 0) + run;
+  const L = grLimit(ritual(t.rid));
+  if (finish || (L && (t.startCur || 0) + run >= L)) { rec.count = (rec.count || 0) + 1; rec.cur = 0; } else rec.cur = (t.startCur || 0) + run; // pausar depois do tempo completo já conta como feito
   g.timer = null; stWakeOff();
   if (!silent) saveGraca();
 }
-function settleGraca() {
-  if (cronBusy) return false;
-  const t = graca && graca.timer; if (!t || !isFinite(grCap(t))) return false;
-  if ((Date.now() - t.startedAt) / 1000 < grCap(t)) return false;
-  grStop(true, true); saveGraca(); return true;
-}
+function settleGraca() { return false; } // não para mais sozinho
 
 /* ---------- pendências da tela inicial ---------- */
 function gracaTasks() {
@@ -3286,9 +3300,10 @@ function grCard(r, n, iso, scheduled) {
     const L = grLimit(r), pos = (t.startCur || 0) + grRun(t);
     const w = el("div", "guide-run lvl-med"); w.id = "gr-guide";
     w.appendChild(el("span", "gr-phase", r.name));
-    const left = el("span", "gr-left", fmtMS(L - pos)); left.id = "gr-gleft";
+    const left = el("span", "gr-left", pos >= L ? "+" + fmtMS(pos - L) : fmtMS(L - pos)); left.id = "gr-gleft";
     const pbb = el("div", "goalbar thin"); const pff = el("span"); pff.id = "gr-gbar"; pff.style.width = Math.min(100, pos / L * 100) + "%"; pbb.appendChild(pff);
-    w.append(left, el("span", "gr-next", "Um sino toca quando o tempo acabar"), pbb);
+    const gnx = el("span", "gr-next", pos >= L ? "Tempo completo. Continua contando até você pausar ou concluir." : "Um sino toca quando o tempo acabar"); gnx.id = "gr-gnext";
+    w.append(left, gnx, pbb);
     card.appendChild(w);
   } else if (running) card.appendChild(el("p", "ex-note", "Cronômetro rodando. Toque em Concluir quando terminar."));
   else if (rec.cur && iso === today) card.appendChild(el("p", "ex-note", "Pausado em " + fmtMS(rec.cur) + (r.limit ? " de " + r.limit + " min" : "") + ". Toque em Continuar para seguir ou em Concluir se já terminou."));
@@ -3309,10 +3324,11 @@ function grCard(r, n, iso, scheduled) {
 
 function updateGracaLive() {
   const t = graca && graca.timer; if (!t) return;
-  if (settleGraca()) {
-    const r = ritual(t.rid); stBeep(528, 1200, 3);
-    grUI.msg = (r ? r.name : "Ritual") + ": tempo concluído e registrado.";
-    if (state.view === "graca") renderGraca(); else if (state.view === "home") renderHome(); else if (state.view === "rotina") renderRotina();
+  if (grEnded(t) && grEndRung !== t.startedAt) {
+    const first = grEndRung === null && grRun(t) - grCap(t) > 5;
+    grEndRung = t.startedAt;
+    if (!first) { const r = ritual(t.rid); stBeep(528, 1200, 3); grUI.msg = (r ? r.name : "Ritual") + ": tempo completo. O cronômetro continua contando até você pausar ou concluir."; }
+    if (state.view === "graca") renderGraca();
     return;
   }
   const today = todayISO();
@@ -3322,7 +3338,8 @@ function updateGracaLive() {
   const r = ritual(t.rid), L = grLimit(r);
   if (L) {
     const pos = (t.startCur || 0) + grRun(t);
-    const gl = document.getElementById("gr-gleft"); if (gl) gl.textContent = fmtMS(L - pos);
+    const gl = document.getElementById("gr-gleft"); if (gl) gl.textContent = pos >= L ? "+" + fmtMS(pos - L) : fmtMS(L - pos);
+    const gn = document.getElementById("gr-gnext"); if (gn) { const v = pos >= L ? "Tempo completo. Continua contando até você pausar ou concluir." : "Um sino toca quando o tempo acabar"; if (gn.textContent !== v) gn.textContent = v; }
     const gb = document.getElementById("gr-gbar"); if (gb) gb.style.width = Math.min(100, pos / L * 100) + "%";
   }
 }
@@ -7087,7 +7104,7 @@ function pushItems() {
       out.push({ tag: iso + "-" + it.key + "-" + b.s, at, title: ("Em " + lead + " min: " + it.title + ms).slice(0, 118), body: (minToHM(b.s) + " às " + minToHM(b.e) + (sub && !ms ? " · " + sub : "")).slice(0, 290), url: "./#tarefa-" + it.key + "@" + b.s + "@" + iso });
     });
   });
-  cronItems().filter(c => c.end && c.end > now).forEach(c => out.push({ tag: "cron-end-" + c.mod + "-" + c.start, at: c.end, title: (c.endTitle || "Tempo concluído: " + c.title).slice(0, 118), body: c.endBody || "Terminou às " + minToHM(new Date(c.end).getHours() * 60 + new Date(c.end).getMinutes()) + ". Toque para abrir.", url: "./#abrir-" + c.tab }));
+  cronItems().filter(c => c.end && c.end > now).forEach(c => out.push({ tag: "cron-end-" + c.mod + "-" + c.start, at: c.end, title: (c.endTitle || (c.cont ? "▶ " + c.title : "Tempo concluído: " + c.title)).slice(0, 118), body: c.endBody || (c.cont ? "Tempo completo às " + minToHM(new Date(c.end).getHours() * 60 + new Date(c.end).getMinutes()) + ". O cronômetro continua contando até você pausar." : "Terminou às " + minToHM(new Date(c.end).getHours() * 60 + new Date(c.end).getMinutes()) + ". Toque para abrir."), url: "./#abrir-" + c.tab }));
   return out.sort((a, b) => a.at - b.at).slice(0, 60);
 }
 async function pushSync(force) {
@@ -7157,8 +7174,8 @@ function cronItems() {
     const t = intel.timer, x = intel.subjects.find(v => v.id === t.sid), ph = imPhase(), end = t.startedAt + (ph.k + 1) * ph.R.work * 60000;
     add("inteligencia", "Estudo · " + (x ? x.name : "matéria"), t, end, "estudo", { endWord: "pausa às", endTitle: "Hora da pausa de " + ph.brk + " min: " + (x ? x.name : "estudo"), endBody: "Bloco de " + ph.R.work + " min concluído (" + ph.R.name + "). Pause o cronômetro e volte depois da pausa." });
   }
-  if (stamina && stamina.timer) { const t = stamina.timer, p = practice(t.pid), c = stCap(t); add("estamina", (p.kind === "cardio" ? "Cardio · " : "Foco · ") + p.name, t, isFinite(c) ? t.startedAt + c * 1000 : 0, "est-hoje"); }
-  if (graca && graca.timer) { const t = graca.timer, r = ritual(t.rid), c = grCap(t); add("graca", r ? r.name : "Ritual", t, isFinite(c) ? t.startedAt + c * 1000 : 0, "gr-hoje"); }
+  if (stamina && stamina.timer) { const t = stamina.timer, p = practice(t.pid), c = stCap(t); add("estamina", (p.kind === "cardio" ? "Cardio · " : "Foco · ") + p.name, t, isFinite(c) ? t.startedAt + c * 1000 : 0, "est-hoje", { endWord: "sessão completa às", cont: true }); }
+  if (graca && graca.timer) { const t = graca.timer, r = ritual(t.rid), c = grCap(t); add("graca", r ? r.name : "Ritual", t, isFinite(c) ? t.startedAt + c * 1000 : 0, "gr-hoje", { endWord: "tempo completo às", cont: true }); }
   if (mis && mis.timer) { const t = mis.timer, x = t.tid !== MS_GERAL ? msTask(t.tid) : null; add("missoes", x ? "Missão · " + x.title : "Trabalho geral", t, 0, "ms-hoje"); }
   return out;
 }
@@ -7185,10 +7202,10 @@ function cronHide() {
 function cronStopAt(mod, at, start) {
   const same = t => t && (!start || t.startedAt === start);
   if (mod === "inteligencia") { const t = intel && intel.timer; if (!same(t)) return false; addTime(t.startedAt, Math.max(t.startedAt, at), t.sid); intel.timer = null; saveIntel(); return true; }
-  if (mod === "estamina") { const t = stamina && stamina.timer; if (!same(t)) return false; stAddTime(t.startedAt, Math.min(Math.max(t.startedAt, at), t.startedAt + stCap(t) * 1000), t.pid); stamina.timer = null; stWakeOff(); saveStamina(); return true; }
+  if (mod === "estamina") { const t = stamina && stamina.timer; if (!same(t)) return false; stCommit(t, Math.max(t.startedAt, at)); stamina.timer = null; stWakeOff(); saveStamina(); return true; }
   if (mod === "graca") {
     const t = graca && graca.timer; if (!same(t)) return false;
-    const cap = grCap(t), run = Math.floor(Math.max(0, Math.min((at - t.startedAt) / 1000, cap))), rec = grRecW(t.day, t.rid);
+    const cap = grCap(t), run = Math.floor(Math.max(0, (at - t.startedAt) / 1000)), rec = grRecW(t.day, t.rid);
     rec.sec += run; if (isFinite(cap) && run >= Math.floor(cap)) { rec.count = (rec.count || 0) + 1; rec.cur = 0; } else rec.cur = (t.startCur || 0) + run;
     graca.timer = null; stWakeOff(); saveGraca(); return true;
   }

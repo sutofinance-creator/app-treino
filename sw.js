@@ -1,4 +1,4 @@
-const CACHE = "stek-v85";
+const CACHE = "stek-v86";
 const CORE = ["./", "index.html", "manifest.json", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "icon-maskable.png", "logo-s.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE.map(u => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting())); });
 const CRON_CACHE = "stek-cron"; // pausas tocadas na notificação do cronômetro, aplicadas quando o app abre
@@ -32,6 +32,12 @@ self.addEventListener("push", e => {
     e.waitUntil(cronPausas().then(list => {
       const p = list.find(x => x.mod === m[1] && String(x.start) === m[2]);
       if (p) return cronPausada(tag, p.title || "Cronômetro", p.at, d.url || "./");
+      // cronômetro que segue contando depois do tempo completo (título com ▶): mantém o Pausar
+      if (/^▶/.test(d.title || "")) {
+        const title = (d.title || "").replace(/^▶\s*/, "");
+        return self.registration.showNotification(d.title, { body: d.body || "", tag, renotify: true, requireInteraction: true, timestamp: Number(m[2]), icon: ICON, badge: ICON,
+          data: { url: d.url || "./", cron: m[1], start: Number(m[2]), title }, actions: [{ action: "pausar", title: "Pausar" }] });
+      }
       return self.registration.showNotification(d.title || "STEK", { body: d.body || "", tag, renotify: true, icon: ICON, badge: ICON, data: { url: d.url || "./" } });
     }));
     return;

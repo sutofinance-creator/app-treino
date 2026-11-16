@@ -3905,17 +3905,8 @@ function renderMsHoje(main) {
   main.appendChild(w);
   if (msUI.msg) { const f = el("p", "note"); flash(f, msUI.msg, "ok"); main.appendChild(f); msUI.msg = ""; }
 
-  msSearch(main, "Pesquisar missões");
-  const shown = list.filter(msMatch);
-  if (!list.length) main.appendChild(el("p", "note muted", "Nenhuma missão para este dia ainda. Escolha abaixo o que vai resolver ou crie uma nova."));
-  else if (!shown.length) main.appendChild(el("p", "note muted", "Nenhuma missão do dia bate com a pesquisa."));
-  shown.forEach((x, i) => main.appendChild(msCard(x, i + 1, iso)));
-
-  // planejar
+  // planejar: nova missão para o dia (fica acima da pesquisa; as missões do dia ficam logo abaixo)
   if (iso >= today) {
-    const cand = g.tasks.filter(x => x.status === "aberta" && !list.includes(x) && msMatch(x)).sort((a, b) => {
-      const da = a.due || "9999", db = b.due || "9999"; return (da < db ? -1 : da > db ? 1 : 0) || msSort(a, b);
-    });
     const p = el("section", "guide"); p.id = "ms-plan";
     const ph = el("div", "sec-head"); ph.appendChild(el("h3", null, iso === today ? "Planejar o dia" : "Planejar " + fmtDate(iso).slice(0, 5)));
     if (!msUI.dayNewOpen) {
@@ -3929,24 +3920,13 @@ function renderMsHoje(main) {
       p.appendChild(el("span", "field-l", "Nova missão para " + (iso === today ? "hoje" : fmtDate(iso).slice(0, 5))));
       p.appendChild(msForm(msUI.draft || {}, v => { const n = msNew(Object.assign(v, { plan: [iso] })); if (n.rec && n.rec.type && n.due !== iso) n.plan = []; saveMs(); msUI.draft = null; msUI.dayNewOpen = false; msUI.msg = "Missão criada" + (n.rec && n.rec.type ? " (recorrente, próxima execução " + fmtDate(n.due).slice(0, 5) + ")." : " para o dia."); renderMissoes(); }, "msq-", true, null, () => { msUI.dayNewOpen = false; msUI.draft = null; renderMissoes(); }));
     }
-    if (cand.length) {
-      p.appendChild(el("p", "note muted", "Missões abertas, das de prazo mais curto para as mais longas. Toque em + para colocar no dia."));
-      const ul = el("ul", "ms-pick");
-      cand.slice(0, 8).forEach(x => {
-        const li = el("li"); const info = el("div", "ms-pick-i");
-        info.appendChild(el("span", "ms-pick-t", x.title));
-        const meta = el("div", "meta"); const dinf = msDueInfo(x, iso);
-        msTagChips(x, meta); const pc = msPriChip(x); if (pc) meta.appendChild(pc); if (dinf) meta.appendChild(msChip(dinf.text, dinf.cls)); if (x.est) meta.appendChild(el("span", "last", "est. " + fmtHM(x.est * 60)));
-        info.appendChild(meta);
-        const add = el("button", "step wide ms-add", iso === todayISO() ? "+ Hoje" : "+ " + fmtDate(iso).slice(0, 5)); add.type = "button"; add.id = "ms-plan-" + x.id; add.setAttribute("aria-label", "Colocar " + x.title + " no dia");
-        add.addEventListener("click", () => { if (!(x.plan || []).includes(iso)) x.plan = (x.plan || []).concat(iso); msTouch(x); renderMissoes(); });
-        li.append(info, add); ul.appendChild(li);
-      });
-      p.appendChild(ul);
-      if (cand.length > 8) p.appendChild(el("p", "note muted", "+ " + (cand.length - 8) + " na aba Missões."));
-    }
     main.appendChild(p);
   }
+  msSearch(main, "Pesquisar missões");
+  const shown = list.filter(msMatch);
+  if (!list.length) main.appendChild(el("p", "note muted", "Nenhuma missão para este dia ainda. Crie uma em “Nova missão” ou, na aba Missões, toque numa missão e em “Fazer hoje”."));
+  else if (!shown.length) main.appendChild(el("p", "note muted", "Nenhuma missão do dia bate com a pesquisa."));
+  shown.forEach((x, i) => main.appendChild(msCard(x, i + 1, iso)));
 }
 
 function msSaveEdit(x) { return v => { Object.assign(x, v); if (!v.rec) delete x.rec; msUI.editing = null; msUI.open = null; msUI.msg = "Missão salva."; msTouch(x); renderMissoes(); }; }

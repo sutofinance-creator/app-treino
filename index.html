@@ -486,6 +486,16 @@ ol.steps a { color: var(--accent); }
 
 /* ---------- Missões: busca, tags, cronômetro por missão ---------- */
 .ms-search { margin: 4px 0 12px; }
+.field textarea { width: 100%; font: 400 16px/1.5 var(--font-body); color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); padding: 8px 10px; resize: vertical; min-height: 140px; }
+.field textarea:focus { border-color: var(--accent); box-shadow: 0 0 12px rgba(166, 107, 255, .4); outline: none; }
+.kb-card { display: grid; gap: 8px; }
+.kb-card .ex-name { margin: 0; }
+.kb-card .meta { flex-wrap: wrap; gap: 6px; }
+.kb-body { white-space: pre-wrap; word-break: break-word; font-size: 15px; line-height: 1.55; color: var(--ink); }
+.kb-body a { color: var(--accent); }
+.kb-more { justify-self: start; }
+.kb-upd { margin: 0; font-size: 12px; }
+.kb-filter { margin: 0 0 10px; }
 .ms-search input { width: 100%; }
 .st.tag { color: var(--ink); border-color: var(--line); background: rgba(166, 107, 255, .08); text-transform: none; letter-spacing: .02em; font-weight: 600; }
 .ms-timer { appearance: none; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
@@ -691,7 +701,7 @@ function renderTabs() {
     home: { tabs: HOME_TABS, cur: state.htab, label: "Telas do início", set: id => { state.htab = id; }, draw: () => renderHome() },
     forca: { tabs: TABS, cur: state.tab, label: "Treinos do módulo Força", set: id => { state.tab = id; }, draw: () => renderMain() },
     intel: { tabs: INTEL_TABS, cur: state.itab, label: "Seções do módulo Inteligência", set: id => { state.itab = id; if (id === "estudo") state.idate = todayISO(); }, draw: () => renderIntel() },
-    ms: { tabs: MS_TABS, cur: state.mtab, label: "Seções do módulo Missões", set: id => { state.mtab = id; if (id === "ms-hoje") state.mdate = todayISO(); msUI.confirm = null; msUI.open = null; msUI.closing = null; msUI.editing = null; }, draw: () => renderMissoes() },
+    ms: { tabs: MS_TABS, cur: state.mtab, label: "Seções do módulo Missões", set: id => { state.mtab = id; if (id === "ms-hoje") state.mdate = todayISO(); msUI.confirm = null; msUI.open = null; msUI.closing = null; msUI.editing = null; kbUI.confirm = null; kbUI.editing = null; }, draw: () => renderMissoes() },
     graca: { tabs: GRACA_TABS, cur: state.gtab, label: "Seções do módulo Graça", set: id => { state.gtab = id; if (id === "gr-hoje") state.gdate = todayISO(); grUI.confirm = null; }, draw: () => renderGraca() },
     est: { tabs: STAM_TABS, cur: state.stab, label: "Seções do módulo Estamina", set: id => { state.stab = id; if (id === "est-hoje") state.sdate = todayISO(); }, draw: () => renderStamina() },
     rotina: { tabs: ROT_TABS, cur: state.rtab, label: "Seções da Rotina", set: id => { state.rtab = id; }, draw: () => renderRotina() },
@@ -3459,7 +3469,7 @@ function grNewSection(g) {
 
 /* ======================= Módulo Missões ======================= */
 const MS_KEY = "stek-missoes-v1";
-const MS_TABS = [{ id: "ms-hoje", label: "Hoje" }, { id: "ms-lista", label: "Missões" }, { id: "ms-relatorio", label: "Relatório" }];
+const MS_TABS = [{ id: "ms-hoje", label: "Hoje" }, { id: "ms-lista", label: "Missões" }, { id: "ms-relatorio", label: "Relatório" }, { id: "ms-base", label: "Base de conhecimento" }];
 const MS_PRI = [["alta", "Alta"], ["media", "Média"], ["baixa", "Baixa"]];
 const MS_PRI_RANK = { alta: 0, media: 1, baixa: 2 };
 const MS_GERAL = "_geral";
@@ -3705,6 +3715,7 @@ function msDropFiles(atts) {
     if (msData().tasks.some(t => (t.att || []).some(b => b.fid === a.fid))) return;
     if (intel && intel.subjects.some(t => (t.att || []).some(b => b.fid === a.fid))) return;
     if (msUI.newAtt.some(b => b.fid === a.fid)) return;
+    if ((msData().kb || []).some(c => !c.del && (c.att || []).some(b => b.fid === a.fid)) || kbUI.newAtt.some(b => b.fid === a.fid)) return;
     cloudFetch("DELETE", "/files/" + a.fid).catch(() => {});
   });
 }
@@ -3845,6 +3856,7 @@ function renderMissoes() {
   const main = document.getElementById("main"); main.innerHTML = "";
   if (state.mtab === "ms-lista") renderMsLista(main);
   else if (state.mtab === "ms-relatorio") renderMsRelatorio(main);
+  else if (state.mtab === "ms-base") renderKb(main);
   else renderMsHoje(main);
 }
 function msChip(text, cls) { return el("span", "st " + (cls || ""), text); }
@@ -4223,6 +4235,134 @@ function msRow(x) {
   return row;
 }
 
+/* ---------- Base de conhecimento (Missões) ----------
+   Cards de informações e processos, com links e documentos (mesmos anexos das missões).
+   Ficam em mis.kb; um card excluído vira só { id, del, upd } para a exclusão valer nos outros aparelhos. */
+const KB_TIPOS = [["info", "Informação"], ["proc", "Processo"]];
+const kbUI = { open: false, editing: null, q: "", tipo: "", proj: "", confirm: null, more: {}, newAtt: [], msg: "" };
+function kbList() { return (msData().kb || []).filter(c => !c.del); }
+function kbProjects() { return [...new Set(kbList().map(c => (c.proj || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt")); }
+function kbMatch(c) {
+  if (kbUI.tipo && c.tipo !== kbUI.tipo) return false;
+  if (kbUI.proj && (c.proj || "") !== kbUI.proj) return false;
+  const q = msNorm(kbUI.q).trim(); if (!q) return true;
+  const hay = msNorm([c.title, c.proj, c.body].concat((c.att || []).map(a => a.name + " " + (a.url || ""))).join(" "));
+  return q.split(/\s+/).every(w => hay.includes(w));
+}
+// texto do card: mantém as quebras de linha e transforma endereços em links clicáveis
+function kbText(t) {
+  const p = el("div", "kb-body"), re = /(https?:\/\/[^\s<>"']+)/g; let last = 0, m;
+  while ((m = re.exec(t))) {
+    if (m.index > last) p.appendChild(document.createTextNode(t.slice(last, m.index)));
+    const a = el("a", null, m[1]); a.href = m[1]; a.target = "_blank"; a.rel = "noopener noreferrer"; p.appendChild(a); last = m.index + m[1].length;
+  }
+  if (last < t.length) p.appendChild(document.createTextNode(t.slice(last)));
+  return p;
+}
+function kbForm(v, onSave, idp, att, onCancel) {
+  const form = el("div", "ms-form kb-form");
+  let tipo = v.tipo || "info";
+  const tg = el("div"); const drawTipo = () => { tg.innerHTML = ""; tg.appendChild(chipGroup("Tipo", KB_TIPOS, tipo, k => { tipo = k; drawTipo(); }, idp + "tipo")); }; drawTipo();
+  const grid = el("div", "inputs two"), g1 = el("div", "inputs two");
+  const fld = (k, label, ph, span, into) => { const f = el("div", "field" + (span ? " span2" : "")); const l = el("label", null, label); l.htmlFor = idp + k; const i = el("input"); i.id = idp + k; i.placeholder = ph; f.append(l, i); (into || grid).appendChild(f); return i; };
+  const ti = fld("title", "Título", "Ex.: Como emitir a NF de um cliente", true, g1); ti.value = v.title || "";
+  const pj = fld("proj", "Projeto ou cliente (opcional)", "Ex.: Laboratório Anaclin", true); pj.value = v.proj || "";
+  pj.setAttribute("list", idp + "proj-l"); const dl = el("datalist"); dl.id = idp + "proj-l";
+  [...new Set(msProjects().concat(kbProjects()))].sort((a, b) => a.localeCompare(b, "pt")).forEach(x => { const o = el("option"); o.value = x; dl.appendChild(o); });
+  grid.appendChild(dl);
+  const bf = el("div", "field span2"); const bl = el("label", null, "Conteúdo"); bl.htmlFor = idp + "body";
+  const bd = el("textarea"); bd.id = idp + "body"; bd.rows = 9; bd.placeholder = "Escreva a informação ou o passo a passo. Ex.:\n1. Abrir o sistema da prefeitura\n2. Emitir a nota com o CNPJ do cliente\n3. Enviar o PDF por e-mail"; bd.value = v.body || "";
+  bf.append(bl, bd); grid.appendChild(bf);
+  form.append(g1, tg, grid);
+  if (att) form.appendChild(att);
+  const msg = el("p", "note");
+  ti.addEventListener("input", () => { if (msg.textContent) { msg.textContent = ""; msg.className = "note"; } });
+  const b = el("div", "btns"); const sv = el("button", "btn", v.id ? "Salvar" : "Criar card"); sv.type = "button"; sv.id = idp + "save";
+  sv.addEventListener("click", () => {
+    const title = ti.value.trim();
+    if (!title) { flash(msg, "Dê um título para o card.", "err"); ti.focus(); return; }
+    onSave({ title: title.slice(0, 140), tipo, proj: pj.value.trim().slice(0, 80), body: bd.value.replace(/\s+$/, "").slice(0, 20000) });
+  });
+  b.appendChild(sv);
+  if (onCancel) { const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = idp + "cancel"; cc.addEventListener("click", onCancel); b.appendChild(cc); }
+  form.append(b, msg);
+  return form;
+}
+function kbCloseNew() { const a = kbUI.newAtt; kbUI.newAtt = []; kbUI.open = false; msDropFiles(a); }
+function kbCard(c) {
+  const card = el("section", "card kb-card"); card.id = "kb-" + c.id;
+  card.appendChild(el("p", "ex-name", c.title));
+  const meta = el("div", "meta");
+  meta.appendChild(msChip((KB_TIPOS.find(x => x[0] === c.tipo) || KB_TIPOS[0])[1], c.tipo === "proc" ? "run" : "tag"));
+  if (c.proj) meta.appendChild(msChip(c.proj));
+  if ((c.att || []).length) meta.appendChild(el("span", "last", (c.att.length === 1 ? "1 anexo" : c.att.length + " anexos")));
+  card.appendChild(meta);
+  if (kbUI.editing === c.id) {
+    const att = msAttachBox(() => { const t = kbFind(c.id) || c; return t.att || (t.att = []); }, () => { const t = kbFind(c.id) || c; t.upd = Date.now(); saveMs(); }, "kbe-" + c.id + "-", true, "Links e documentos");
+    att.appendChild(el("p", "note muted", "Os anexos são salvos na hora."));
+    const box = el("div", "add-box"); box.id = "kb-edbox-" + c.id;
+    box.append(el("p", "plan-t", "Editar card"), kbForm(c, v => { Object.assign(c, v); c.upd = Date.now(); kbUI.editing = null; kbUI.msg = "Card salvo."; saveMs(); renderMissoes(); }, "kbe-" + c.id + "-", att, () => { kbUI.editing = null; renderMissoes(); }));
+    card.appendChild(box); return card;
+  }
+  const body = c.body || "";
+  if (body) {
+    const lines = body.split("\n"), long = body.length > 600 || lines.length > 12, more = !!kbUI.more[c.id];
+    card.appendChild(kbText(long && !more ? (lines.slice(0, 12).join("\n").slice(0, 600).replace(/\s+$/, "") + "…") : body));
+    if (long) { const mb = el("button", "linkbtn kb-more", more ? "Ver menos" : "Ver tudo"); mb.type = "button"; mb.id = "kb-more-" + c.id; mb.addEventListener("click", () => { kbUI.more[c.id] = !more; renderMissoes(); }); card.appendChild(mb); }
+  }
+  if ((c.att || []).length) card.appendChild(msAttachBox(() => c.att, () => {}, "kbv-" + c.id + "-", false, "Links e documentos"));
+  card.appendChild(el("p", "note muted kb-upd", "Atualizado em " + fmtDate(ymd(new Date(c.upd || Date.now()))).slice(0, 5) + "."));
+  const b = el("div", "btns");
+  const ed = el("button", "btn ghost", "Editar"); ed.type = "button"; ed.id = "kb-ed-" + c.id;
+  ed.addEventListener("click", () => { kbUI.editing = c.id; kbUI.confirm = null; renderMissoes(); const t = document.getElementById("kbe-" + c.id + "-title"); if (t) { t.scrollIntoView({ block: "center" }); t.focus(); } });
+  const del = el("button", "btn danger", kbUI.confirm === c.id ? "Confirmar exclusão" : "Excluir"); del.type = "button"; del.id = "kb-del-" + c.id;
+  del.addEventListener("click", () => {
+    if (kbUI.confirm !== c.id) { kbUI.confirm = c.id; renderMissoes(); return; }
+    const att = c.att || []; Object.keys(c).forEach(k => { if (k !== "id") delete c[k]; }); c.del = true; c.upd = Date.now();
+    kbUI.confirm = null; kbUI.msg = "Card excluído."; saveMs(); msDropFiles(att); renderMissoes();
+  });
+  b.append(ed, del); card.appendChild(b);
+  if (kbUI.confirm === c.id) card.appendChild(el("p", "note muted", "Toque de novo para excluir o card e os documentos dele."));
+  return card;
+}
+function kbFind(id) { return (msData().kb || []).find(c => c.id === id && !c.del); }
+function renderKb(main) {
+  head2(main, "Base de conhecimento", "Informações e processos do trabalho em cards, com links e documentos, para consultar quando precisar.");
+  if (kbUI.msg) { const f = el("p", "note"); flash(f, kbUI.msg, "ok"); main.appendChild(f); kbUI.msg = ""; }
+  const sec = el("section", "guide"); sec.id = "kb-new";
+  sec.appendChild(addHead("Cards", "Novo card", "kb-new-btn", kbUI.open, () => { kbUI.open = true; kbUI.editing = null; renderMissoes(); const t = document.getElementById("kbn-title"); if (t) { t.scrollIntoView({ block: "center" }); t.focus(); } }));
+  if (kbUI.open) {
+    const att = msAttachBox(() => kbUI.newAtt, () => {}, "kbn-", true, "Links e documentos");
+    const box = el("div", "add-box"); box.id = "kb-newbox";
+    box.append(el("p", "plan-t", "Novo card"), kbForm({ proj: kbUI.proj, tipo: kbUI.tipo || "info" }, v => {
+      const g = ensureMs(), now = Date.now(); g.kb = g.kb || [];
+      let id; do { id = "k" + now.toString(36) + Math.random().toString(36).slice(2, 5); } while (g.kb.some(x => x.id === id));
+      g.kb.push(Object.assign({ id, att: kbUI.newAtt.slice(), created: todayISO(), upd: now }, v));
+      kbUI.newAtt = []; kbUI.open = false; kbUI.msg = "Card criado."; saveMs(); renderMissoes();
+    }, "kbn-", att, () => { kbCloseNew(); renderMissoes(); }));
+    sec.appendChild(box);
+  }
+  const all = kbList();
+  if (!all.length && !kbUI.open) sec.appendChild(el("p", "note muted", "Nenhum card ainda. Toque em “Novo card” para guardar uma informação ou um processo."));
+  main.appendChild(sec);
+  if (!all.length) return;
+  // pesquisa e filtros
+  const f = el("div", "field ms-search"); const l = el("label", "sr-only", "Pesquisar na base"); l.htmlFor = "kb-q";
+  const i = el("input"); i.id = "kb-q"; i.type = "search"; i.placeholder = "Pesquisar na base"; i.value = kbUI.q; i.autocomplete = "off";
+  i.addEventListener("input", () => { kbUI.q = i.value; const pos = i.selectionStart; renderMissoes(); const n = document.getElementById("kb-q"); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} } });
+  f.append(l, i); main.appendChild(f);
+  const chips = (opts, cur, set, idp, aria) => {
+    const ch = el("div", "chips kb-filter"); ch.setAttribute("aria-label", aria);
+    opts.forEach(([k, t]) => { const c = el("button", "gchip", t); c.type = "button"; c.id = idp + (k || "todos").replace(/\W+/g, "_"); c.setAttribute("aria-pressed", String(cur === k)); c.addEventListener("click", () => { set(k); renderMissoes(); }); ch.appendChild(c); });
+    main.appendChild(ch);
+  };
+  chips([["", "Todos"], ["info", "Informações"], ["proc", "Processos"]], kbUI.tipo, k => { kbUI.tipo = k; }, "kb-t-", "Filtrar por tipo");
+  const projs = kbProjects();
+  if (projs.length) chips([["", "Todos os projetos"]].concat(projs.map(p => [p, p])), kbUI.proj, k => { kbUI.proj = k; }, "kb-p-", "Filtrar por projeto");
+  const shown = all.filter(kbMatch).sort((a, b) => a.title.localeCompare(b.title, "pt"));
+  if (!shown.length) main.appendChild(el("p", "note muted", "Nenhum card bate com a pesquisa ou o filtro."));
+  shown.forEach(c => main.appendChild(kbCard(c)));
+}
 function msPeriod(k) {
   const today = todayISO(), [y, m, d] = today.split("-").map(Number);
   if (k === "mes") return [ymd(new Date(y, m - 1, 1)), today, "Este mês"];
@@ -7451,7 +7591,8 @@ function mergeKey(k, a, b) {
     if (!Array.isArray(L.tasks)) return b; if (!Array.isArray(R.tasks)) return a;
     const byId = {}; R.tasks.forEach(x => { byId[x.id] = x; });
     L.tasks.forEach(x => { const r = byId[x.id]; if (!r || (x.upd || 0) > (r.upd || 0)) byId[x.id] = x; });
-    const out = Object.assign({}, L, R, { goal: Object.assign({}, L.goal, R.goal), tasks: Object.values(byId), days: Object.assign({}, R.days) });
+    const kb = {}; (R.kb || []).forEach(x => { kb[x.id] = x; }); (L.kb || []).forEach(x => { const r = kb[x.id]; if (!r || (x.upd || 0) > (r.upd || 0)) kb[x.id] = x; });
+    const out = Object.assign({}, L, R, { goal: Object.assign({}, L.goal, R.goal), tasks: Object.values(byId), days: Object.assign({}, R.days), kb: Object.values(kb) });
     Object.keys(L.days || {}).forEach(d => { const day = Object.assign({}, out.days[d]); Object.keys(L.days[d] || {}).forEach(id => { day[id] = Math.max(day[id] || 0, L.days[d][id] || 0); }); out.days[d] = day; });
     out.timer = R.timer || L.timer || null;
     return JSON.stringify(out);

@@ -3149,7 +3149,7 @@ function renderStProgress(main) {
   const rows = Object.keys(s.days).filter(dd => PRACTICES.some(p => stSec(dd, p.id) >= 60)).sort().reverse().slice(0, 14);
   if (!rows.length) h.appendChild(el("p", "note muted", "Nada registrado ainda. Use o cronômetro ou os botões de 5 min na aba Hoje."));
   else { const ul = el("ul", "hist"); rows.forEach(dd => { const li = el("li"); li.append(el("span", null, fmtDate(dd).slice(0, 5)), el("span", null, PRACTICES.filter(p => stSec(dd, p.id) >= 60).map(p => p.name + " " + fmtHM(stSec(dd, p.id))).join(" · "))); ul.appendChild(li); }); h.appendChild(ul); }
-  main.appendChild(hoursMultiCard("est-tempo", "Tempo dedicado por prática", evoStTempo, renderStamina));
+  main.appendChild(hoursMultiCard("est-tempo", "Tempo dedicado a cardio e foco", evoStTempo, renderStamina));
   main.appendChild(h);
 }
 
@@ -3188,7 +3188,6 @@ function renderStPraticas(main) {
     const h = el("h3", null, p.name); c.appendChild(h);
     const meta = el("div", "meta"); meta.append(el("span", "st", p.kind === "cardio" ? "Cardio" : "Foco"), el("span", "last", p.tag)); c.appendChild(meta);
     c.append(el("p", "note", p.how), el("p", "note muted", p.why));
-    c.appendChild(colorPicker("st-color-" + p.id + "-", p.name, stColor(p), hex => { const st = ensureStamina(); st.colors = Object.assign({}, st.colors, { [p.id]: hex }); saveStamina(); renderStamina(); }));
     if (p.yt) { const a = el("a", "howto", "Ver como fazer ↗"); a.href = "https://www.youtube.com/results?search_query=" + encodeURIComponent(p.yt) + "&sp=EgIQAQ%253D%253D"; a.target = "_blank"; a.rel = "noopener"; c.appendChild(a); }
     main.appendChild(c);
   });
@@ -6550,19 +6549,18 @@ function evoForca(dates) {
   return { series: gs.map((g, i) => ({ id: "g" + i, name: g, color: ITEM_COLORS[i], vals: per.map(r => { const x = r && r.gs && r.gs.find(y => y.g === g); return x ? x.pct : null; }) })),
     note: "Cada ponto é a força do grupo naquele dia comparada ao seu peso (100% = a média de quem treina), com as maiores cargas dos 28 dias anteriores." };
 }
-// Estamina: horas por dia em cada prática usada (cor escolhida em Práticas ou a da posição)
-function stColor(p) { const c = stamina && stamina.colors && stamina.colors[p.id]; return c || ITEM_COLORS[Math.max(0, PRACTICES.indexOf(p)) % ITEM_COLORS.length]; }
+// Estamina: horas por dia em cardio e em foco (soma das práticas de cada tipo)
 function evoStTempo(dates) {
   const s = stam(), keys = Object.keys(s.days || {});
-  const items = PRACTICES.map(p => {
-    const first = hxFirst(keys, d => stSec(d, p.id) > 0);
-    if (!first && !(stamina && stamina.timer && stamina.timer.pid === p.id)) return null; // prática nunca usada não aparece
-    const vals = dates.map(d => first && d < first ? null : stSec(d, p.id) / 3600);
-    const it = { id: p.id, name: p.name, color: stColor(p), vals, keep: true };
+  const items = [["cardio", "Cardio", HX_COLORS.estamina], ["foco", "Foco", HX_COLORS.inteligencia]].map(([k, name, color]) => {
+    const first = hxFirst(keys, d => stKindSec(d, k) > 0), run = stamina && stamina.timer && practice(stamina.timer.pid).kind === k;
+    if (!first && !run) return null;
+    const vals = dates.map(d => first && d < first ? null : stKindSec(d, k) / 3600);
+    const it = { id: k, name, color, vals, keep: true };
     if (!vals.some(v => v > 0)) { it.vals = dates.map(() => 0); it.hint = "nenhum registro no período"; }
     return it;
   }).filter(Boolean);
-  return { items, empty: "Nenhuma prática registrada ainda. Use o cronômetro ou os botões de 5 min na aba Hoje.", note: "Tempo registrado em cada prática por dia, contando o cronômetro que estiver rodando. Aparecem as práticas que você já usou. Cada gráfico tem a sua escala: compare pela média." };
+  return { items, empty: "Nenhum cardio ou foco registrado ainda. Use o cronômetro ou os botões de 5 min na aba Hoje.", note: "Cardio: soma de todas as práticas de cardio no dia. Foco: meditação e respiração. Conta o cronômetro que estiver rodando. Cada gráfico tem a sua escala: compare pela média." };
 }
 // Graça: quanto de cada ritual foi cumprido nos 28 dias anteriores a cada dia
 function evoGraca(dates) {

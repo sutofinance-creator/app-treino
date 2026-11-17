@@ -488,6 +488,12 @@ ol.steps a { color: var(--accent); }
 .ms-search { margin: 4px 0 12px; }
 .ms-timebtn { font-size: 13px; }
 .evo-card { display: grid; gap: 10px; }
+.evo-grid { display: grid; gap: 14px; }
+.evo-grid.two { grid-template-columns: 1fr 1fr; }
+.evo-panel { display: grid; gap: 4px; min-width: 0; }
+.evo-ph { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.evo-ph b { font-family: var(--font-display); letter-spacing: .06em; text-transform: uppercase; }
+.evo-ph span:last-child { color: var(--muted); font-size: 13px; }
 .evo-card .chips { margin: 0; }
 .lc { display: grid; gap: 8px; }
 .lc-box { position: relative; }
@@ -4700,7 +4706,7 @@ function renderMsRelatorio(main) {
   const dch = el("div", "chips");
   [1, 2, 3, 4, 5, 6, 0].forEach(w => { const on = g.goal.days.includes(w); const c = el("button", "gchip", DOW_SHORT[w]); c.type = "button"; c.id = "ms-wd-" + w; c.setAttribute("aria-pressed", String(on)); c.addEventListener("click", () => { const gg = ensureMs(); const nd = on ? gg.goal.days.filter(x => x !== w) : gg.goal.days.concat(w); if (nd.length) { gg.goal.days = nd; saveMs(); renderMissoes(); } }); dch.appendChild(c); });
   s6.appendChild(dch);
-  main.appendChild(modEvoCard("missoes", "Evolução das horas de trabalho", evoAttr("missoes", "Horas por semana (cronometradas, ou a jornada de Meus dados) em relação à média de quem tem a sua ocupação, com os 28 dias anteriores a cada ponto. É a mesma linha das Missões na aba Atributos.", "Cronometre o trabalho nas Missões para ver a evolução."), renderMissoes));
+  main.appendChild(modEvoCard("missoes", "Horas de trabalho por dia", dates => { const v = areaHours("missoes", dates); return { hours: true, fmt: fmtHours, ref: null, series: v ? [{ id: "missoes", name: "Missões", color: HX_COLORS.missoes, vals: v }] : [], empty: "Cronometre o trabalho nas Missões para ver a evolução.", note: "Tempo de trabalho cronometrado em cada dia (geral + missões), contando o cronômetro que estiver rodando." }; }, renderMissoes));
   main.appendChild(s6);
 }
 
@@ -6423,35 +6429,26 @@ function hexCard() {
    Cores fixas por atributo (paleta categórica validada no fundo do app: azul, laranja, água, amarelo, magenta, verde). */
 const HX_COLORS = { inteligencia: "#3987e5", estamina: "#d95926", forca: "#199e70", financas: "#c98500", graca: "#d55181", missoes: "#0ca30c" };
 const evoUI = { n: 30, focus: null };
-let hxSerCache = null;
 function hxValOn(id, d) {
   if (modUserOff(id, d)) return null;
   hxAsOf = d === todayISO() ? null : d;
   try { const r = HX_CALC[id](); return r && r.val != null && isFinite(r.val) ? r.val : null; }
   catch (e) { return null; } finally { hxAsOf = null; }
 }
-function hxSeries(n) {
-  const today = todayISO(), ids = MODULES.filter(m => modAllowed(m.id) && !modUserOff(m.id)).map(m => m.id);
-  const key = [today, n, window.hxDataVer || 0, ids.join(","), perfil ? perfil.upd : 0, profileId].join("|");
-  if (!hxSerCache || hxSerCache.key !== key) { // dias passados ficam guardados até algum dado mudar
-    const dates = []; for (let i = n - 1; i >= 1; i--) dates.push(addDaysISO(today, -i));
-    const past = {}; ids.forEach(id => { past[id] = dates.map(d => hxValOn(id, d)); });
-    hxSerCache = { key, dates, past };
-  }
-  const C = hxSerCache;
-  return { dates: C.dates.concat(today), series: ids.map(id => ({ id, name: (MODULES.find(m => m.id === id) || {}).name || id, color: HX_COLORS[id], vals: C.past[id].concat(hxValOn(id, today)) })) };
-}
 // gráfico de linhas genérico: { dates, series: [{ id, name, color, vals }], ref (linha tracejada), fmt, focus, onFocus }
 function lineChart(cfg) {
   // desenha na largura real da tela (texto em tamanho normal no celular)
   const mw = (document.getElementById("main") || document.body).clientWidth || 640;
-  const wrap = el("div", "lc"), W = Math.round(Math.max(300, Math.min(680, mw - 44))), H = W < 480 ? 220 : 250, L = 44, Rp = 14, T = 12, B = 26, n = cfg.dates.length;
+  const W = Math.round(Math.max(280, Math.min(680, (cfg.width || mw) - 44))), H = cfg.h || (W < 480 ? 220 : 250), L = 50, Rp = 14, T = 12, B = 26, n = cfg.dates.length;
+  const wrap = el("div", "lc");
   const all = []; cfg.series.forEach(sr => sr.vals.forEach(v => { if (v != null) all.push(v); }));
-  const cap = cfg.cap || 3, top = Math.min(cap, Math.max(cfg.minTop || 1.5, Math.ceil(Math.max.apply(null, all.concat([0])) * 2) / 2));
+  const mx = Math.max.apply(null, all.concat([0]));
+  let top, step;
+  if (cfg.hours) { step = mx <= 1 ? 0.25 : mx <= 2 ? 0.5 : mx <= 4 ? 1 : mx <= 8 ? 2 : 4; top = Math.max(step * 2, Math.ceil(mx / step) * step); } // horas: escala de cada gráfico
+  else { const cap = cfg.cap || 3; top = Math.min(cap, Math.max(cfg.minTop || 1.5, Math.ceil(mx * 2) / 2)); step = top <= 1.5 ? 0.25 : top <= 3 ? 0.5 : 1; }
   const X = i => L + (n <= 1 ? 0 : i * (W - L - Rp) / (n - 1)), Y = v => T + (1 - Math.min(v, top) / top) * (H - T - B);
   const f = v => v.toFixed(1), fmt = cfg.fmt || (v => Math.round(v * 100) + "%");
   let svg = '<svg class="lc-svg" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + hxEsc(cfg.label || "Gráfico de linhas") + '">';
-  const step = top <= 1.5 ? 0.25 : top <= 3 ? 0.5 : 1;
   for (let v = 0; v <= top + 1e-9; v += step) svg += '<line class="lc-grid" x1="' + L + '" x2="' + (W - Rp) + '" y1="' + f(Y(v)) + '" y2="' + f(Y(v)) + '"/><text class="lc-yl" x="' + (L - 6) + '" y="' + f(Y(v) + 4) + '" text-anchor="end">' + fmt(v) + "</text>";
   if (cfg.ref != null) svg += '<line class="lc-ref" x1="' + L + '" x2="' + (W - Rp) + '" y1="' + f(Y(cfg.ref)) + '" y2="' + f(Y(cfg.ref)) + '"/>';
   const every = Math.max(1, Math.round(n / (W < 480 ? 4 : 6)));
@@ -6496,6 +6493,7 @@ function lineChart(cfg) {
   });
   if (cfg.series.length > 1) wrap.insertBefore(lg, box);
   // tabela (acessível e para quem prefere números)
+  if (cfg.noTable) return wrap;
   const det = el("details", "lc-table"); det.appendChild(el("summary", null, "Ver em tabela"));
   const tb = el("table"), hr = el("tr"); hr.appendChild(el("th", null, "Dia")); cfg.series.forEach(sr => hr.appendChild(el("th", null, sr.name))); const th = el("thead"); th.appendChild(hr); tb.appendChild(th);
   const tbody = el("tbody");
@@ -6521,7 +6519,7 @@ function modEvoCard(id, title, build, rerender) {
   const dates = evoDates(U.n), S = build(dates) || {};
   const series = (S.series || []).filter(sr => sr.vals.some(v => v != null));
   if (!series.length) { card.appendChild(el("p", "note muted", S.empty || "Ainda não há dados para mostrar a evolução.")); return card; }
-  card.appendChild(lineChart({ dates, series, ref: S.ref == null ? 1 : S.ref, minTop: S.minTop, cap: S.cap, fmt: S.fmt, idp: "evo-" + id + "-", label: title,
+  card.appendChild(lineChart({ dates, series, ref: S.ref === undefined ? 1 : S.ref, minTop: S.minTop, cap: S.cap, fmt: S.fmt, hours: S.hours, idp: "evo-" + id + "-", label: title,
     focus: U.focus && series.some(x => x.id === U.focus) ? U.focus : null, onFocus: f => { U.focus = f; again(); } }));
   if (S.note) card.appendChild(el("p", "hex-cap", S.note));
   return card;
@@ -6561,19 +6559,61 @@ function evoGraca(dates) {
     note: "Quanto de cada ritual você cumpriu nos 28 dias anteriores a cada ponto (100% = todas as vezes previstas)." + (g.rituals.length > ITEM_COLORS.length ? " Aparecem os " + ITEM_COLORS.length + " primeiros rituais." : "") };
 }
 function evoAttr(id, note, empty) { return dates => ({ series: [{ id, name: (MODULES.find(m => m.id === id) || {}).name || id, color: HX_COLORS[id], vals: dates.map(d => hxValOn(id, d)) }], note, empty }); }
+/* ---------- Horas dedicadas por dia em cada área ----------
+   Um gráfico pequeno por área (cada um com a sua escala), em vez de várias linhas no mesmo gráfico:
+   com mais de 3 linhas juntas sempre há cores difíceis de separar. Economia não tem tempo registrado. */
+const fmtHours = v => v == null ? "—" : v <= 0 ? "0" : fmtHM(Math.round(v * 3600)).replace(/h00$/, "h");
+function forcaSecOn(d) { // a Força não cronometra: 2,5 min por série anotada + 10 min de aquecimento (a mesma conta da Rotina)
+  const e = (state.logs[d] && state.logs[d].e) || {}; let sets = 0;
+  Object.keys(e).forEach(id => { const r = e[id]; if (r) sets += Math.max(1, Number(r.sets) || 0); });
+  return sets ? (sets * 2.5 + 10) * 60 : 0;
+}
+function grDaySec(d) { return grData().rituals.reduce((a, r) => a + grSec(d, r.id), 0); }
+const AREA_SEC = {
+  inteligencia: { name: "Inteligência", sec: d => intel ? daySec(d) : 0, first: () => intel ? hxFirst(Object.keys(intel.days), d => daySec(d) > 0) : null },
+  estamina: { name: "Estamina", sec: d => stKindSec(d, "cardio") + stKindSec(d, "foco"), first: () => hxFirst(Object.keys(stam().days || {}), d => stKindSec(d, "cardio") + stKindSec(d, "foco") > 0) },
+  forca: { name: "Força", sec: forcaSecOn, first: () => profileId ? hxFirst(Object.keys(state.logs), hasEntries) : null, est: true },
+  graca: { name: "Graça", sec: grDaySec, first: () => hxFirst(Object.keys(grData().days), d => grDaySec(d) > 0) },
+  missoes: { name: "Missões", sec: d => msDaySec(d), first: () => hxFirst(Object.keys(msData().days), d => msDaySec(d) > 0) }
+};
+function areaHours(id, dates) {
+  const A = AREA_SEC[id], f = A.first();
+  if (!f) return null;
+  return dates.map(d => d < f || modUserOff(id, d) ? null : A.sec(d) / 3600);
+}
 function evoCard() {
   const card = el("section", "guide evo-card"); card.id = "evo";
-  card.appendChild(el("h3", null, "Evolução dos atributos"));
+  card.appendChild(el("h3", null, "Horas dedicadas por dia"));
   const ch = el("div", "chips"); ch.setAttribute("aria-label", "Período do gráfico");
   [[30, "30 dias"], [90, "90 dias"]].forEach(([k, t]) => { const b = el("button", "gchip", t); b.type = "button"; b.id = "evo-n-" + k; b.setAttribute("aria-pressed", String(evoUI.n === k)); b.addEventListener("click", () => { evoUI.n = k; renderHome(); const c = document.getElementById("evo"); if (c) c.scrollIntoView({ block: "nearest" }); }); ch.appendChild(b); });
   card.appendChild(ch);
-  const S = hxSeries(evoUI.n);
-  if (!S.series.some(sr => sr.vals.some(v => v != null))) { card.appendChild(el("p", "note muted", "Ainda não há dados para mostrar a evolução. Use os módulos por alguns dias e as linhas aparecem aqui.")); return card; }
-  card.appendChild(lineChart({ dates: S.dates, series: S.series, ref: 1, focus: evoUI.focus && S.series.some(x => x.id === evoUI.focus) ? evoUI.focus : null, idp: "evo-", label: "Evolução diária de cada atributo em relação à referência",
-    onFocus: id => { evoUI.focus = id; renderHome(); const c = document.getElementById("evo"); if (c) c.scrollIntoView({ block: "nearest" }); } }));
-  card.appendChild(el("p", "hex-cap", "Cada ponto é o percentual do atributo naquele dia, com a mesma conta do gráfico acima (os 28 dias anteriores). Linha tracejada = 100%. Toque no gráfico para ver os valores do dia e num atributo para destacar a linha dele."));
+  const dates = evoDates(evoUI.n);
+  const areas = Object.keys(AREA_SEC).filter(id => modOn(id)).map(id => ({ id, name: AREA_SEC[id].name, vals: areaHours(id, dates) })).filter(a => a.vals && a.vals.some(v => v != null));
+  if (!areas.length) { card.appendChild(el("p", "note muted", "Ainda não há tempo registrado. Use os cronômetros dos módulos e as linhas aparecem aqui.")); return card; }
+  const mw = (document.getElementById("main") || document.body).clientWidth || 640, two = mw >= 700;
+  const grid = el("div", "evo-grid" + (two ? " two" : ""));
+  areas.forEach(a => {
+    const got = a.vals.filter(v => v != null), avg = got.reduce((x, y) => x + y, 0) / Math.max(1, got.length), last = a.vals[a.vals.length - 1];
+    const panel = el("div", "evo-panel"); panel.id = "evo-" + a.id + "-panel";
+    const hd = el("div", "evo-ph"); const sw = el("span", "lc-sw"); sw.style.background = HX_COLORS[a.id];
+    hd.append(sw, el("b", null, a.name), el("span", null, "média " + fmtHours(avg) + " por dia · hoje " + fmtHours(last)));
+    panel.appendChild(hd);
+    panel.appendChild(lineChart({ dates, series: [{ id: a.id, name: a.name, color: HX_COLORS[a.id], vals: a.vals }], hours: true, fmt: fmtHours, ref: null, h: 150, width: two ? mw / 2 - 10 : mw, noTable: true, idp: "evo-" + a.id + "-", label: "Horas dedicadas por dia em " + a.name }));
+    grid.appendChild(panel);
+  });
+  card.appendChild(grid);
+  // tabela única com todas as áreas
+  const det = el("details", "lc-table"); det.appendChild(el("summary", null, "Ver em tabela"));
+  const tb = el("table"), hr = el("tr"); hr.appendChild(el("th", null, "Dia")); areas.forEach(a => hr.appendChild(el("th", null, a.name))); const th = el("thead"); th.appendChild(hr); tb.appendChild(th);
+  const tbody = el("tbody"); dates.map((d, i) => i).reverse().forEach(i => { const tr = el("tr"); tr.appendChild(el("td", null, fmtDate(dates[i]).slice(0, 5))); areas.forEach(a => tr.appendChild(el("td", null, fmtHours(a.vals[i])))); tbody.appendChild(tr); });
+  tb.appendChild(tbody); const sc = el("div", "lc-tscroll"); sc.appendChild(tb); det.appendChild(sc); card.appendChild(det);
+  const notes = ["Tempo cronometrado em cada área por dia, contando o cronômetro que estiver rodando. Cada gráfico tem a sua escala: compare as áreas pela média de cada um."];
+  if (areas.some(a => a.id === "forca")) notes.push("Força: tempo estimado pelas séries anotadas (2,5 min por série + 10 min de aquecimento).");
+  if (modOn("financas")) notes.push("Economia não aparece porque não tem tempo registrado.");
+  card.appendChild(el("p", "hex-cap", notes.join(" ")));
   return card;
 }
+
 function hexForm() {
   const d = hexUI.draft || (hexUI.draft = Object.assign({}, perfil || {}));
   const box = el("div", "hex-form");

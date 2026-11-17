@@ -2537,7 +2537,6 @@ function renderIntelProgress(main) {
     ms.appendChild(row);
   });
   main.appendChild(ms);
-  main.appendChild(modEvoCard("inteligencia", "Evolução das matérias", evoIntel, renderIntel));
   main.appendChild(hoursMultiCard("intel-tempo", "Tempo dedicado por matéria", evoIntelTempo, renderIntel));
 }
 
@@ -6543,15 +6542,6 @@ function evoForca(dates) {
   const gs = Object.keys(FX_PESO).filter(g => per.some(r => r && r.gs && r.gs.some(x => x.g === g))).slice(0, ITEM_COLORS.length);
   return { series: gs.map((g, i) => ({ id: "g" + i, name: g, color: ITEM_COLORS[i], vals: per.map(r => { const x = r && r.gs && r.gs.find(y => y.g === g); return x ? x.pct : null; }) })),
     note: "Cada ponto é a força do grupo naquele dia comparada ao seu peso (100% = a média de quem treina), com as maiores cargas dos 28 dias anteriores." };
-}
-// Inteligência: quanto de cada matéria já estava feito em cada dia (100% = matéria concluída)
-function evoIntel(dates) {
-  if (!intel || !intel.subjects.length) return { empty: "Cadastre suas matérias para ver a evolução." };
-  let subs = intel.subjects.filter(sb => sb.total > 0);
-  if (!subs.length) return { empty: "Coloque o total de exercícios ou módulos de cada matéria (em Matérias) para ver quanto já foi feito." };
-  if (subs.length > ITEM_COLORS.length) subs = subs.map(sb => ({ sb, gain: subjDoneUpTo(sb, dates[dates.length - 1]) - subjDoneUpTo(sb, dates[0]) })).sort((a, b) => b.gain - a.gain).slice(0, ITEM_COLORS.length).map(x => x.sb);
-  return { minTop: 1, cap: 1, series: subs.map(sb => ({ id: sb.id, name: sb.name, color: ITEM_COLORS[intel.subjects.indexOf(sb) % ITEM_COLORS.length], vals: dates.map(d => Math.min(1, subjDoneUpTo(sb, d) / sb.total)) })),
-    note: "Quanto de cada matéria já estava feito em cada dia (100% = matéria concluída), contando o que você registrou e o que já tinha feito antes." + (intel.subjects.filter(sb => sb.total > 0).length > ITEM_COLORS.length ? " Aparecem as " + ITEM_COLORS.length + " matérias que mais andaram no período." : "") };
 }
 // Estamina: cardio (o atributo) e foco (em relação à meta diária), os dois com os 28 dias anteriores
 function evoStamina(dates) {

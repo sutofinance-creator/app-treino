@@ -488,6 +488,10 @@ ol.steps a { color: var(--accent); }
 .ms-search { margin: 4px 0 12px; }
 .ms-timebtn { font-size: 13px; }
 .evo-card { display: grid; gap: 10px; }
+.subj-color { display: grid; gap: 6px; margin-top: 4px; }
+.subj-color .field-l { margin: 0; }
+.color-chip { display: inline-flex; align-items: center; gap: 6px; }
+.color-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 2px rgba(0, 0, 0, .35); }
 .evo-grid { display: grid; gap: 14px; }
 .evo-grid.two { grid-template-columns: 1fr 1fr; align-items: end; }
 .evo-panel .lc-legend { margin-top: -2px; }
@@ -2674,6 +2678,17 @@ function renderMaterias(main) {
     field("total", "Total (0 = sem total)", "num"); field("base", "Já feitos antes", "num");
     field("min", "Mínimo por dia (0 = sem mínimo)", "num");
     c.appendChild(grid);
+    // cor da matéria nos gráficos (sem escolha, vale a cor da posição na lista)
+    const cw = el("div", "subj-color"); cw.appendChild(el("p", "field-l", "Cor nos gráficos"));
+    const cr = el("div", "chips"); cr.setAttribute("aria-label", "Cor de " + s.name + " nos gráficos");
+    const curC = subjColor(s);
+    SUBJ_COLORS.forEach(([hex, nm]) => {
+      const b = el("button", "gchip color-chip"); b.type = "button"; b.id = "m-color-" + s.id + "-" + hex.slice(1); b.setAttribute("aria-pressed", String(curC === hex)); b.title = nm;
+      const dot = el("span", "color-dot"); dot.style.background = hex; b.append(dot, el("span", null, nm));
+      b.addEventListener("click", () => { s.color = hex; saveIntel(); renderIntel(); const n = document.getElementById(b.id); if (n) n.focus(); });
+      cr.appendChild(b);
+    });
+    cw.appendChild(cr); c.appendChild(cw);
     c.appendChild(msAttachBox(() => { const t = intel.subjects.find(x => x.id === s.id) || s; return t.att || (t.att = []); }, () => saveIntel(), "m-" + s.id + "-", true, "Materiais"));
     c.appendChild(planEditor(s));
     const rng = s.plan ? planRange(s) : null;
@@ -6589,14 +6604,16 @@ function hoursMultiCard(key, title, build, rerender) {
   if (R.note) card.appendChild(el("p", "hex-cap", R.note));
   return card;
 }
-// Inteligência: horas de estudo por dia em cada matéria (mesma cor do gráfico de evolução)
+const SUBJ_COLORS = [["#b07cff", "Roxo"], ["#3987e5", "Azul"], ["#199e70", "Verde-água"], ["#c98500", "Amarelo"], ["#d55181", "Rosa"], ["#0ca30c", "Verde"], ["#d95926", "Laranja"]];
+function subjColor(sb) { const i = intel ? intel.subjects.indexOf(sb) : 0; return sb.color || ITEM_COLORS[(i < 0 ? 0 : i) % ITEM_COLORS.length]; }
+// Inteligência: horas de estudo por dia em cada matéria (cor escolhida na matéria ou a da posição)
 function evoIntelTempo(dates) {
   if (!intel || !intel.subjects.length) return { empty: "Cadastre suas matérias para ver o tempo dedicado." };
   // todas as matérias aparecem; a que não tem tempo cronometrado no período diz por quê
   const items = intel.subjects.map((sb, i) => {
     const first = hxFirst(Object.keys(intel.days), d => subjSec(d, sb.id) > 0);
     const vals = dates.map(d => first && d < first ? null : subjSec(d, sb.id) / 3600);
-    const it = { id: sb.id, name: sb.name, color: ITEM_COLORS[i % ITEM_COLORS.length], vals, keep: true };
+    const it = { id: sb.id, name: sb.name, color: subjColor(sb), vals, keep: true };
     if (!vals.some(v => v > 0)) {
       const cnt = dates.reduce((a, d) => a + (getRec(d, sb.id).count || 0), 0), w = (UNITS[sb.unit] || UNITS.exercicios)[1];
       it.vals = dates.map(() => 0);

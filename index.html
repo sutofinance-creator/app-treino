@@ -1191,16 +1191,24 @@ function renderProgress(main) {
     const lastW = data[data.length - 1];
     const parts = [];
     if (lastW.sets != null) parts.push(lastW.sets + " séries na semana de " + fmtDate(lastW.wk).slice(0, 5));
-    if (lastW.load != null) parts.push("carga " + (lastW.load >= 0 ? "+" : "") + lastW.load.toFixed(0) + "% em relação ao primeiro registro");
+    const useRef = !!(perfil && perfil.peso);
+    if (useRef && lastW.ref != null) parts.push("força " + Math.round(lastW.ref) + "% da média de quem treina para o seu peso");
+    else if (!useRef && lastW.load != null) parts.push("carga " + (lastW.load >= 0 ? "+" : "") + lastW.load.toFixed(0) + "% em relação ao primeiro registro");
     ev.appendChild(el("p", "note", parts.join(" · ") || "Semana sem séries ou cargas anotadas."));
     ev.appendChild(el("p", "chart-t", "Séries por semana"));
     ev.appendChild(chartBox(barSVG(data)));
-    ev.appendChild(el("p", "chart-t", "Carga em relação ao primeiro registro (%)"));
-    ev.appendChild(chartBox(lineSVG(data)));
-    ev.appendChild(el("p", "note muted", "A carga compara, exercício por exercício, o maior peso da semana com o primeiro peso anotado, e tira a média do grupo. Assim exercícios com pesos diferentes entram na mesma conta. Exercícios sem carga (como as paralelas) contam só nas séries."));
+    if (useRef) {
+      ev.appendChild(el("p", "chart-t", "Força em relação à média de quem treina (tracejado = 100%)"));
+      ev.appendChild(chartBox(refLineSVG(data)));
+    } else {
+      ev.appendChild(el("p", "chart-t", "Carga em relação ao primeiro registro (%)"));
+      ev.appendChild(chartBox(lineSVG(data)));
+      ev.appendChild(el("p", "note muted", "Informe seu peso em Atributos › Meus dados para ver a força comparada à média de quem treina, a mesma régua do gráfico de atributos."));
+    }
+    if (useRef) ev.appendChild(el("p", "note muted", "A mesma régua do gráfico de atributos: em cada semana, a maior carga de cada exercício vira uma carga máxima estimada (1RM, fórmula de Epley, com a carga total da barra) e é comparada com a de quem treina, na média, para o seu peso (nível intermediário do Strength Level). 100% = essa média; o grupo é a média dos exercícios. Exercícios sem referência ficam fora."));
+    else ev.appendChild(el("p", "note muted", "A carga compara, exercício por exercício, o maior peso da semana com o primeiro peso anotado, e tira a média do grupo. Assim exercícios com pesos diferentes entram na mesma conta. Exercícios sem carga (como as paralelas) contam só nas séries."));
   }
   main.appendChild(ev);
-  main.appendChild(modEvoCard("forca", "Força comparada ao seu peso", evoForca, renderMain));
 }
 
 function chartBox(svg) { const d = el("div", "chart"); d.innerHTML = svg; return d; }
@@ -1210,19 +1218,26 @@ function weekStart(iso) { const [y, m, d] = iso.split("-").map(Number); const dt
 function groupSeries(group) {
   const ids = Object.keys(GROUP).filter(k => GROUP[k] === group);
   const first = {}; const weeks = {};
+  const exs = {}; (prof().plan || []).forEach(w => (w.ex || []).forEach(x => { exs[x.id] = x; }));
+  const bw = perfil && perfil.peso, sx = perfil && (perfil.sexo === "f" || perfil.sexo === "m") ? perfil.sexo : null;
   Object.keys(state.logs).sort().forEach(date => {
     const l = state.logs[date]; if (!l || !l.e) return;
     ids.forEach(id => {
       const e = l.e[id]; if (!e) return;
       const wk = weekStart(date);
-      const w = weeks[wk] || (weeks[wk] = { sets: 0, hasSets: false, max: {} });
+      const w = weeks[wk] || (weeks[wk] = { sets: 0, hasSets: false, max: {}, rm: {} });
       if (e.sets != null) { w.sets += e.sets; w.hasSets = true; }
-      if (e.kg > 0) { if (first[id] == null) first[id] = e.kg; w.max[id] = Math.max(w.max[id] || 0, e.kg); }
+      if (e.kg > 0) {
+        if (first[id] == null) first[id] = e.kg; w.max[id] = Math.max(w.max[id] || 0, e.kg);
+        const x = exs[id]; if (x) { const v = fx1rm(fTotal(e.kg, fLoad(id, x.name)), e.reps != null ? e.reps : (x.hi || x.lo)); if (v > (w.rm[id] || 0)) w.rm[id] = v; }
+      }
     });
   });
   return Object.keys(weeks).sort().slice(-12).map(wk => {
     const w = weeks[wk]; const r = Object.keys(w.max).map(id => w.max[id] / first[id]);
-    return { wk, sets: w.hasSets ? w.sets : null, load: r.length ? (r.reduce((a, b) => a + b, 0) / r.length - 1) * 100 : null };
+    // força: maior 1RM estimado de cada exercício na semana ÷ carga de referência para o seu peso; média do grupo
+    const fr = bw ? Object.keys(w.rm).map(id => { const k = fxStdKey(exs[id].name); return k ? Math.min(3, w.rm[id] / fxRef(FX_STD[k], bw, sx)) : null; }).filter(v => v != null) : [];
+    return { wk, sets: w.hasSets ? w.sets : null, load: r.length ? (r.reduce((a, b) => a + b, 0) / r.length - 1) * 100 : null, ref: fr.length ? fr.reduce((a, b) => a + b, 0) / fr.length * 100 : null };
   });
 }
 
@@ -1262,6 +1277,23 @@ function lineSVG(data) {
   const lp = pts[pts.length - 1];
   g += '<text class="val" x="' + Math.min(xs(lp.i), CW - PR - 14) + '" y="' + (ys(lp.v) - 8) + '" text-anchor="middle">' + (lp.v >= 0 ? "+" : "") + lp.v.toFixed(0) + '%</text>';
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Carga em relação ao primeiro registro">' + g + xLabels(data, xs) + '</svg>';
+}
+
+function refLineSVG(data) {
+  const pts = data.map((p, i) => ({ i, v: p.ref })).filter(p => p.v != null);
+  if (!pts.length) return '<p class="note muted">Os exercícios deste grupo ainda não têm referência ou carga anotada.</p>';
+  const lo = Math.min(50, Math.floor(Math.min(...pts.map(p => p.v)) / 25) * 25), hi = Math.max(150, Math.ceil(Math.max(...pts.map(p => p.v)) / 25) * 25);
+  const iw = CW - PL - PR, ih = CH - PT - PB;
+  const xs = i => PL + iw * (i + 0.5) / data.length, ys = v => PT + ih * (1 - (v - lo) / (hi - lo));
+  let g = "";
+  [lo, 100, hi].forEach(v => { g += '<line class="' + (v === 100 ? "grid zero" : "grid") + '" x1="' + PL + '" x2="' + (CW - PR) + '" y1="' + ys(v) + '" y2="' + ys(v) + '"/><text class="ax" x="' + (PL - 6) + '" y="' + (ys(v) + 4) + '" text-anchor="end">' + v + '%</text>'; });
+  const path = pts.map((p, k) => (k ? "L" : "M") + xs(p.i).toFixed(1) + " " + ys(p.v).toFixed(1)).join(" ");
+  const area = path + " L" + xs(pts[pts.length - 1].i).toFixed(1) + " " + ys(lo) + " L" + xs(pts[0].i).toFixed(1) + " " + ys(lo) + " Z";
+  g += '<path class="area" d="' + area + '"/><path class="line" d="' + path + '"/>';
+  pts.forEach((p, k) => { const last = k === pts.length - 1; g += '<circle class="' + (last ? "dot last" : "dot") + '" cx="' + xs(p.i) + '" cy="' + ys(p.v) + '" r="' + (last ? 4.5 : 3) + '"/>'; });
+  const lp = pts[pts.length - 1];
+  g += '<text class="val" x="' + Math.min(xs(lp.i), CW - PR - 14) + '" y="' + (ys(lp.v) - 8) + '" text-anchor="middle">' + Math.round(lp.v) + '%</text>';
+  return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Força do grupo em relação à média de quem treina para o seu peso">' + g + xLabels(data, xs) + '</svg>';
 }
 
 // Textos do Guia que valem para qualquer plano

@@ -501,6 +501,7 @@ ol.steps a { color: var(--accent); }
 .lc-cross { stroke: var(--ink); stroke-width: 1; opacity: .5; }
 .lc-hit { fill: transparent; cursor: crosshair; }
 .lc-tip { position: absolute; z-index: 5; pointer-events: none; min-width: 150px; padding: 8px 10px; background: rgba(12, 7, 24, .96); border: 1px solid var(--line); box-shadow: 0 6px 18px rgba(0, 0, 0, .5); font-size: 13px; display: grid; gap: 3px; }
+.lc-tip[hidden] { display: none; }
 .lc-tip-d { color: var(--muted); font-size: 12px; margin-bottom: 2px; }
 .lc-tip-r { display: grid; grid-template-columns: 14px 44px 1fr; align-items: center; gap: 6px; color: var(--ink); }
 .lc-sw { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
@@ -1186,6 +1187,7 @@ function renderProgress(main) {
     ev.appendChild(el("p", "note muted", "A carga compara, exercício por exercício, o maior peso da semana com o primeiro peso anotado, e tira a média do grupo. Assim exercícios com pesos diferentes entram na mesma conta. Exercícios sem carga (como as paralelas) contam só nas séries."));
   }
   main.appendChild(ev);
+  main.appendChild(modEvoCard("forca", "Força comparada ao seu peso", evoForca, renderMain));
 }
 
 function chartBox(svg) { const d = el("div", "chart"); d.innerHTML = svg; return d; }
@@ -2526,6 +2528,7 @@ function renderIntelProgress(main) {
     ms.appendChild(row);
   });
   main.appendChild(ms);
+  main.appendChild(modEvoCard("inteligencia", "Evolução das matérias", evoIntel, renderIntel));
 }
 
 function studySVG(rows) {
@@ -3131,6 +3134,7 @@ function renderStProgress(main) {
   const rows = Object.keys(s.days).filter(dd => PRACTICES.some(p => stSec(dd, p.id) >= 60)).sort().reverse().slice(0, 14);
   if (!rows.length) h.appendChild(el("p", "note muted", "Nada registrado ainda. Use o cronômetro ou os botões de 5 min na aba Hoje."));
   else { const ul = el("ul", "hist"); rows.forEach(dd => { const li = el("li"); li.append(el("span", null, fmtDate(dd).slice(0, 5)), el("span", null, PRACTICES.filter(p => stSec(dd, p.id) >= 60).map(p => p.name + " " + fmtHM(stSec(dd, p.id))).join(" · "))); ul.appendChild(li); }); h.appendChild(ul); }
+  main.appendChild(modEvoCard("estamina", "Evolução do cardio e do foco", evoStamina, renderStamina));
   main.appendChild(h);
 }
 
@@ -3424,6 +3428,7 @@ function renderGrProgress(main) {
     rs.appendChild(row);
   });
   main.appendChild(rs);
+  main.appendChild(modEvoCard("graca", "Evolução dos rituais", evoGraca, renderGraca));
 }
 
 function grForm(r, onSave, idp, onCancel) {
@@ -4695,6 +4700,7 @@ function renderMsRelatorio(main) {
   const dch = el("div", "chips");
   [1, 2, 3, 4, 5, 6, 0].forEach(w => { const on = g.goal.days.includes(w); const c = el("button", "gchip", DOW_SHORT[w]); c.type = "button"; c.id = "ms-wd-" + w; c.setAttribute("aria-pressed", String(on)); c.addEventListener("click", () => { const gg = ensureMs(); const nd = on ? gg.goal.days.filter(x => x !== w) : gg.goal.days.concat(w); if (nd.length) { gg.goal.days = nd; saveMs(); renderMissoes(); } }); dch.appendChild(c); });
   s6.appendChild(dch);
+  main.appendChild(modEvoCard("missoes", "Evolução das horas de trabalho", evoAttr("missoes", "Horas por semana (cronometradas, ou a jornada de Meus dados) em relação à média de quem tem a sua ocupação, com os 28 dias anteriores a cada ponto. É a mesma linha das Missões na aba Atributos.", "Cronometre o trabalho nas Missões para ver a evolução."), renderMissoes));
   main.appendChild(s6);
 }
 
@@ -5717,6 +5723,7 @@ function renderRelatorio(main) {
   es.appendChild(et);
   es.appendChild(el("p", "note muted", "Custos fixos repetem o último valor; variáveis usam a média dos últimos 3 meses" + (est.partial ? " (com o mês atual projetado pelo ritmo de gasto)" : "") + "; recebimentos usam a média dos meses fechados."));
   main.appendChild(es);
+  main.appendChild(modEvoCard("financas", "Evolução da renda", evoAttr("financas", "Sua renda (média das receitas dos 3 meses anteriores, ou a informada em Meus dados) em relação à média de quem tem o seu perfil. É a mesma linha da Economia na aba Atributos.", "Classifique suas entradas como Receita ou informe sua renda em Atributos › Meus dados para ver a evolução."), renderFin));
 }
 function legend(items) { const l = el("div", "legend"); items.forEach(([c, t]) => { const i = el("span", "lg"); i.append(el("span", "sw " + c), document.createTextNode(t)); l.appendChild(i); }); return l; }
 function hbars(rows, total) {
@@ -6487,7 +6494,7 @@ function lineChart(cfg) {
     if (cfg.onFocus) b.addEventListener("click", () => cfg.onFocus(cfg.focus === sr.id ? null : sr.id));
     lg.appendChild(b);
   });
-  wrap.insertBefore(lg, box);
+  if (cfg.series.length > 1) wrap.insertBefore(lg, box);
   // tabela (acessível e para quem prefere números)
   const det = el("details", "lc-table"); det.appendChild(el("summary", null, "Ver em tabela"));
   const tb = el("table"), hr = el("tr"); hr.appendChild(el("th", null, "Dia")); cfg.series.forEach(sr => hr.appendChild(el("th", null, sr.name))); const th = el("thead"); th.appendChild(hr); tb.appendChild(th);
@@ -6496,6 +6503,64 @@ function lineChart(cfg) {
   tb.appendChild(tbody); const sc = el("div", "lc-tscroll"); sc.appendChild(tb); det.appendChild(sc); wrap.appendChild(det);
   return wrap;
 }
+/* ---------- Evolução dentro de cada módulo: uma linha por item ----------
+   Força: grupo muscular; Inteligência: matéria; Estamina: cardio e foco; Graça: ritual; Missões e Economia: o atributo.
+   Itens usam a paleta categórica validada (7 cores), na ordem fixa dos itens do módulo. */
+const ITEM_COLORS = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#0ca30c", "#9085e9"];
+const modEvoUI = {};
+function evoDates(n) { const t = todayISO(), out = []; for (let i = n - 1; i >= 0; i--) out.push(addDaysISO(t, -i)); return out; }
+function asOf(d, fn) { hxAsOf = d === todayISO() ? null : d; try { return fn(); } catch (e) { return null; } finally { hxAsOf = null; } }
+function modEvoCard(id, title, build, rerender) {
+  const U = modEvoUI[id] = modEvoUI[id] || { n: 30, focus: null };
+  const card = el("section", "guide evo-card"); card.id = "evo-" + id;
+  card.appendChild(el("h3", null, title));
+  const again = () => { rerender(); const c = document.getElementById("evo-" + id); if (c) c.scrollIntoView({ block: "nearest" }); };
+  const ch = el("div", "chips"); ch.setAttribute("aria-label", "Período do gráfico");
+  [[30, "30 dias"], [90, "90 dias"]].forEach(([k, t]) => { const b = el("button", "gchip", t); b.type = "button"; b.id = "evo-" + id + "-n-" + k; b.setAttribute("aria-pressed", String(U.n === k)); b.addEventListener("click", () => { U.n = k; again(); }); ch.appendChild(b); });
+  card.appendChild(ch);
+  const dates = evoDates(U.n), S = build(dates) || {};
+  const series = (S.series || []).filter(sr => sr.vals.some(v => v != null));
+  if (!series.length) { card.appendChild(el("p", "note muted", S.empty || "Ainda não há dados para mostrar a evolução.")); return card; }
+  card.appendChild(lineChart({ dates, series, ref: S.ref == null ? 1 : S.ref, minTop: S.minTop, cap: S.cap, fmt: S.fmt, idp: "evo-" + id + "-", label: title,
+    focus: U.focus && series.some(x => x.id === U.focus) ? U.focus : null, onFocus: f => { U.focus = f; again(); } }));
+  if (S.note) card.appendChild(el("p", "hex-cap", S.note));
+  return card;
+}
+// Força: cada grupo muscular comparado ao seu peso (a mesma conta do atributo), dia a dia
+function evoForca(dates) {
+  if (!profileId) return { empty: "Escolha seu plano de treino para ver a evolução." };
+  if (!perfil || !perfil.peso) return { empty: "Informe seu peso em Atributos › Meus dados para comparar a força com o peso do corpo." };
+  const per = dates.map(d => asOf(d, () => fxForca()));
+  const gs = Object.keys(FX_PESO).filter(g => per.some(r => r && r.gs && r.gs.some(x => x.g === g))).slice(0, ITEM_COLORS.length);
+  return { series: gs.map((g, i) => ({ id: "g" + i, name: g, color: ITEM_COLORS[i], vals: per.map(r => { const x = r && r.gs && r.gs.find(y => y.g === g); return x ? x.pct : null; }) })),
+    note: "Cada ponto é a força do grupo naquele dia comparada ao seu peso (100% = a média de quem treina), com as maiores cargas dos 28 dias anteriores." };
+}
+// Inteligência: quanto de cada matéria já estava feito em cada dia (100% = matéria concluída)
+function evoIntel(dates) {
+  if (!intel || !intel.subjects.length) return { empty: "Cadastre suas matérias para ver a evolução." };
+  let subs = intel.subjects.filter(sb => sb.total > 0);
+  if (!subs.length) return { empty: "Coloque o total de exercícios ou módulos de cada matéria (em Matérias) para ver quanto já foi feito." };
+  if (subs.length > ITEM_COLORS.length) subs = subs.map(sb => ({ sb, gain: subjDoneUpTo(sb, dates[dates.length - 1]) - subjDoneUpTo(sb, dates[0]) })).sort((a, b) => b.gain - a.gain).slice(0, ITEM_COLORS.length).map(x => x.sb);
+  return { minTop: 1, cap: 1, series: subs.map(sb => ({ id: sb.id, name: sb.name, color: ITEM_COLORS[intel.subjects.indexOf(sb) % ITEM_COLORS.length], vals: dates.map(d => Math.min(1, subjDoneUpTo(sb, d) / sb.total)) })),
+    note: "Quanto de cada matéria já estava feito em cada dia (100% = matéria concluída), contando o que você registrou e o que já tinha feito antes." + (intel.subjects.filter(sb => sb.total > 0).length > ITEM_COLORS.length ? " Aparecem as " + ITEM_COLORS.length + " matérias que mais andaram no período." : "") };
+}
+// Estamina: cardio (o atributo) e foco (em relação à meta diária), os dois com os 28 dias anteriores
+function evoStamina(dates) {
+  const s = stam(), fg = s.goals.focusMin || 10;
+  const ffirst = hxFirst(Object.keys(s.days || {}), d => stKindSec(d, "foco") > 0);
+  const foco = d => { if (!ffirst || ffirst > d) return null; let a = addDaysISO(d, -27); if (ffirst > a) a = ffirst; let n = 0, m = 0; for (let x = a; x <= d; x = addDaysISO(x, 1)) { n++; m += stKindSec(x, "foco") / 60; } return m / (fg * n); };
+  return { series: [{ id: "cardio", name: "Cardio", color: HX_COLORS.estamina, vals: dates.map(d => hxValOn("estamina", d)) }, { id: "foco", name: "Foco", color: ITEM_COLORS[0], vals: dates.map(foco) }],
+    note: "Cardio: minutos equivalentes por semana em relação aos 150 da OMS. Foco: minutos de meditação e respiração em relação à sua meta de " + fg + " min por dia. Os dois com os 28 dias anteriores a cada ponto." };
+}
+// Graça: quanto de cada ritual foi cumprido nos 28 dias anteriores a cada dia
+function evoGraca(dates) {
+  const g = grData(); if (!g.rituals.length) return { empty: "Crie um ritual para ver a evolução." };
+  const rs = g.rituals.slice(0, ITEM_COLORS.length);
+  const val = (r, d) => { let need = 0, done = 0; for (let i = 0; i < 28; i++) { const x = addDaysISO(d, -i); if (!grScheduled(r, x)) continue; const k = Math.max(1, r.times || 1); need += k; done += Math.min(k, grRec(x, r.id).count || 0); } return need ? done / need : null; };
+  return { minTop: 1, cap: 1, series: rs.map((r, i) => ({ id: r.id, name: r.name, color: ITEM_COLORS[i], vals: dates.map(d => val(r, d)) })),
+    note: "Quanto de cada ritual você cumpriu nos 28 dias anteriores a cada ponto (100% = todas as vezes previstas)." + (g.rituals.length > ITEM_COLORS.length ? " Aparecem os " + ITEM_COLORS.length + " primeiros rituais." : "") };
+}
+function evoAttr(id, note, empty) { return dates => ({ series: [{ id, name: (MODULES.find(m => m.id === id) || {}).name || id, color: HX_COLORS[id], vals: dates.map(d => hxValOn(id, d)) }], note, empty }); }
 function evoCard() {
   const card = el("section", "guide evo-card"); card.id = "evo";
   card.appendChild(el("h3", null, "Evolução dos atributos"));

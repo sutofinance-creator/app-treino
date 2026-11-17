@@ -487,6 +487,34 @@ ol.steps a { color: var(--accent); }
 /* ---------- Missões: busca, tags, cronômetro por missão ---------- */
 .ms-search { margin: 4px 0 12px; }
 .ms-timebtn { font-size: 13px; }
+.evo-card { display: grid; gap: 10px; }
+.evo-card .chips { margin: 0; }
+.lc { display: grid; gap: 8px; }
+.lc-box { position: relative; }
+.lc-svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.lc-grid { stroke: var(--line); stroke-width: 1; opacity: .6; }
+.lc-ref { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 6 5; }
+.lc-yl, .lc-xl { fill: var(--muted); font: 500 11px var(--font-body); }
+.lc-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.lc-line.dim, .lc-end.dim { opacity: .15; }
+.lc-end, .lc-dot { stroke: #10091f; stroke-width: 2; }
+.lc-cross { stroke: var(--ink); stroke-width: 1; opacity: .5; }
+.lc-hit { fill: transparent; cursor: crosshair; }
+.lc-tip { position: absolute; z-index: 5; pointer-events: none; min-width: 150px; padding: 8px 10px; background: rgba(12, 7, 24, .96); border: 1px solid var(--line); box-shadow: 0 6px 18px rgba(0, 0, 0, .5); font-size: 13px; display: grid; gap: 3px; }
+.lc-tip-d { color: var(--muted); font-size: 12px; margin-bottom: 2px; }
+.lc-tip-r { display: grid; grid-template-columns: 14px 44px 1fr; align-items: center; gap: 6px; color: var(--ink); }
+.lc-sw { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+.lc-legend { display: flex; flex-wrap: wrap; gap: 6px; }
+.lc-leg { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); font: 500 13px var(--font-body); cursor: pointer; }
+.lc-leg b { font-weight: 700; }
+.lc-leg.on { border-color: var(--accent); box-shadow: 0 0 10px rgba(166, 107, 255, .3); }
+.lc-leg.dim { opacity: .55; }
+.lc-table summary { cursor: pointer; color: var(--accent); font: 600 13px var(--font-display); letter-spacing: .08em; text-transform: uppercase; }
+.lc-tscroll { overflow-x: auto; max-height: 320px; overflow-y: auto; margin-top: 8px; }
+.lc-table table { border-collapse: collapse; font-size: 13px; width: 100%; }
+.lc-table th, .lc-table td { padding: 4px 8px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.lc-table th:first-child, .lc-table td:first-child { text-align: left; }
+.lc-table th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: #10091f; }
 .mods-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
 .mod-pick { display: grid; gap: 2px; text-align: left; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--line); color: var(--muted); cursor: pointer; font: inherit; }
 .mod-pick .mod-pick-n { font-family: var(--font-display); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 14px; }
@@ -5949,6 +5977,7 @@ function renderHome() {
   if (state.htab === "atributos") {
     if (!hexUI.edit) main.appendChild(xpCard());
     main.appendChild(hexCard());
+    if (!hexUI.edit) main.appendChild(evoCard());
     return;
   }
   if (state.htab === "rotina") { main.appendChild(rtHomeSection()); return; }
@@ -6169,9 +6198,9 @@ function fxForca(p) {
   const bw = p && p.peso, sx = p && (p.sexo === "f" || p.sexo === "m") ? p.sexo : null;
   if (!bw || !profileId) return null;
   const exs = {}; (prof().plan || []).forEach(w => (w.ex || []).forEach(x => { exs[x.id] = x; }));
-  const from = addDaysISO(todayISO(), -27), best = {};
+  const from = addDaysISO(hxToday(), -27), best = {};
   Object.keys(state.logs).forEach(d => {
-    if (d < from || d > todayISO()) return;
+    if (d < from || d > hxToday()) return;
     const e = (state.logs[d] && state.logs[d].e) || {};
     Object.keys(e).forEach(id => { const r = e[id], x = exs[id]; if (!r || !x || !(r.kg > 0)) return; const v = fx1rm(fTotal(r.kg, fLoad(id, x.name)), r.reps != null ? r.reps : (x.hi || x.lo)); if (v > (best[id] || 0)) best[id] = v; });
   });
@@ -6203,13 +6232,17 @@ function perfAge(p) {
   let a = t.getFullYear() - y; if (t.getMonth() + 1 < m || (t.getMonth() + 1 === m && t.getDate() < d)) a--;
   return a >= 10 && a <= 120 ? a : null;
 }
-// janela dos últimos 28 dias, começando no primeiro uso do módulo; hoje só entra se já conta a seu favor
+// dia de referência das contas (null = hoje). O gráfico de evolução recalcula cada eixo como ele estava em cada dia.
+let hxAsOf = null;
+function hxToday() { return hxAsOf || todayISO(); }
+// janela dos últimos 28 dias, começando no primeiro uso do módulo; hoje só entra se já conta a seu favor (um dia passado entra inteiro)
 function hxWin(first, todayCounts) {
-  const today = todayISO(); let start = addDaysISO(today, -27); if (first && first > start) start = first;
+  const today = hxToday(); let start = addDaysISO(today, -27); if (first && first > start) start = first;
   const out = []; for (let d = start; d < today && out.length < 28; d = addDaysISO(d, 1)) out.push(d);
-  if (todayCounts || !out.length) out.push(today);
+  if (todayCounts || hxAsOf || !out.length) out.push(today);
   return out;
 }
+const hxBefore = first => !!(hxAsOf && first && first > hxAsOf); // o módulo ainda não era usado naquele dia
 function hxFirst(keys, test) { let f = null; keys.forEach(k => { if ((!f || k < f) && test(k)) f = k; }); return f; }
 function hxH(h) { return (Math.round(h * 10) / 10).toString().replace(".", ","); }
 function hxPct(v) { return v == null ? "—" : Math.round(v * 100) + "%"; }
@@ -6222,8 +6255,8 @@ const HX_CALC = {
     const src = "Não há uma média nacional confiável de horas de estudo, então este eixo usa a sua meta.";
     if (!intel || !intel.subjects.length) return { you: "Cadastre suas matérias e estude com o cronômetro.", ref, src };
     const first = hxFirst(Object.keys(intel.days), d => daySec(d) > 0);
-    if (!first) return { you: "Nenhum estudo cronometrado ainda.", ref, src };
-    const t = todayISO(), days = hxWin(first, daySec(t) > 0 && daySec(t) >= goalSec(t));
+    if (!first || hxBefore(first)) return { you: "Nenhum estudo cronometrado ainda.", ref, src };
+    const t = hxToday(), days = hxWin(first, daySec(t) > 0 && daySec(t) >= goalSec(t));
     const done = days.reduce((a, d) => a + daySec(d), 0), goal = days.reduce((a, d) => a + goalSec(d), 0);
     if (!goal) return { you: "Sua meta diária de estudo está em zero.", ref, src };
     return { val: done / goal, you: "Você: " + hxH(done / 3600) + " h de estudo nos últimos " + hxDias(days.length) + " (meta do período: " + hxH(goal / 3600) + " h).", ref, src };
@@ -6232,8 +6265,8 @@ const HX_CALC = {
     const s = stam(), ref = "Referência: OMS, 150 min por semana de aeróbico moderado (minuto vigoroso conta em dobro).";
     const src = "Só 42,3% dos adultos brasileiros fazem esses 150 minutos no tempo livre (Vigitel 2024).";
     const first = hxFirst(Object.keys(s.days || {}), d => stEqMin(d) > 0);
-    if (!first) return { you: "Nenhum cardio registrado ainda.", ref, src };
-    const days = hxWin(first, stEqMin(todayISO()) > 0), eq = days.reduce((a, d) => a + stEqMin(d), 0), wk = eq / Math.max(7, days.length) * 7;
+    if (!first || hxBefore(first)) return { you: "Nenhum cardio registrado ainda.", ref, src };
+    const days = hxWin(first, stEqMin(hxToday()) > 0), eq = days.reduce((a, d) => a + stEqMin(d), 0), wk = eq / Math.max(7, days.length) * 7;
     return { val: wk / HX_REF.cardio, you: "Você: cerca de " + Math.round(wk) + " min por semana nos últimos " + hxDias(days.length) + ".", ref, src };
   },
   forca() {
@@ -6262,7 +6295,7 @@ const HX_CALC = {
     let inc = null, how = "", fromApp = false;
     if (perfil && perfil.renda > 0) { inc = perfil.renda; how = "informada em Meus dados"; }
     else if (fin) {
-      const cur = monthKey(todayISO()), ms = [1, 2, 3].map(i => monthAgg(addMonths(cur, -i))).filter(a => a.recebido > 0);
+      const cur = monthKey(hxToday()), ms = [1, 2, 3].map(i => monthAgg(addMonths(cur, -i))).filter(a => a.recebido > 0);
       if (ms.length) { inc = ms.reduce((a, x) => a + x.recebido, 0) / ms.length; how = ms.length === 1 ? "receitas do mês passado na Economia" : "média das receitas dos últimos " + ms.length + " meses na Economia"; fromApp = true; }
     }
     const extra = [];
@@ -6280,7 +6313,8 @@ const HX_CALC = {
     const prayed = d => { const x = g.days[d]; return !!x && Object.values(x).some(v => v && ((v.count || 0) > 0 || (v.sec || 0) > 0)); };
     let first = hxFirst(Object.keys(g.days), prayed);
     g.rituals.forEach(r => { if (r.created && (!first || r.created < first)) first = r.created; });
-    const days = hxWin(first, prayed(todayISO())), n = days.filter(prayed).length;
+    if (hxBefore(first)) return { you: "Crie um ritual na Graça.", ref };
+    const days = hxWin(first, prayed(hxToday())), n = days.filter(prayed).length;
     return { val: n / days.length, you: "Você: rezou em " + n + " de " + hxDias(days.length) + ".", ref };
   },
   missoes() {
@@ -6289,8 +6323,8 @@ const HX_CALC = {
     if (perfil && perfil.horas > 0) return { val: perfil.horas / o[0], you: "Você: " + hxH(perfil.horas) + " h por semana (informadas em Meus dados).", ref };
     const src = "Conta só o tempo cronometrado nas Missões. Se você trabalha mais do que cronometra, informe sua jornada em Meus dados.";
     const g = msData(), first = hxFirst(Object.keys(g.days), d => msDaySec(d) > 0);
-    if (!first) return { you: "Nenhum tempo de trabalho cronometrado ainda.", ref, src };
-    const days = hxWin(first, msDaySec(todayISO()) > 0), h = days.reduce((a, d) => a + msDaySec(d), 0) / 3600, wk = h / Math.max(7, days.length) * 7;
+    if (!first || hxBefore(first)) return { you: "Nenhum tempo de trabalho cronometrado ainda.", ref, src };
+    const days = hxWin(first, msDaySec(hxToday()) > 0), h = days.reduce((a, d) => a + msDaySec(d), 0) / 3600, wk = h / Math.max(7, days.length) * 7;
     return { val: wk / o[0], you: "Você: cerca de " + hxH(wk) + " h por semana cronometradas nos últimos " + hxDias(days.length) + ".", ref, src };
   }
 };
@@ -6377,6 +6411,104 @@ function hexCard() {
   return card;
 }
 
+/* ---------- Evolução dos atributos (gráfico de linhas) ----------
+   Cada linha é um atributo; cada ponto é o percentual dele naquele dia, com a mesma conta do hexágono.
+   Cores fixas por atributo (paleta categórica validada no fundo do app: azul, laranja, água, amarelo, magenta, verde). */
+const HX_COLORS = { inteligencia: "#3987e5", estamina: "#d95926", forca: "#199e70", financas: "#c98500", graca: "#d55181", missoes: "#0ca30c" };
+const evoUI = { n: 30, focus: null };
+let hxSerCache = null;
+function hxValOn(id, d) {
+  if (modUserOff(id, d)) return null;
+  hxAsOf = d === todayISO() ? null : d;
+  try { const r = HX_CALC[id](); return r && r.val != null && isFinite(r.val) ? r.val : null; }
+  catch (e) { return null; } finally { hxAsOf = null; }
+}
+function hxSeries(n) {
+  const today = todayISO(), ids = MODULES.filter(m => modAllowed(m.id) && !modUserOff(m.id)).map(m => m.id);
+  const key = [today, n, window.hxDataVer || 0, ids.join(","), perfil ? perfil.upd : 0, profileId].join("|");
+  if (!hxSerCache || hxSerCache.key !== key) { // dias passados ficam guardados até algum dado mudar
+    const dates = []; for (let i = n - 1; i >= 1; i--) dates.push(addDaysISO(today, -i));
+    const past = {}; ids.forEach(id => { past[id] = dates.map(d => hxValOn(id, d)); });
+    hxSerCache = { key, dates, past };
+  }
+  const C = hxSerCache;
+  return { dates: C.dates.concat(today), series: ids.map(id => ({ id, name: (MODULES.find(m => m.id === id) || {}).name || id, color: HX_COLORS[id], vals: C.past[id].concat(hxValOn(id, today)) })) };
+}
+// gráfico de linhas genérico: { dates, series: [{ id, name, color, vals }], ref (linha tracejada), fmt, focus, onFocus }
+function lineChart(cfg) {
+  // desenha na largura real da tela (texto em tamanho normal no celular)
+  const mw = (document.getElementById("main") || document.body).clientWidth || 640;
+  const wrap = el("div", "lc"), W = Math.round(Math.max(300, Math.min(680, mw - 44))), H = W < 480 ? 220 : 250, L = 44, Rp = 14, T = 12, B = 26, n = cfg.dates.length;
+  const all = []; cfg.series.forEach(sr => sr.vals.forEach(v => { if (v != null) all.push(v); }));
+  const cap = cfg.cap || 3, top = Math.min(cap, Math.max(cfg.minTop || 1.5, Math.ceil(Math.max.apply(null, all.concat([0])) * 2) / 2));
+  const X = i => L + (n <= 1 ? 0 : i * (W - L - Rp) / (n - 1)), Y = v => T + (1 - Math.min(v, top) / top) * (H - T - B);
+  const f = v => v.toFixed(1), fmt = cfg.fmt || (v => Math.round(v * 100) + "%");
+  let svg = '<svg class="lc-svg" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + hxEsc(cfg.label || "Gráfico de linhas") + '">';
+  const step = top <= 1.5 ? 0.25 : top <= 3 ? 0.5 : 1;
+  for (let v = 0; v <= top + 1e-9; v += step) svg += '<line class="lc-grid" x1="' + L + '" x2="' + (W - Rp) + '" y1="' + f(Y(v)) + '" y2="' + f(Y(v)) + '"/><text class="lc-yl" x="' + (L - 6) + '" y="' + f(Y(v) + 4) + '" text-anchor="end">' + fmt(v) + "</text>";
+  if (cfg.ref != null) svg += '<line class="lc-ref" x1="' + L + '" x2="' + (W - Rp) + '" y1="' + f(Y(cfg.ref)) + '" y2="' + f(Y(cfg.ref)) + '"/>';
+  const every = Math.max(1, Math.round(n / (W < 480 ? 4 : 6)));
+  cfg.dates.forEach((d, i) => { if ((n - 1 - i) % every === 0) svg += '<text class="lc-xl" x="' + f(X(i)) + '" y="' + (H - 6) + '" text-anchor="middle">' + fmtDate(d).slice(0, 5) + "</text>"; });
+  cfg.series.forEach(sr => {
+    let dpath = "", pen = false;
+    sr.vals.forEach((v, i) => { if (v == null) { pen = false; return; } dpath += (pen ? "L" : "M") + f(X(i)) + " " + f(Y(v)); pen = true; });
+    const dim = cfg.focus && cfg.focus !== sr.id ? " dim" : "";
+    svg += '<path class="lc-line' + dim + '" d="' + dpath + '" stroke="' + sr.color + '"/>';
+    let li = -1; sr.vals.forEach((v, i) => { if (v != null) li = i; });
+    if (li >= 0) svg += '<circle class="lc-end' + dim + '" cx="' + f(X(li)) + '" cy="' + f(Y(sr.vals[li])) + '" r="4" fill="' + sr.color + '"/>';
+  });
+  svg += '<line class="lc-cross" x1="0" x2="0" y1="' + T + '" y2="' + (H - B) + '" visibility="hidden"/><g class="lc-dots"></g>';
+  svg += '<rect class="lc-hit" x="' + L + '" y="0" width="' + (W - L - Rp) + '" height="' + (H - B) + '"/></svg>';
+  const box = el("div", "lc-box"); box.innerHTML = svg; wrap.appendChild(box);
+  const tip = el("div", "lc-tip"); tip.hidden = true; box.appendChild(tip);
+  const sv = box.querySelector("svg"), cross = sv.querySelector(".lc-cross"), dots = sv.querySelector(".lc-dots");
+  const show = ev => {
+    const r = sv.getBoundingClientRect(); if (!r.width) return;
+    const x = (ev.clientX - r.left) / r.width * W, i = Math.max(0, Math.min(n - 1, Math.round((x - L) / ((W - L - Rp) / Math.max(1, n - 1)))));
+    cross.setAttribute("x1", f(X(i))); cross.setAttribute("x2", f(X(i))); cross.setAttribute("visibility", "visible");
+    dots.innerHTML = cfg.series.filter(sr => sr.vals[i] != null && !(cfg.focus && cfg.focus !== sr.id)).map(sr => '<circle cx="' + f(X(i)) + '" cy="' + f(Y(sr.vals[i])) + '" r="4.5" fill="' + sr.color + '" class="lc-dot"/>').join("");
+    tip.innerHTML = ""; tip.appendChild(el("div", "lc-tip-d", capFirst(DOW_SHORT[rtDow(cfg.dates[i])]) + ", " + fmtDate(cfg.dates[i]).slice(0, 5)));
+    cfg.series.slice().sort((a, b) => (b.vals[i] == null ? -1 : b.vals[i]) - (a.vals[i] == null ? -1 : a.vals[i])).forEach(sr => {
+      const row = el("div", "lc-tip-r"); const sw = el("span", "lc-sw"); sw.style.background = sr.color;
+      row.append(sw, el("b", null, sr.vals[i] == null ? "—" : fmt(sr.vals[i])), el("span", null, sr.name)); tip.appendChild(row);
+    });
+    tip.hidden = false;
+    const px = X(i) / W * r.width, left = px > r.width / 2 ? px - tip.offsetWidth - 12 : px + 12; tip.style.left = Math.max(0, left) + "px"; tip.style.top = "8px";
+  };
+  const hide = () => { cross.setAttribute("visibility", "hidden"); dots.innerHTML = ""; tip.hidden = true; };
+  sv.addEventListener("pointermove", show); sv.addEventListener("pointerdown", show); sv.addEventListener("pointerleave", hide);
+  // legenda: toque num atributo para destacar a linha dele
+  const lg = el("div", "lc-legend");
+  cfg.series.forEach(sr => {
+    let last = null; sr.vals.forEach(v => { if (v != null) last = v; });
+    const b = el("button", "lc-leg" + (cfg.focus === sr.id ? " on" : cfg.focus ? " dim" : "")); b.type = "button"; b.id = (cfg.idp || "lc-") + "leg-" + sr.id; b.setAttribute("aria-pressed", String(cfg.focus === sr.id));
+    const sw = el("span", "lc-sw"); sw.style.background = sr.color;
+    b.append(sw, el("span", null, sr.name), el("b", null, last == null ? "—" : fmt(last)));
+    if (cfg.onFocus) b.addEventListener("click", () => cfg.onFocus(cfg.focus === sr.id ? null : sr.id));
+    lg.appendChild(b);
+  });
+  wrap.insertBefore(lg, box);
+  // tabela (acessível e para quem prefere números)
+  const det = el("details", "lc-table"); det.appendChild(el("summary", null, "Ver em tabela"));
+  const tb = el("table"), hr = el("tr"); hr.appendChild(el("th", null, "Dia")); cfg.series.forEach(sr => hr.appendChild(el("th", null, sr.name))); const th = el("thead"); th.appendChild(hr); tb.appendChild(th);
+  const tbody = el("tbody");
+  cfg.dates.map((d, i) => i).reverse().forEach(i => { const tr = el("tr"); tr.appendChild(el("td", null, fmtDate(cfg.dates[i]).slice(0, 5))); cfg.series.forEach(sr => tr.appendChild(el("td", null, sr.vals[i] == null ? "—" : fmt(sr.vals[i])))); tbody.appendChild(tr); });
+  tb.appendChild(tbody); const sc = el("div", "lc-tscroll"); sc.appendChild(tb); det.appendChild(sc); wrap.appendChild(det);
+  return wrap;
+}
+function evoCard() {
+  const card = el("section", "guide evo-card"); card.id = "evo";
+  card.appendChild(el("h3", null, "Evolução dos atributos"));
+  const ch = el("div", "chips"); ch.setAttribute("aria-label", "Período do gráfico");
+  [[30, "30 dias"], [90, "90 dias"]].forEach(([k, t]) => { const b = el("button", "gchip", t); b.type = "button"; b.id = "evo-n-" + k; b.setAttribute("aria-pressed", String(evoUI.n === k)); b.addEventListener("click", () => { evoUI.n = k; renderHome(); const c = document.getElementById("evo"); if (c) c.scrollIntoView({ block: "nearest" }); }); ch.appendChild(b); });
+  card.appendChild(ch);
+  const S = hxSeries(evoUI.n);
+  if (!S.series.some(sr => sr.vals.some(v => v != null))) { card.appendChild(el("p", "note muted", "Ainda não há dados para mostrar a evolução. Use os módulos por alguns dias e as linhas aparecem aqui.")); return card; }
+  card.appendChild(lineChart({ dates: S.dates, series: S.series, ref: 1, focus: evoUI.focus && S.series.some(x => x.id === evoUI.focus) ? evoUI.focus : null, idp: "evo-", label: "Evolução diária de cada atributo em relação à referência",
+    onFocus: id => { evoUI.focus = id; renderHome(); const c = document.getElementById("evo"); if (c) c.scrollIntoView({ block: "nearest" }); } }));
+  card.appendChild(el("p", "hex-cap", "Cada ponto é o percentual do atributo naquele dia, com a mesma conta do gráfico acima (os 28 dias anteriores). Linha tracejada = 100%. Toque no gráfico para ver os valores do dia e num atributo para destacar a linha dele."));
+  return card;
+}
 function hexForm() {
   const d = hexUI.draft || (hexUI.draft = Object.assign({}, perfil || {}));
   const box = el("div", "hex-form");
@@ -7666,6 +7798,7 @@ function setModules(list, owner) {
 function cloudServer() { return String((cloud && cloud.server) || DEFAULT_SERVER).trim().replace(/\/+$/, ""); }
 Storage.prototype.setItem = function (k, v) {
   _lsSet.call(this, k, v);
+  if (this === window.localStorage && SYNC_KEYS.includes(k)) window.hxDataVer = (window.hxDataVer || 0) + 1;
   if (this === window.localStorage && !cloudApplying && SYNC_KEYS.includes(k) && loggedIn()) { cloud.dirty[k] = Date.now(); saveCloud(); schedulePush(); }
 };
 async function cloudFetch(method, path, body, server, noAuth) {

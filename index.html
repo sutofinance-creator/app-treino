@@ -6568,7 +6568,7 @@ function hoursMultiCard(key, title, build, rerender) {
   const ch = el("div", "chips"); ch.setAttribute("aria-label", "Período do gráfico");
   [[30, "30 dias"], [90, "90 dias"]].forEach(([k, t]) => { const b = el("button", "gchip", t); b.type = "button"; b.id = "evo-" + key + "-n-" + k; b.setAttribute("aria-pressed", String(U.n === k)); b.addEventListener("click", () => { U.n = k; again(); }); ch.appendChild(b); });
   card.appendChild(ch);
-  const dates = evoDates(U.n), R = build(dates) || {}, items = (R.items || []).filter(it => it.vals.some(v => v > 0));
+  const dates = evoDates(U.n), R = build(dates) || {}, items = (R.items || []).filter(it => it.keep || it.vals.some(v => v > 0));
   if (!items.length) { card.appendChild(el("p", "note muted", R.empty || "Nenhum tempo registrado no período.")); return card; }
   const mw = (document.getElementById("main") || document.body).clientWidth || 640, two = mw >= 700;
   const grid = el("div", "evo-grid" + (two ? " two" : ""));
@@ -6576,7 +6576,7 @@ function hoursMultiCard(key, title, build, rerender) {
   items.forEach(it => {
     const panel = el("div", "evo-panel"); panel.id = "evo-" + key + "-" + it.id;
     const hd = el("div", "evo-ph"); const sw = el("span", "lc-sw"); sw.style.background = it.color;
-    hd.append(sw, el("b", null, it.name), el("span", null, "média " + fmtHours(avgOf(it.vals)) + " por dia · hoje " + fmtHours(it.vals[it.vals.length - 1])));
+    hd.append(sw, el("b", null, it.name), el("span", it.hint ? "evo-hint" : null, it.hint || "média " + fmtHours(avgOf(it.vals)) + " por dia · hoje " + fmtHours(it.vals[it.vals.length - 1])));
     panel.appendChild(hd);
     panel.appendChild(lineChart({ dates, series: [it], hours: true, fmt: fmtHours, ref: null, h: 140, width: two ? mw / 2 - 10 : mw, noTable: true, idp: "evo-" + key + "-" + it.id + "-", label: "Horas por dia em " + it.name }));
     grid.appendChild(panel);
@@ -6592,12 +6592,19 @@ function hoursMultiCard(key, title, build, rerender) {
 // Inteligência: horas de estudo por dia em cada matéria (mesma cor do gráfico de evolução)
 function evoIntelTempo(dates) {
   if (!intel || !intel.subjects.length) return { empty: "Cadastre suas matérias para ver o tempo dedicado." };
+  // todas as matérias aparecem; a que não tem tempo cronometrado no período diz por quê
   const items = intel.subjects.map((sb, i) => {
     const first = hxFirst(Object.keys(intel.days), d => subjSec(d, sb.id) > 0);
-    return { id: sb.id, name: sb.name, color: ITEM_COLORS[i % ITEM_COLORS.length], vals: dates.map(d => !first || d < first ? null : subjSec(d, sb.id) / 3600) };
+    const vals = dates.map(d => first && d < first ? null : subjSec(d, sb.id) / 3600);
+    const it = { id: sb.id, name: sb.name, color: ITEM_COLORS[i % ITEM_COLORS.length], vals, keep: true };
+    if (!vals.some(v => v > 0)) {
+      const cnt = dates.reduce((a, d) => a + (getRec(d, sb.id).count || 0), 0), w = (UNITS[sb.unit] || UNITS.exercicios)[1];
+      it.vals = dates.map(() => 0);
+      it.hint = cnt ? "sem tempo cronometrado no período, mas com " + cnt + " " + w + " anotados sem o cronômetro" : "nenhum estudo registrado no período";
+    }
+    return it;
   });
-  const shown = items.filter(it => it.vals.some(v => v > 0)).length;
-  return { items, empty: "Nenhum estudo cronometrado no período.", note: "Tempo de estudo cronometrado em cada matéria por dia, contando o cronômetro que estiver rodando. Cada gráfico tem a sua escala: compare pela média." + (shown < items.length ? " Matérias sem tempo no período não aparecem." : "") };
+  return { items, empty: "Cadastre suas matérias para ver o tempo dedicado.", note: "Tempo de estudo cronometrado em cada matéria por dia, contando o cronômetro que estiver rodando. Exercícios anotados sem o cronômetro não somam tempo. Cada gráfico tem a sua escala: compare pela média." };
 }
 function evoAttr(id, note, empty) { return dates => ({ series: [{ id, name: (MODULES.find(m => m.id === id) || {}).name || id, color: HX_COLORS[id], vals: dates.map(d => hxValOn(id, d)) }], note, empty }); }
 /* ---------- Horas dedicadas por dia em cada área ----------

@@ -487,6 +487,14 @@ ol.steps a { color: var(--accent); }
 /* ---------- Missões: busca, tags, cronômetro por missão ---------- */
 .ms-search { margin: 4px 0 12px; }
 .ms-timebtn { font-size: 13px; }
+.mods-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.mod-pick { display: grid; gap: 2px; text-align: left; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--line); color: var(--muted); cursor: pointer; font: inherit; }
+.mod-pick .mod-pick-n { font-family: var(--font-display); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 14px; }
+.mod-pick .mod-pick-d { font-size: 13px; }
+.mod-pick .mod-pick-s { font-size: 12px; margin-top: 4px; }
+.mod-pick.on { border-color: var(--accent); color: var(--ink); box-shadow: 0 0 12px rgba(166, 107, 255, .3); }
+.mod-pick.on .mod-pick-s { color: var(--good); }
+.mod-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ms-timefields { display: grid; gap: 6px; }
 .ms-timefields .note { margin: 0; }
 .field textarea { width: 100%; font: 400 16px/1.5 var(--font-body); color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); padding: 8px 10px; resize: vertical; min-height: 140px; }
@@ -5913,7 +5921,7 @@ function forcaTasks() {
 
 function moduleTasks(id) {
   const r = id === "forca" ? forcaTasks() : id === "inteligencia" ? intelTasks() : id === "financas" ? finTasks() : id === "estamina" ? staminaTasks() : id === "graca" ? gracaTasks() : id === "missoes" ? missoesTasks() : { tasks: [] };
-  if (!r.setup && modAllowed(id)) { const pt = penTasks(id); if (pt.length) r.tasks = pt.concat(r.tasks || []); }
+  if (!r.setup && modOn(id)) { const pt = penTasks(id); if (pt.length) r.tasks = pt.concat(r.tasks || []); }
   return r;
 }
 function enterModule(id, tab) { if (id === "forca") enterForca(tab); else if (id === "inteligencia") enterIntel(tab); else if (id === "financas") enterFin(tab); else if (id === "estamina") enterStamina(tab); else if (id === "graca") enterGraca(tab); else if (id === "missoes") enterMissoes(tab); }
@@ -5921,7 +5929,7 @@ function enterModule(id, tab) { if (id === "forca") enterForca(tab); else if (id
 function moduleStatus(m) {
   if (!m.ready) return { cls: "", text: "Em breve" };
   const f = moduleTasks(m.id);
-  if (f.setup) return { cls: "pend", text: f.setupLabel };
+  if (f.setup) return { cls: "", text: "Não configurado" }; // opcional: sem cobrança até a pessoa começar a usar
   const pend = f.tasks.filter(t => !t.complete && !t.optional).length;
   if (pend) return { cls: "pend", text: pend + (pend === 1 ? " pendente" : " pendentes") };
   if (f.tasks.some(t => t.complete && !t.optional)) return { cls: "ok", text: "Concluído hoje" };
@@ -5955,7 +5963,7 @@ function renderHome() {
     main.appendChild(bn);
   }
   const grid = el("div", "mods");
-  MODULES.filter(m => modAllowed(m.id)).forEach(m => grid.appendChild(buildModule(m)));
+  MODULES.filter(m => modOn(m.id)).forEach(m => grid.appendChild(buildModule(m)));
   main.appendChild(grid);
 }
 
@@ -5996,7 +6004,7 @@ function buildModule(m) {
 function fillModuleBody(body, m) {
   if (!m.ready) { body.appendChild(el("p", "note muted", "Este módulo ainda está em desenvolvimento.")); return; }
   const f = moduleTasks(m.id);
-  if (f.setup) body.appendChild(el("p", "note muted", f.setupText));
+  if (f.setup) body.appendChild(el("p", "note muted", f.setupText + " É opcional: se não quiser usar, desligue em Conta › Meus atributos."));
   else if (f.free && !f.tasks.length) body.appendChild(el("p", "note muted", f.freeText));
   f.tasks.forEach(t => {
     const b = el("button", "task" + (t.complete ? " done" : t.optional ? " opt" : "")); b.type = "button"; b.id = t.id;
@@ -6287,7 +6295,7 @@ const HX_CALC = {
   }
 };
 function hxAxes() {
-  return MODULES.map(m => {
+  return MODULES.filter(m => !modUserOff(m.id)).map(m => {
     const a = { id: m.id, name: m.name, val: null, you: "", ref: "", src: "", off: false };
     if (!modAllowed(m.id)) return Object.assign(a, { off: true, you: "Módulo não disponível na sua conta." });
     try { const r = HX_CALC[m.id](); if (r.val != null && !isFinite(r.val)) r.val = null; return Object.assign(a, r); }
@@ -6302,7 +6310,10 @@ function hexSVG(axes) {
   const ring = k => pts(axes.map(() => R * k));
   const rad = a => a.val == null ? 0 : Math.min(a.val, 2) / 2 * R;
   const desc = axes.map(a => a.name + ": " + (a.off ? "indisponível" : hxPct(a.val))).join(", ");
-  let s = '<svg class="hex-svg" viewBox="0 0 ' + W + " " + H + '" role="img" aria-labelledby="hx-t hx-d"><title id="hx-t">Hexágono dos módulos: você em relação à referência</title><desc id="hx-d">' + hxEsc(desc) + "</desc>";
+  // nomes dos eixos não podem sair do desenho (com 4 ou 5 atributos há eixos na horizontal): alarga a área quando precisa
+  let x0v = 0, x1v = W;
+  axes.forEach((a, i) => { const [x] = pt(i, R + 14), w = a.name.length * 9.5 + 6, side = Math.abs(x - cx) < 4 ? 0 : x > cx ? 1 : -1; x0v = Math.min(x0v, side < 0 ? x - w : side === 0 ? x - w / 2 : x); x1v = Math.max(x1v, side > 0 ? x + w : side === 0 ? x + w / 2 : x); });
+  let s = '<svg class="hex-svg" viewBox="' + Math.floor(x0v) + " 0 " + Math.ceil(x1v - x0v) + " " + H + '" role="img" aria-labelledby="hx-t hx-d"><title id="hx-t">Hexágono dos módulos: você em relação à referência</title><desc id="hx-d">' + hxEsc(desc) + "</desc>";
   [0.25, 0.75, 1].forEach(k => { s += '<polygon class="hx-ring" points="' + ring(k) + '"/>'; });
   axes.forEach((_, i) => { const [x, y] = pt(i, R); s += '<line class="hx-spoke" x1="' + cx + '" y1="' + cy + '" x2="' + f(x) + '" y2="' + f(y) + '"/>'; });
   s += '<polygon class="hx-ref" points="' + ring(0.5) + '"/>';
@@ -6333,9 +6344,11 @@ function hexCard() {
   const eb = el("button", "btn", "Meus dados"); eb.type = "button"; eb.id = "hex-edit";
   eb.addEventListener("click", () => { hexUI.edit = true; hexUI.draft = Object.assign({}, perfil || {}); hexUI.msg = ""; renderHome(); const c = document.getElementById("hex"); if (c) c.scrollIntoView({ block: "start" }); });
   top.append(left, eb);
-  const chart = el("div"); chart.id = "hex-chart"; chart.innerHTML = hexSVG(axes);
-  const cap = el("p", "hex-cap", "Linha tracejada = 100%: a média de quem tem o seu perfil ou a recomendação oficial. A borda é 200%. Últimos 28 dias.");
-  card.append(top, chart, cap);
+  const chart = el("div"); chart.id = "hex-chart";
+  if (axes.length >= 3) {
+    chart.innerHTML = hexSVG(axes);
+    card.append(top, chart, el("p", "hex-cap", "Linha tracejada = 100%: a média de quem tem o seu perfil ou a recomendação oficial. A borda é 200%. Últimos 28 dias."));
+  } else { card.append(top, el("p", "hex-cap", "Com menos de 3 atributos ligados não dá para desenhar o gráfico: os percentuais estão logo abaixo. 100% é a média de quem tem o seu perfil ou a recomendação oficial; últimos 28 dias.")); hexUI.open = true; }
   if (hexUI.msg) { const m = el("p", "note flash ok", hexUI.msg); card.appendChild(m); hexUI.msg = ""; }
   if (!perfil || !perfil.nasc) card.appendChild(el("p", "note muted", "Preencha Meus dados (idade, escolaridade, trabalho e peso) para comparar com quem tem o seu perfil."));
   else if (!perfil.peso) card.appendChild(el("p", "note muted", "Informe seu peso em Meus dados para a Força comparar a sua carga com o peso do corpo."));
@@ -6534,12 +6547,12 @@ function penItems(m, iso) {
 function penList(iso, st, prevMods) {
   if (iso < PEN_START) return [];
   const y = addDaysISO(iso, -1);
-  const mods = prevMods || Object.keys(XP_NAMES).filter(id => st[id] && y >= st[id]).map(id => Object.assign({ id }, xpMod(id, y))).filter(m => m.txt != null);
-  return mods.filter(m => !m.min).reduce((a, m) => a.concat(penItems(m, iso)), []);
+  const mods = prevMods || Object.keys(XP_NAMES).filter(id => st[id] && y >= st[id] && !modUserOff(id, y)).map(id => Object.assign({ id }, xpMod(id, y))).filter(m => m.txt != null);
+  return mods.filter(m => !m.min && !modUserOff(m.id, iso)).reduce((a, m) => a.concat(penItems(m, iso)), []);
 }
 function penToday() { return penList(todayISO(), xpStarts()); }
 function xpDay(iso, st, prev) {
-  const mods = Object.keys(XP_NAMES).filter(id => st[id] && iso >= st[id]).map(id => Object.assign({ id, name: XP_NAMES[id] }, xpMod(id, iso))).filter(m => m.txt != null);
+  const mods = Object.keys(XP_NAMES).filter(id => st[id] && iso >= st[id] && !modUserOff(id, iso)).map(id => Object.assign({ id, name: XP_NAMES[id] }, xpMod(id, iso))).filter(m => m.txt != null);
   const pen = penList(iso, st, prev ? prev.mods : null), penOk = pen.every(p => p.done);
   if (!mods.length) return { xp: 0, mods, ok: false, pen, penOk };
   const ok = mods.every(m => m.min), avg = mods.reduce((a, m) => a + (m.min ? m.p : 0), 0) / mods.length;
@@ -6706,7 +6719,7 @@ function rtDay(iso, cfg) {
 }
 function rtTreinoWin(d) { const p = rt().treino; return p === "manha" ? [d.wake, 720] : p === "tarde" ? [720, 1080] : [1080, d.sleep]; }
 function rtWorkout(iso) {
-  if (!modAllowed("forca") || !profileId || !strengthDay(iso)) return null;
+  if (!modOn("forca") || !profileId || !strengthDay(iso)) return null;
   const w = PLAN.find(p => p.id === prof().dayTab[rtDow(iso)]);
   const sets = w ? w.ex.reduce((s, x) => s + (parseInt(x.sets, 10) || 3), 0) : 0;
   return { w, name: w ? w.name : "Treino extra", dur: w ? Math.max(30, Math.round((sets * 2.5 + 10) / 5) * 5) : 60 };
@@ -6715,7 +6728,7 @@ function rtWorkout(iso) {
 // Missões da semana: planejadas primeiro; o resto por prazo (o que vence antes vai antes) e prioridade, até encher as horas de trabalho de cada dia
 function rtMissionPlan(days) {
   const out = { byDay: {}, late: [], later: [] }; days.forEach(d => { out.byDay[d] = []; });
-  if (!modAllowed("missoes") || !mis) return out;
+  if (!modOn("missoes") || !mis) return out;
   const today = days[0], last = days[days.length - 1], cap = {};
   days.forEach(d => { cap[d] = Math.round((msGoalSec(d) - (d === today ? msDaySec(d) : 0)) / 60); if (cap[d] < 0) cap[d] = 0; });
   const need = t => Math.max(15, (t.est || 60) - Math.floor(msTaskSec(t.id) / 60));
@@ -6746,7 +6759,7 @@ function rtDemand(iso, plan, sim) {
   // missão de penalidade de hoje: entra na agenda somando ao que o módulo já pede
   const P = isT ? penToday() : [], pp = k => P.find(p => p.key === k && !p.done);
   const grLeft = {};
-  if (modAllowed("graca")) grTodayPlan(iso).forEach(r => {
+  if (modOn("graca")) grTodayPlan(iso).forEach(r => {
     const need = Math.max(1, r.times || 1), did = isT ? Math.min(need, grRec(iso, r.id).count || 0) : 0, dur = Math.max(5, Math.round(r.limit || 15));
     for (let k = did; k < need; k++) {
       let win, fromEnd = false;
@@ -6759,7 +6772,7 @@ function rtDemand(iso, plan, sim) {
     grLeft[r.id] = need - did;
   });
   const pg = pp("pen-graca");
-  if (pg && modAllowed("graca")) {
+  if (pg && modOn("graca")) {
     const r0 = grTodayPlan(iso)[0] || grData().rituals[0];
     if (r0) add({ key: "pen-graca", mod: "graca", rid: r0.id, running: run.graca === r0.id && !(grLeft[r0.id] > 0), title: "Penalidade: " + r0.name + " (1 a mais)", sub: "Missão de penalidade da Graça: " + pg.txt, dur: Math.max(5, Math.round(r0.limit || 15)), win: [d.wake, d.sleep], rank: 1.5, pen: true, go: () => { enterGraca("gr-hoje"); rtFocus("gr-" + r0.id); } });
   } else if (P.some(p => p.key === "pen-graca")) done.push("Penalidade da Graça");
@@ -6780,8 +6793,8 @@ function rtDemand(iso, plan, sim) {
     else done.push("Treino " + wo.name);
   }
   const pf = P.find(p => p.key === "pen-forca");
-  if (pf && modAllowed("forca") && (!pf.done || okd.includes("pen-forca"))) add({ key: "pen-forca", mod: "forca", title: "Penalidade: " + PEN_FLEX + " flexões", sub: "Missão de penalidade da Força. Faça e toque em Concluir.", dur: 10, win: tw, rank: 1, pen: true, go: () => rtFocus("pen-box") });
-  if (modAllowed("estamina")) {
+  if (pf && modOn("forca") && (!pf.done || okd.includes("pen-forca"))) add({ key: "pen-forca", mod: "forca", title: "Penalidade: " + PEN_FLEX + " flexões", sub: "Missão de penalidade da Força. Faça e toque em Concluir.", dur: 10, win: tw, rank: 1, pen: true, go: () => rtFocus("pen-box") });
+  if (modOn("estamina")) {
     // na semana, os dias seguintes já contam com o cardio que a rotina marcou antes (um 4x4 por semana, meta de minutos)
     let cp = cardioPlan(iso); const ws = weekStart(iso);
     const pc = pp("pen-cardio"); if (pc) cp = Object.assign({}, cp, { target: pc.tgt, optional: false, why: "Inclui +20 min da missão de penalidade." });
@@ -6797,14 +6810,14 @@ function rtDemand(iso, plan, sim) {
     if (fg - fh > 0) add({ key: "foco", mod: "estamina", running: !!run.foco, title: "Foco: meditação ou respiração", sub: "Logo antes de estudar.", dur: fg - fh, beforeStudy: true, rank: 5, go: () => { enterStamina("est-hoje"); rtFocus("st-foco"); } });
     else if (fh) done.push("Foco");
   }
-  if (modAllowed("missoes") && mis) {
+  if (modOn("missoes") && mis) {
     const pw = pp("pen-work"), goal = Math.round(msGoalSec(iso) / 60) + (pw ? 60 : 0), have = isT ? Math.floor(msDaySec(iso) / 60) : 0, ms = (plan && plan.byDay[iso]) || [];
     const need = Math.max(goal - have, ms.reduce((s, x) => s + x.need, 0));
     const w = rt().work, ws = hmToMin(w.start) ?? 480, we = hmToMin(w.end) ?? 1080;
     if (need > 0) add({ key: "trabalho", mod: "missoes", running: !!run.trabalho, title: pw ? "Trabalho (com +1h de penalidade)" : "Trabalho", dur: need, missions: ms, split: 120, minChunk: 30, gapAfter: 10, win: [ws, we > ws ? we : we + 1440], rank: 3, go: () => { enterMissoes("ms-hoje"); rtFocus("ms-work"); } });
     else if (goal && have) done.push("Trabalho " + rtDur(have));
   }
-  if (modAllowed("inteligencia") && intel) {
+  if (modOn("inteligencia") && intel) {
     const im = imCfg(), IR = IM_RITMO[im.ritmo];
     // revisão espaçada: o que foi estudado há 1, 7 e 30 dias volta como revisão curta (dentro da meta do dia)
     let revMin = 0;
@@ -6827,7 +6840,7 @@ function rtDemand(iso, plan, sim) {
     if (need > 0) add({ key: "estudo", mod: "inteligencia", running: !!run.estudo && !/^rev-/.test(run.rtKey || ""), title: ph ? "Estudo (com +1h de penalidade)" : "Estudo", sub: subs.map(x => x.label).join(" · "), subjects: subs, dur: need, split: IR.work, minChunk: IR.min, gapAfter: IR.brk, longEvery: IR.every, longGap: IR.long, rank: 4, go: () => rtGoSubj(subs.length ? subs[0].id : null) });
     else if (have) done.push("Estudo " + rtDur(have));
   }
-  if (isT && modAllowed("financas") && fin) {
+  if (isT && modOn("financas") && fin) {
     const n = fin.tx.filter(t => t.status !== "done").length;
     if (n) add({ key: "eco", mod: "financas", title: "Classificar " + n + (n === 1 ? " lançamento" : " lançamentos"), sub: pp("pen-eco") ? "Missão de penalidade: zerar todos os pendentes da Economia." : "Pendentes da Economia.", dur: Math.min(30, Math.max(5, Math.ceil(n * 1.5 / 5) * 5)), win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6, go: () => rtGoFin() });
   }
@@ -6930,7 +6943,7 @@ function rtInterleave(r) {
 }
 // Sobrou mais de 20 min livres? Vira estudo (dá tempo de resolver exercícios).
 function rtFillExtra(r, iso) {
-  if (!modAllowed("inteligencia") || !intel || !intel.subjects.length || (rt().skip[iso] || []).includes("extra") || (rt().done[iso] || []).includes("extra")) return;
+  if (!modOn("inteligencia") || !intel || !intel.subjects.length || (rt().skip[iso] || []).includes("extra") || (rt().done[iso] || []).includes("extra")) return;
   const subs = intel.subjects.filter(s => !(s.total && subjDoneUpTo(s) >= s.total)).map(s => ({ id: s.id, label: s.name }));
   const it = { key: "extra", mod: "inteligencia", title: "Estudo extra", sub: subs.map(x => x.label).join(" · "), subjects: subs, go: () => rtGoSubj(subs.length ? subs[0].id : null), extra: true };
   let part = 0; const IR = imR();
@@ -7248,7 +7261,7 @@ function renderRtHorarios(main) {
   main.append(s1);
   const s2 = el("section", "guide rt-set");
   s2.appendChild(el("h3", null, "Preferências"));
-  if (modAllowed("missoes")) {
+  if (modOn("missoes")) {
     const g2 = el("div", "inputs two");
     timeField(g2, "rt-work-s", "Trabalho a partir de", c.work.start, v => { r.work = Object.assign({}, c.work, r.work, { start: v }); });
     timeField(g2, "rt-work-e", "Trabalho até", c.work.end, v => { r.work = Object.assign({}, c.work, r.work, { end: v }); });
@@ -7600,6 +7613,44 @@ function allowedModules() {
   return BASIC_MODS.filter(x => x === "inteligencia" || cloud.modules.includes(x));
 }
 function modAllowed(id) { return allowedModules().includes(id); }
+/* ---------- Meus atributos ----------
+   Cada pessoa escolhe em Conta quais módulos quer usar. Desligado, o módulo some do Início, da Rotina,
+   das pendências, do XP, da penalidade e do gráfico; os dados ficam guardados. perfil.offLog guarda os
+   períodos desligados ({ id, from, to }), para o XP dos dias passados não mudar. */
+function modOffLog() { return perfil && Array.isArray(perfil.offLog) ? perfil.offLog : []; }
+function modUserOff(id, iso) { const d = iso || todayISO(); return modOffLog().some(e => e.id === id && e.from <= d && (!e.to || d < e.to)); }
+function modOn(id) { return modAllowed(id) && !modUserOff(id); }
+function setModOn(id, on) {
+  if (!perfil) perfil = {};
+  const t = todayISO(), log = modOffLog().map(e => Object.assign({}, e));
+  if (on) log.forEach(e => { if (e.id === id && !e.to) e.to = t; });
+  else if (!modUserOff(id)) log.push({ id, from: t });
+  perfil.offLog = log.filter(e => !e.to || e.to > e.from); // desligado e religado no mesmo dia: não fica registro
+  savePerfil();
+}
+let modsMsg = null;
+function modsSection() {
+  const s = el("section", "guide"); s.id = "meus-atributos";
+  s.appendChild(el("h3", null, "Meus atributos"));
+  s.appendChild(el("p", "note muted", "Escolha o que você quer evoluir. O que ficar desligado some do Início, da Rotina, das pendências, do XP, da missão de penalidade e do gráfico de atributos. Seus dados ficam guardados: é só ligar de novo quando quiser."));
+  const avail = MODULES.filter(m => modAllowed(m.id)), onN = avail.filter(m => modOn(m.id)).length;
+  const ul = el("div", "mods-pick");
+  avail.forEach(m => {
+    const on = modOn(m.id);
+    const b = el("button", "mod-pick" + (on ? " on" : "")); b.type = "button"; b.id = "modon-" + m.id; b.setAttribute("aria-pressed", String(on));
+    b.append(el("span", "mod-pick-n", m.name), el("span", "mod-pick-d", m.desc), el("span", "mod-pick-s", on ? "Ligado" : "Desligado"));
+    b.addEventListener("click", () => {
+      if (on && onN <= 1) { modsMsg = ["Deixe pelo menos um atributo ligado.", "err"]; renderConta(); return; }
+      setModOn(m.id, !on); modsMsg = [m.name + (on ? " desligado. Ele sumiu do Início, da Rotina e do XP." : " ligado de novo."), "ok"];
+      renderConta(); const n = document.getElementById("modon-" + m.id); if (n) n.focus();
+    });
+    ul.appendChild(b);
+  });
+  s.appendChild(ul);
+  if (modsMsg) { const f = el("p", "note"); f.id = "mods-msg"; flash(f, modsMsg[0], modsMsg[1]); s.appendChild(f); modsMsg = null; }
+  if (avail.length < MODULES.length) s.appendChild(el("p", "note muted", "Os outros módulos não estão liberados na sua conta."));
+  return s;
+}
 function setModules(list, owner) {
   if (!loggedIn()) return;
   if (typeof owner === "boolean" && cloud.owner !== owner) { cloud.owner = owner; saveCloud(); }
@@ -7878,6 +7929,7 @@ function renderConta() {
     b2.append(useCloud, useLocal); s.appendChild(b2);
     main.appendChild(s); main.appendChild(flashBox); return;
   }
+  main.appendChild(modsSection());
   if (loggedIn()) {
     const s = el("section", "guide");
     s.append(el("h3", null, "Conectado como " + cloud.user));

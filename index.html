@@ -6430,7 +6430,7 @@ function hexCard() {
 /* ---------- Evolução dos atributos (gráfico de linhas) ----------
    Cada linha é um atributo; cada ponto é o percentual dele naquele dia, com a mesma conta do hexágono.
    Cores fixas por atributo (paleta categórica validada no fundo do app: azul, laranja, água, amarelo, magenta, verde). */
-const HX_COLORS = { inteligencia: "#3987e5", estamina: "#d95926", forca: "#199e70", financas: "#c98500", graca: "#d55181", missoes: "#0ca30c" };
+const HX_COLORS = { inteligencia: "#3987e5", estamina: "#d95926", forca: "#199e70", financas: "#b07cff", graca: "#d55181", missoes: "#3987e5" }; // Missões na cor da Inteligência e Economia no roxo neon do app (cada uma tem o seu gráfico)
 const evoUI = { n: 30, focus: null };
 function hxValOn(id, d) {
   if (modUserOff(id, d)) return null;
@@ -6442,7 +6442,7 @@ function hxValOn(id, d) {
 function lineChart(cfg) {
   // desenha na largura real da tela (texto em tamanho normal no celular)
   const mw = (document.getElementById("main") || document.body).clientWidth || 640;
-  const W = Math.round(Math.max(280, Math.min(680, (cfg.width || mw) - 44))), H = cfg.h || (W < 480 ? 220 : 250), L = 50, Rp = 14, T = 12, B = 26, n = cfg.dates.length;
+  const W = Math.round(Math.max(280, Math.min(680, (cfg.width || mw) - 44))), H = cfg.h || (W < 480 ? 220 : 250), L = cfg.money ? 70 : 50, Rp = 14, T = 12, B = 26, n = cfg.dates.length;
   const wrap = el("div", "lc");
   const all = []; cfg.series.forEach(sr => sr.vals.forEach(v => { if (v != null) all.push(v); }));
   const mx = Math.max.apply(null, all.concat([0]));

@@ -2679,16 +2679,7 @@ function renderMaterias(main) {
     field("min", "Mínimo por dia (0 = sem mínimo)", "num");
     c.appendChild(grid);
     // cor da matéria nos gráficos (sem escolha, vale a cor da posição na lista)
-    const cw = el("div", "subj-color"); cw.appendChild(el("p", "field-l", "Cor nos gráficos"));
-    const cr = el("div", "chips"); cr.setAttribute("aria-label", "Cor de " + s.name + " nos gráficos");
-    const curC = subjColor(s);
-    SUBJ_COLORS.forEach(([hex, nm]) => {
-      const b = el("button", "gchip color-chip"); b.type = "button"; b.id = "m-color-" + s.id + "-" + hex.slice(1); b.setAttribute("aria-pressed", String(curC === hex)); b.title = nm;
-      const dot = el("span", "color-dot"); dot.style.background = hex; b.append(dot, el("span", null, nm));
-      b.addEventListener("click", () => { s.color = hex; saveIntel(); renderIntel(); const n = document.getElementById(b.id); if (n) n.focus(); });
-      cr.appendChild(b);
-    });
-    cw.appendChild(cr); c.appendChild(cw);
+    c.appendChild(colorPicker("m-color-" + s.id + "-", s.name, subjColor(s), hex => { s.color = hex; saveIntel(); renderIntel(); }));
     c.appendChild(msAttachBox(() => { const t = intel.subjects.find(x => x.id === s.id) || s; return t.att || (t.att = []); }, () => saveIntel(), "m-" + s.id + "-", true, "Materiais"));
     c.appendChild(planEditor(s));
     const rng = s.plan ? planRange(s) : null;
@@ -3158,7 +3149,7 @@ function renderStProgress(main) {
   const rows = Object.keys(s.days).filter(dd => PRACTICES.some(p => stSec(dd, p.id) >= 60)).sort().reverse().slice(0, 14);
   if (!rows.length) h.appendChild(el("p", "note muted", "Nada registrado ainda. Use o cronômetro ou os botões de 5 min na aba Hoje."));
   else { const ul = el("ul", "hist"); rows.forEach(dd => { const li = el("li"); li.append(el("span", null, fmtDate(dd).slice(0, 5)), el("span", null, PRACTICES.filter(p => stSec(dd, p.id) >= 60).map(p => p.name + " " + fmtHM(stSec(dd, p.id))).join(" · "))); ul.appendChild(li); }); h.appendChild(ul); }
-  main.appendChild(modEvoCard("estamina", "Evolução do cardio e do foco", evoStamina, renderStamina));
+  main.appendChild(hoursMultiCard("est-tempo", "Tempo dedicado por prática", evoStTempo, renderStamina));
   main.appendChild(h);
 }
 
@@ -3197,6 +3188,7 @@ function renderStPraticas(main) {
     const h = el("h3", null, p.name); c.appendChild(h);
     const meta = el("div", "meta"); meta.append(el("span", "st", p.kind === "cardio" ? "Cardio" : "Foco"), el("span", "last", p.tag)); c.appendChild(meta);
     c.append(el("p", "note", p.how), el("p", "note muted", p.why));
+    c.appendChild(colorPicker("st-color-" + p.id + "-", p.name, stColor(p), hex => { const st = ensureStamina(); st.colors = Object.assign({}, st.colors, { [p.id]: hex }); saveStamina(); renderStamina(); }));
     if (p.yt) { const a = el("a", "howto", "Ver como fazer ↗"); a.href = "https://www.youtube.com/results?search_query=" + encodeURIComponent(p.yt) + "&sp=EgIQAQ%253D%253D"; a.target = "_blank"; a.rel = "noopener"; c.appendChild(a); }
     main.appendChild(c);
   });
@@ -6558,13 +6550,19 @@ function evoForca(dates) {
   return { series: gs.map((g, i) => ({ id: "g" + i, name: g, color: ITEM_COLORS[i], vals: per.map(r => { const x = r && r.gs && r.gs.find(y => y.g === g); return x ? x.pct : null; }) })),
     note: "Cada ponto é a força do grupo naquele dia comparada ao seu peso (100% = a média de quem treina), com as maiores cargas dos 28 dias anteriores." };
 }
-// Estamina: cardio (o atributo) e foco (em relação à meta diária), os dois com os 28 dias anteriores
-function evoStamina(dates) {
-  const s = stam(), fg = s.goals.focusMin || 10;
-  const ffirst = hxFirst(Object.keys(s.days || {}), d => stKindSec(d, "foco") > 0);
-  const foco = d => { if (!ffirst || ffirst > d) return null; let a = addDaysISO(d, -27); if (ffirst > a) a = ffirst; let n = 0, m = 0; for (let x = a; x <= d; x = addDaysISO(x, 1)) { n++; m += stKindSec(x, "foco") / 60; } return m / (fg * n); };
-  return { series: [{ id: "cardio", name: "Cardio", color: HX_COLORS.estamina, vals: dates.map(d => hxValOn("estamina", d)) }, { id: "foco", name: "Foco", color: ITEM_COLORS[0], vals: dates.map(foco) }],
-    note: "Cardio: minutos equivalentes por semana em relação aos 150 da OMS. Foco: minutos de meditação e respiração em relação à sua meta de " + fg + " min por dia. Os dois com os 28 dias anteriores a cada ponto." };
+// Estamina: horas por dia em cada prática usada (cor escolhida em Práticas ou a da posição)
+function stColor(p) { const c = stamina && stamina.colors && stamina.colors[p.id]; return c || ITEM_COLORS[Math.max(0, PRACTICES.indexOf(p)) % ITEM_COLORS.length]; }
+function evoStTempo(dates) {
+  const s = stam(), keys = Object.keys(s.days || {});
+  const items = PRACTICES.map(p => {
+    const first = hxFirst(keys, d => stSec(d, p.id) > 0);
+    if (!first && !(stamina && stamina.timer && stamina.timer.pid === p.id)) return null; // prática nunca usada não aparece
+    const vals = dates.map(d => first && d < first ? null : stSec(d, p.id) / 3600);
+    const it = { id: p.id, name: p.name, color: stColor(p), vals, keep: true };
+    if (!vals.some(v => v > 0)) { it.vals = dates.map(() => 0); it.hint = "nenhum registro no período"; }
+    return it;
+  }).filter(Boolean);
+  return { items, empty: "Nenhuma prática registrada ainda. Use o cronômetro ou os botões de 5 min na aba Hoje.", note: "Tempo registrado em cada prática por dia, contando o cronômetro que estiver rodando. Aparecem as práticas que você já usou. Cada gráfico tem a sua escala: compare pela média." };
 }
 // Graça: quanto de cada ritual foi cumprido nos 28 dias anteriores a cada dia
 function evoGraca(dates) {
@@ -6603,6 +6601,18 @@ function hoursMultiCard(key, title, build, rerender) {
   tb.appendChild(tbody); const sc = el("div", "lc-tscroll"); sc.appendChild(tb); det.appendChild(sc); card.appendChild(det);
   if (R.note) card.appendChild(el("p", "hex-cap", R.note));
   return card;
+}
+// escolha de cor de um item nos gráficos (matéria, prática…)
+function colorPicker(idp, name, cur, onPick) {
+  const cw = el("div", "subj-color"); cw.appendChild(el("p", "field-l", "Cor nos gráficos"));
+  const cr = el("div", "chips"); cr.setAttribute("aria-label", "Cor de " + name + " nos gráficos");
+  SUBJ_COLORS.forEach(([hex, nm]) => {
+    const b = el("button", "gchip color-chip"); b.type = "button"; b.id = idp + hex.slice(1); b.setAttribute("aria-pressed", String(cur === hex)); b.title = nm;
+    const dot = el("span", "color-dot"); dot.style.background = hex; b.append(dot, el("span", null, nm));
+    b.addEventListener("click", () => { onPick(hex); const n = document.getElementById(b.id); if (n) n.focus(); });
+    cr.appendChild(b);
+  });
+  cw.appendChild(cr); return cw;
 }
 const SUBJ_COLORS = [["#b07cff", "Roxo"], ["#3987e5", "Azul"], ["#199e70", "Verde-água"], ["#c98500", "Amarelo"], ["#d55181", "Rosa"], ["#0ca30c", "Verde"], ["#d95926", "Laranja"]];
 function subjColor(sb) { const i = intel ? intel.subjects.indexOf(sb) : 0; return sb.color || ITEM_COLORS[(i < 0 ? 0 : i) % ITEM_COLORS.length]; }
@@ -8156,7 +8166,7 @@ function mergeKey(k, a, b) {
     if (!L.days) return b; if (!R.days) return a;
     const out = Object.assign({}, L, R, { goals: Object.assign({}, L.goals, R.goals), days: Object.assign({}, R.days) });
     Object.keys(L.days).forEach(d => { const day = Object.assign({}, out.days[d]); Object.keys(L.days[d] || {}).forEach(pid => { const l = L.days[d][pid], r = day[pid]; if (!r || ((l && l.sec) || 0) > (r.sec || 0)) day[pid] = l; }); out.days[d] = day; });
-    out.timer = R.timer || L.timer || null; out.age = R.age || L.age || null;
+    out.timer = R.timer || L.timer || null; out.age = R.age || L.age || null; out.colors = Object.assign({}, L.colors, R.colors);
     return JSON.stringify(out);
   }
   if (k === "stek-fin-v1") {

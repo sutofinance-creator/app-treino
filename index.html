@@ -489,7 +489,8 @@ ol.steps a { color: var(--accent); }
 .ms-timebtn { font-size: 13px; }
 .evo-card { display: grid; gap: 10px; }
 .evo-grid { display: grid; gap: 14px; }
-.evo-grid.two { grid-template-columns: 1fr 1fr; }
+.evo-grid.two { grid-template-columns: 1fr 1fr; align-items: end; }
+.evo-panel .lc-legend { margin-top: -2px; }
 .evo-panel { display: grid; gap: 4px; min-width: 0; }
 .evo-ph { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
 .evo-ph b { font-family: var(--font-display); letter-spacing: .06em; text-transform: uppercase; }
@@ -509,7 +510,7 @@ ol.steps a { color: var(--accent); }
 .lc-tip { position: absolute; z-index: 5; pointer-events: none; min-width: 150px; padding: 8px 10px; background: rgba(12, 7, 24, .96); border: 1px solid var(--line); box-shadow: 0 6px 18px rgba(0, 0, 0, .5); font-size: 13px; display: grid; gap: 3px; }
 .lc-tip[hidden] { display: none; }
 .lc-tip-d { color: var(--muted); font-size: 12px; margin-bottom: 2px; }
-.lc-tip-r { display: grid; grid-template-columns: 14px 44px 1fr; align-items: center; gap: 6px; color: var(--ink); }
+.lc-tip-r { display: grid; grid-template-columns: 14px auto 1fr; align-items: center; gap: 6px; color: var(--ink); }
 .lc-sw { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
 .lc-legend { display: flex; flex-wrap: wrap; gap: 6px; }
 .lc-leg { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); font: 500 13px var(--font-body); cursor: pointer; }
@@ -6445,6 +6446,7 @@ function lineChart(cfg) {
   const mx = Math.max.apply(null, all.concat([0]));
   let top, step;
   if (cfg.hours) { step = mx <= 1 ? 0.25 : mx <= 2 ? 0.5 : mx <= 4 ? 1 : mx <= 8 ? 2 : 4; top = Math.max(step * 2, Math.ceil(mx / step) * step); } // horas: escala de cada gráfico
+  else if (cfg.money) { const raw = Math.max(mx, 100) / 4, p10 = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p10; step = (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p10; top = Math.max(step * 2, Math.ceil(mx / step) * step); }
   else { const cap = cfg.cap || 3; top = Math.min(cap, Math.max(cfg.minTop || 1.5, Math.ceil(mx * 2) / 2)); step = top <= 1.5 ? 0.25 : top <= 3 ? 0.5 : 1; }
   const X = i => L + (n <= 1 ? 0 : i * (W - L - Rp) / (n - 1)), Y = v => T + (1 - Math.min(v, top) / top) * (H - T - B);
   const f = v => v.toFixed(1), fmt = cfg.fmt || (v => Math.round(v * 100) + "%");
@@ -6474,7 +6476,7 @@ function lineChart(cfg) {
     tip.innerHTML = ""; tip.appendChild(el("div", "lc-tip-d", capFirst(DOW_SHORT[rtDow(cfg.dates[i])]) + ", " + fmtDate(cfg.dates[i]).slice(0, 5)));
     cfg.series.slice().sort((a, b) => (b.vals[i] == null ? -1 : b.vals[i]) - (a.vals[i] == null ? -1 : a.vals[i])).forEach(sr => {
       const row = el("div", "lc-tip-r"); const sw = el("span", "lc-sw"); sw.style.background = sr.color;
-      row.append(sw, el("b", null, sr.vals[i] == null ? "—" : fmt(sr.vals[i])), el("span", null, sr.name)); tip.appendChild(row);
+      row.append(sw, el("b", null, sr.vals[i] == null ? "—" : (cfg.tipFmt || fmt)(sr.vals[i])), el("span", null, sr.name)); tip.appendChild(row);
     });
     tip.hidden = false;
     const px = X(i) / W * r.width, left = px > r.width / 2 ? px - tip.offsetWidth - 12 : px + 12; tip.style.left = Math.max(0, left) + "px"; tip.style.top = "8px";
@@ -6487,7 +6489,7 @@ function lineChart(cfg) {
     let last = null; sr.vals.forEach(v => { if (v != null) last = v; });
     const b = el("button", "lc-leg" + (cfg.focus === sr.id ? " on" : cfg.focus ? " dim" : "")); b.type = "button"; b.id = (cfg.idp || "lc-") + "leg-" + sr.id; b.setAttribute("aria-pressed", String(cfg.focus === sr.id));
     const sw = el("span", "lc-sw"); sw.style.background = sr.color;
-    b.append(sw, el("span", null, sr.name), el("b", null, last == null ? "—" : fmt(last)));
+    b.append(sw, el("span", null, sr.name), el("b", null, cfg.legendVal ? cfg.legendVal(sr) : last == null ? "—" : fmt(last)));
     if (cfg.onFocus) b.addEventListener("click", () => cfg.onFocus(cfg.focus === sr.id ? null : sr.id));
     lg.appendChild(b);
   });
@@ -6563,16 +6565,17 @@ function evoAttr(id, note, empty) { return dates => ({ series: [{ id, name: (MOD
    Um gráfico pequeno por área (cada um com a sua escala), em vez de várias linhas no mesmo gráfico:
    com mais de 3 linhas juntas sempre há cores difíceis de separar. Economia não tem tempo registrado. */
 const fmtHours = v => v == null ? "—" : v <= 0 ? "0" : fmtHM(Math.round(v * 3600)).replace(/h00$/, "h");
-function forcaSecOn(d) { // a Força não cronometra: 2,5 min por série anotada + 10 min de aquecimento (a mesma conta da Rotina)
-  const e = (state.logs[d] && state.logs[d].e) || {}; let sets = 0;
-  Object.keys(e).forEach(id => { const r = e[id]; if (r) sets += Math.max(1, Number(r.sets) || 0); });
-  return sets ? (sets * 2.5 + 10) * 60 : 0;
-}
-function grDaySec(d) { return grData().rituals.reduce((a, r) => a + grSec(d, r.id), 0); }
+const FORCA_DIA_SEC = 90 * 60; // a Força não cronometra: cada dia com treino anotado conta 1h30 de academia
+function forcaSecOn(d) { return hasEntries(d) ? FORCA_DIA_SEC : 0; }
+// ritual marcado como feito sem cronômetro (Concluir na Rotina ou Marcar feito) conta o tempo previsto dele
+function grDaySec(d) { return grData().rituals.reduce((a, r) => { const sec = grSec(d, r.id), c = grRec(d, r.id).count || 0; return a + (sec > 0 ? sec : c * grLimit(r) || c * 15 * 60); }, 0); }
+// Economia: aportes em investimento (lançamentos classificados como "Aporte em investimento")
+function finAporteOn(d) { return fin ? finFlat().filter(t => t.status === "done" && t.kind === "investimento" && t.date === d).reduce((a, t) => a + t.amount, 0) : 0; }
+const fmtMoneyShort = v => v == null ? "—" : v >= 1000 ? "R$ " + (v / 1000).toFixed(v >= 10000 ? 0 : 1).replace(".", ",").replace(",0", "") + " mil" : "R$ " + Math.round(v);
 const AREA_SEC = {
   inteligencia: { name: "Inteligência", sec: d => intel ? daySec(d) : 0, first: () => intel ? hxFirst(Object.keys(intel.days), d => daySec(d) > 0) : null },
   estamina: { name: "Estamina", sec: d => stKindSec(d, "cardio") + stKindSec(d, "foco"), first: () => hxFirst(Object.keys(stam().days || {}), d => stKindSec(d, "cardio") + stKindSec(d, "foco") > 0) },
-  forca: { name: "Força", sec: forcaSecOn, first: () => profileId ? hxFirst(Object.keys(state.logs), hasEntries) : null, est: true },
+  forca: { name: "Força", sec: forcaSecOn, first: () => profileId ? hxFirst(Object.keys(state.logs), hasEntries) : null },
   graca: { name: "Graça", sec: grDaySec, first: () => hxFirst(Object.keys(grData().days), d => grDaySec(d) > 0) },
   missoes: { name: "Missões", sec: d => msDaySec(d), first: () => hxFirst(Object.keys(msData().days), d => msDaySec(d) > 0) }
 };
@@ -6583,33 +6586,53 @@ function areaHours(id, dates) {
 }
 function evoCard() {
   const card = el("section", "guide evo-card"); card.id = "evo";
-  card.appendChild(el("h3", null, "Horas dedicadas por dia"));
+  card.appendChild(el("h3", null, "Dedicação por dia"));
   const ch = el("div", "chips"); ch.setAttribute("aria-label", "Período do gráfico");
   [[30, "30 dias"], [90, "90 dias"]].forEach(([k, t]) => { const b = el("button", "gchip", t); b.type = "button"; b.id = "evo-n-" + k; b.setAttribute("aria-pressed", String(evoUI.n === k)); b.addEventListener("click", () => { evoUI.n = k; renderHome(); const c = document.getElementById("evo"); if (c) c.scrollIntoView({ block: "nearest" }); }); ch.appendChild(b); });
   card.appendChild(ch);
   const dates = evoDates(evoUI.n);
-  const areas = Object.keys(AREA_SEC).filter(id => modOn(id)).map(id => ({ id, name: AREA_SEC[id].name, vals: areaHours(id, dates) })).filter(a => a.vals && a.vals.some(v => v != null));
-  if (!areas.length) { card.appendChild(el("p", "note muted", "Ainda não há tempo registrado. Use os cronômetros dos módulos e as linhas aparecem aqui.")); return card; }
+  const area = id => { if (!modOn(id)) return null; const v = areaHours(id, dates); return v && v.some(x => x != null) ? { id, name: AREA_SEC[id].name, color: HX_COLORS[id], vals: v } : null; };
+  const avgOf = v => { const g = v.filter(x => x != null); return g.reduce((x, y) => x + y, 0) / Math.max(1, g.length); };
+  const panels = [];
+  const intA = area("inteligencia"); if (intA) panels.push({ id: "inteligencia", title: "Inteligência", series: [intA] });
+  const fis = [area("estamina"), area("forca")].filter(Boolean); if (fis.length) panels.push({ id: "fisico", title: fis.map(x => x.name).join(" e "), series: fis });
+  const grA = area("graca"); if (grA) panels.push({ id: "graca", title: "Graça", series: [grA] });
+  const msA = area("missoes"); if (msA) panels.push({ id: "missoes", title: "Missões", series: [msA] });
+  let eco = null;
+  if (modOn("financas") && fin && finFlat().some(t => t.status === "done" && t.kind === "investimento")) {
+    let acc = 0; const daily = dates.map(finAporteOn), cum = daily.map(v => (acc += v));
+    eco = { id: "financas", title: "Economia · investido", money: true, daily, series: [{ id: "financas", name: "Investido no período", color: HX_COLORS.financas, vals: cum }] };
+    panels.push(eco);
+  }
+  if (!panels.length) { card.appendChild(el("p", "note muted", "Ainda não há tempo registrado. Use os cronômetros dos módulos e as linhas aparecem aqui.")); return card; }
   const mw = (document.getElementById("main") || document.body).clientWidth || 640, two = mw >= 700;
   const grid = el("div", "evo-grid" + (two ? " two" : ""));
-  areas.forEach(a => {
-    const got = a.vals.filter(v => v != null), avg = got.reduce((x, y) => x + y, 0) / Math.max(1, got.length), last = a.vals[a.vals.length - 1];
-    const panel = el("div", "evo-panel"); panel.id = "evo-" + a.id + "-panel";
-    const hd = el("div", "evo-ph"); const sw = el("span", "lc-sw"); sw.style.background = HX_COLORS[a.id];
-    hd.append(sw, el("b", null, a.name), el("span", null, "média " + fmtHours(avg) + " por dia · hoje " + fmtHours(last)));
+  panels.forEach(P => {
+    const panel = el("div", "evo-panel"); panel.id = "evo-" + P.id + "-panel";
+    const hd = el("div", "evo-ph");
+    if (P.series.length === 1) { const sw = el("span", "lc-sw"); sw.style.background = P.series[0].color; hd.appendChild(sw); }
+    hd.appendChild(el("b", null, P.title));
+    if (P.money) hd.appendChild(el("span", null, brl(P.series[0].vals[P.series[0].vals.length - 1]) + " no período · hoje " + brl(P.daily[P.daily.length - 1])));
+    else if (P.series.length === 1) hd.appendChild(el("span", null, "média " + fmtHours(avgOf(P.series[0].vals)) + " por dia · hoje " + fmtHours(P.series[0].vals[P.series[0].vals.length - 1])));
+    else hd.appendChild(el("span", null, "hoje " + P.series.map(sr => sr.name + " " + fmtHours(sr.vals[sr.vals.length - 1])).join(" · ")));
     panel.appendChild(hd);
-    panel.appendChild(lineChart({ dates, series: [{ id: a.id, name: a.name, color: HX_COLORS[a.id], vals: a.vals }], hours: true, fmt: fmtHours, ref: null, h: 150, width: two ? mw / 2 - 10 : mw, noTable: true, idp: "evo-" + a.id + "-", label: "Horas dedicadas por dia em " + a.name }));
+    panel.appendChild(lineChart(P.money
+      ? { dates, series: P.series, money: true, fmt: fmtMoneyShort, tipFmt: v => brl(v) + " até o dia", ref: null, h: 150, width: two ? mw / 2 - 10 : mw, noTable: true, idp: "evo-" + P.id + "-", label: "Dinheiro investido no período" }
+      : { dates, series: P.series, hours: true, fmt: fmtHours, legendVal: sr => "média " + fmtHours(avgOf(sr.vals)) + "/dia", ref: null, h: 150, width: two ? mw / 2 - 10 : mw, noTable: true, idp: "evo-" + P.id + "-", label: "Horas dedicadas por dia em " + P.title }));
     grid.appendChild(panel);
   });
   card.appendChild(grid);
   // tabela única com todas as áreas
+  const cols = []; panels.forEach(P => P.series.forEach(sr => cols.push({ name: P.money ? "Investido no dia" : sr.name, vals: P.money ? P.daily : sr.vals, fmt: P.money ? (v => v ? brl(v) : "—") : fmtHours })));
   const det = el("details", "lc-table"); det.appendChild(el("summary", null, "Ver em tabela"));
-  const tb = el("table"), hr = el("tr"); hr.appendChild(el("th", null, "Dia")); areas.forEach(a => hr.appendChild(el("th", null, a.name))); const th = el("thead"); th.appendChild(hr); tb.appendChild(th);
-  const tbody = el("tbody"); dates.map((d, i) => i).reverse().forEach(i => { const tr = el("tr"); tr.appendChild(el("td", null, fmtDate(dates[i]).slice(0, 5))); areas.forEach(a => tr.appendChild(el("td", null, fmtHours(a.vals[i])))); tbody.appendChild(tr); });
+  const tb = el("table"), hr = el("tr"); hr.appendChild(el("th", null, "Dia")); cols.forEach(c => hr.appendChild(el("th", null, c.name))); const th = el("thead"); th.appendChild(hr); tb.appendChild(th);
+  const tbody = el("tbody"); dates.map((d, i) => i).reverse().forEach(i => { const tr = el("tr"); tr.appendChild(el("td", null, fmtDate(dates[i]).slice(0, 5))); cols.forEach(c => tr.appendChild(el("td", null, c.fmt(c.vals[i])))); tbody.appendChild(tr); });
   tb.appendChild(tbody); const sc = el("div", "lc-tscroll"); sc.appendChild(tb); det.appendChild(sc); card.appendChild(det);
-  const notes = ["Tempo cronometrado em cada área por dia, contando o cronômetro que estiver rodando. Cada gráfico tem a sua escala: compare as áreas pela média de cada um."];
-  if (areas.some(a => a.id === "forca")) notes.push("Força: tempo estimado pelas séries anotadas (2,5 min por série + 10 min de aquecimento).");
-  if (modOn("financas")) notes.push("Economia não aparece porque não tem tempo registrado.");
+  const notes = ["Tempo dedicado a cada área por dia, contando o cronômetro que estiver rodando. Cada gráfico tem a sua escala: compare as áreas pela média de cada um."];
+  if (fis.some(a => a.id === "forca")) notes.push("Força: cada dia com treino anotado conta 1h30 de academia.");
+  if (grA) notes.push("Graça: ritual marcado como feito sem cronômetro conta o tempo previsto dele.");
+  if (eco) notes.push("Economia: soma dos aportes em investimento do período (lançamentos classificados como Aporte em investimento).");
+  else if (modOn("financas")) notes.push("Economia aparece quando houver lançamentos classificados como Aporte em investimento.");
   card.appendChild(el("p", "hex-cap", notes.join(" ")));
   return card;
 }

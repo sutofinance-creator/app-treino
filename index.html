@@ -495,6 +495,7 @@ ol.steps a { color: var(--accent); }
 .evo-ph { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
 .evo-ph b { font-family: var(--font-display); letter-spacing: .06em; text-transform: uppercase; }
 .evo-ph span:last-child { color: var(--muted); font-size: 13px; }
+.evo-ph .evo-hint { flex-basis: 100%; color: var(--warn); font-size: 13px; }
 .evo-card .chips { margin: 0; }
 .lc { display: grid; gap: 8px; }
 .lc-box { position: relative; }
@@ -515,6 +516,7 @@ ol.steps a { color: var(--accent); }
 .lc-legend { display: flex; flex-wrap: wrap; gap: 6px; }
 .lc-leg { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); font: 500 13px var(--font-body); cursor: pointer; }
 .lc-leg b { font-weight: 700; }
+.lc-leg.static { cursor: default; background: none; border-color: transparent; padding: 2px 6px 2px 0; color: var(--muted); }
 .lc-leg.on { border-color: var(--accent); box-shadow: 0 0 10px rgba(166, 107, 255, .3); }
 .lc-leg.dim { opacity: .55; }
 .lc-table summary { cursor: pointer; color: var(--accent); font: 600 13px var(--font-display); letter-spacing: .08em; text-transform: uppercase; }
@@ -6456,12 +6458,16 @@ function lineChart(cfg) {
   const every = Math.max(1, Math.round(n / (W < 480 ? 4 : 6)));
   cfg.dates.forEach((d, i) => { if ((n - 1 - i) % every === 0) svg += '<text class="lc-xl" x="' + f(X(i)) + '" y="' + (H - 6) + '" text-anchor="middle">' + fmtDate(d).slice(0, 5) + "</text>"; });
   cfg.series.forEach(sr => {
-    let dpath = "", pen = false;
-    sr.vals.forEach((v, i) => { if (v == null) { pen = false; return; } dpath += (pen ? "L" : "M") + f(X(i)) + " " + f(Y(v)); pen = true; });
-    const dim = cfg.focus && cfg.focus !== sr.id ? " dim" : "";
-    svg += '<path class="lc-line' + dim + '" d="' + dpath + '" stroke="' + sr.color + '"/>';
+    const dim = cfg.focus && cfg.focus !== sr.id ? " dim" : "", colAt = i => sr.segColors ? sr.segColors[i] : sr.color;
+    if (sr.segColors) { // uma linha só, com a cor de cada trecho dada pelo dia em que ele chega
+      sr.vals.forEach((v, i) => { if (i && v != null && sr.vals[i - 1] != null) svg += '<path class="lc-line' + dim + '" d="M' + f(X(i - 1)) + " " + f(Y(sr.vals[i - 1])) + "L" + f(X(i)) + " " + f(Y(v)) + '" stroke="' + colAt(i) + '"/>'; });
+    } else {
+      let dpath = "", pen = false;
+      sr.vals.forEach((v, i) => { if (v == null) { pen = false; return; } dpath += (pen ? "L" : "M") + f(X(i)) + " " + f(Y(v)); pen = true; });
+      svg += '<path class="lc-line' + dim + '" d="' + dpath + '" stroke="' + sr.color + '"/>';
+    }
     let li = -1; sr.vals.forEach((v, i) => { if (v != null) li = i; });
-    if (li >= 0) svg += '<circle class="lc-end' + dim + '" cx="' + f(X(li)) + '" cy="' + f(Y(sr.vals[li])) + '" r="4" fill="' + sr.color + '"/>';
+    if (li >= 0) svg += '<circle class="lc-end' + dim + '" cx="' + f(X(li)) + '" cy="' + f(Y(sr.vals[li])) + '" r="4" fill="' + colAt(li) + '"/>';
   });
   svg += '<line class="lc-cross" x1="0" x2="0" y1="' + T + '" y2="' + (H - B) + '" visibility="hidden"/><g class="lc-dots"></g>';
   svg += '<rect class="lc-hit" x="' + L + '" y="0" width="' + (W - L - Rp) + '" height="' + (H - B) + '"/></svg>';
@@ -6472,11 +6478,12 @@ function lineChart(cfg) {
     const r = sv.getBoundingClientRect(); if (!r.width) return;
     const x = (ev.clientX - r.left) / r.width * W, i = Math.max(0, Math.min(n - 1, Math.round((x - L) / ((W - L - Rp) / Math.max(1, n - 1)))));
     cross.setAttribute("x1", f(X(i))); cross.setAttribute("x2", f(X(i))); cross.setAttribute("visibility", "visible");
-    dots.innerHTML = cfg.series.filter(sr => sr.vals[i] != null && !(cfg.focus && cfg.focus !== sr.id)).map(sr => '<circle cx="' + f(X(i)) + '" cy="' + f(Y(sr.vals[i])) + '" r="4.5" fill="' + sr.color + '" class="lc-dot"/>').join("");
+    dots.innerHTML = cfg.series.filter(sr => sr.vals[i] != null && !(cfg.focus && cfg.focus !== sr.id)).map(sr => '<circle cx="' + f(X(i)) + '" cy="' + f(Y(sr.vals[i])) + '" r="4.5" fill="' + (sr.segColors ? sr.segColors[i] : sr.color) + '" class="lc-dot"/>').join("");
     tip.innerHTML = ""; tip.appendChild(el("div", "lc-tip-d", capFirst(DOW_SHORT[rtDow(cfg.dates[i])]) + ", " + fmtDate(cfg.dates[i]).slice(0, 5)));
     cfg.series.slice().sort((a, b) => (b.vals[i] == null ? -1 : b.vals[i]) - (a.vals[i] == null ? -1 : a.vals[i])).forEach(sr => {
-      const row = el("div", "lc-tip-r"); const sw = el("span", "lc-sw"); sw.style.background = sr.color;
+      const row = el("div", "lc-tip-r"); const sw = el("span", "lc-sw"); sw.style.background = sr.segColors ? sr.segColors[i] : sr.color;
       row.append(sw, el("b", null, sr.vals[i] == null ? "—" : (cfg.tipFmt || fmt)(sr.vals[i])), el("span", null, sr.name)); tip.appendChild(row);
+      (sr.tipRows ? sr.tipRows(i) : []).forEach(([c, v, t]) => { const r2 = el("div", "lc-tip-r"); const s2 = el("span", "lc-sw"); s2.style.background = c; r2.append(s2, el("b", null, v), el("span", null, t)); tip.appendChild(r2); });
     });
     tip.hidden = false;
     const px = X(i) / W * r.width, left = px > r.width / 2 ? px - tip.offsetWidth - 12 : px + 12; tip.style.left = Math.max(0, left) + "px"; tip.style.top = "8px";
@@ -6493,7 +6500,8 @@ function lineChart(cfg) {
     if (cfg.onFocus) b.addEventListener("click", () => cfg.onFocus(cfg.focus === sr.id ? null : sr.id));
     lg.appendChild(b);
   });
-  if (cfg.series.length > 1) wrap.insertBefore(lg, box);
+  if (cfg.legendItems) { lg.innerHTML = ""; cfg.legendItems.forEach(([c, t]) => { const it = el("span", "lc-leg static"); const sw = el("span", "lc-sw"); sw.style.background = c; it.append(sw, el("span", null, t)); lg.appendChild(it); }); wrap.insertBefore(lg, box); }
+  else if (cfg.series.length > 1) wrap.insertBefore(lg, box);
   // tabela (acessível e para quem prefere números)
   if (cfg.noTable) return wrap;
   const det = el("details", "lc-table"); det.appendChild(el("summary", null, "Ver em tabela"));
@@ -6570,7 +6578,12 @@ function forcaSecOn(d) { return hasEntries(d) ? FORCA_DIA_SEC : 0; }
 // ritual marcado como feito sem cronômetro (Concluir na Rotina ou Marcar feito) conta o tempo previsto dele
 function grDaySec(d) { return grData().rituals.reduce((a, r) => { const sec = grSec(d, r.id), c = grRec(d, r.id).count || 0; return a + (sec > 0 ? sec : c * grLimit(r) || c * 15 * 60); }, 0); }
 // Economia: aportes em investimento (lançamentos classificados como "Aporte em investimento")
-function finAporteOn(d) { return fin ? finFlat().filter(t => t.status === "done" && t.kind === "investimento" && t.date === d).reduce((a, t) => a + t.amount, 0) : 0; }
+function finInvSource() { if (!fin) return null; if (finFlat().some(t => t.status === "done" && t.kind === "investimento")) return "tx"; if ((fin.invest.ops || []).some(o => o.type === "compra")) return "ops"; return null; }
+function finAporteOn(d, src) {
+  if (!fin) return 0;
+  if ((src || finInvSource()) === "ops") return (fin.invest.ops || []).filter(o => o.type === "compra" && o.date === d).reduce((a, o) => a + (o.qty || 0) * (o.price || 0), 0);
+  return finFlat().filter(t => t.status === "done" && t.kind === "investimento" && t.date === d).reduce((a, t) => a + t.amount, 0);
+}
 const fmtMoneyShort = v => v == null ? "—" : v >= 1000 ? "R$ " + (v / 1000).toFixed(v >= 10000 ? 0 : 1).replace(".", ",").replace(",0", "") + " mil" : "R$ " + Math.round(v);
 const AREA_SEC = {
   inteligencia: { name: "Inteligência", sec: d => intel ? daySec(d) : 0, first: () => intel ? hxFirst(Object.keys(intel.days), d => daySec(d) > 0) : null },
@@ -6595,13 +6608,20 @@ function evoCard() {
   const avgOf = v => { const g = v.filter(x => x != null); return g.reduce((x, y) => x + y, 0) / Math.max(1, g.length); };
   const panels = [];
   const intA = area("inteligencia"); if (intA) panels.push({ id: "inteligencia", title: "Inteligência", series: [intA] });
-  const fis = [area("estamina"), area("forca")].filter(Boolean); if (fis.length) panels.push({ id: "fisico", title: fis.map(x => x.name).join(" e "), series: fis });
+  const fis = [area("estamina"), area("forca")].filter(Boolean);
+  if (fis.length === 2) { // uma linha só com o total; a cor diz quem foi maior no dia (Estamina: cor da Graça; Força: cor da Inteligência)
+    const [E, F] = fis, CE = HX_COLORS.graca, CF = HX_COLORS.inteligencia, C0 = "#9d8fbd";
+    const tot = dates.map((d, i) => E.vals[i] == null && F.vals[i] == null ? null : (E.vals[i] || 0) + (F.vals[i] || 0));
+    const seg = dates.map((d, i) => (E.vals[i] || 0) > (F.vals[i] || 0) ? CE : (F.vals[i] || 0) > (E.vals[i] || 0) ? CF : C0);
+    panels.push({ id: "fisico", title: "Estamina e Força", legendItems: [[CE, "Estamina maior no dia"], [CF, "Força maior no dia"], [C0, "Sem atividade"]], parts: fis,
+      series: [{ id: "fisico", name: "Total", color: CF, segColors: seg, vals: tot, tipRows: i => [[CE, fmtHours(E.vals[i]), "Estamina"], [CF, fmtHours(F.vals[i]), "Força"]] }] });
+  } else if (fis.length) panels.push({ id: "fisico", title: fis[0].name, series: fis });
   const grA = area("graca"); if (grA) panels.push({ id: "graca", title: "Graça", series: [grA] });
   const msA = area("missoes"); if (msA) panels.push({ id: "missoes", title: "Missões", series: [msA] });
   let eco = null;
-  if (modOn("financas") && fin && finFlat().some(t => t.status === "done" && t.kind === "investimento")) {
-    let acc = 0; const daily = dates.map(finAporteOn), cum = daily.map(v => (acc += v));
-    eco = { id: "financas", title: "Economia · investido", money: true, daily, series: [{ id: "financas", name: "Investido no período", color: HX_COLORS.financas, vals: cum }] };
+  if (modOn("financas") && fin) {
+    const src = finInvSource(); let acc = 0; const daily = dates.map(d => src ? finAporteOn(d, src) : 0), cum = daily.map(v => (acc += v));
+    eco = { id: "financas", title: "Economia · investido", money: true, daily, src, series: [{ id: "financas", name: "Investido no período", color: HX_COLORS.financas, vals: cum }] };
     panels.push(eco);
   }
   if (!panels.length) { card.appendChild(el("p", "note muted", "Ainda não há tempo registrado. Use os cronômetros dos módulos e as linhas aparecem aqui.")); return card; }
@@ -6610,29 +6630,30 @@ function evoCard() {
   panels.forEach(P => {
     const panel = el("div", "evo-panel"); panel.id = "evo-" + P.id + "-panel";
     const hd = el("div", "evo-ph");
-    if (P.series.length === 1) { const sw = el("span", "lc-sw"); sw.style.background = P.series[0].color; hd.appendChild(sw); }
+    if (P.series.length === 1 && !P.legendItems) { const sw = el("span", "lc-sw"); sw.style.background = P.series[0].color; hd.appendChild(sw); }
     hd.appendChild(el("b", null, P.title));
     if (P.money) hd.appendChild(el("span", null, brl(P.series[0].vals[P.series[0].vals.length - 1]) + " no período · hoje " + brl(P.daily[P.daily.length - 1])));
     else if (P.series.length === 1) hd.appendChild(el("span", null, "média " + fmtHours(avgOf(P.series[0].vals)) + " por dia · hoje " + fmtHours(P.series[0].vals[P.series[0].vals.length - 1])));
     else hd.appendChild(el("span", null, "hoje " + P.series.map(sr => sr.name + " " + fmtHours(sr.vals[sr.vals.length - 1])).join(" · ")));
+    if (P.money && !P.src) hd.appendChild(el("span", "evo-hint", "Nenhum aporte ainda: classifique as transferências para a corretora como Aporte em investimento (Economia › Pendentes) ou registre as compras em Investimentos."));
     panel.appendChild(hd);
     panel.appendChild(lineChart(P.money
       ? { dates, series: P.series, money: true, fmt: fmtMoneyShort, tipFmt: v => brl(v) + " até o dia", ref: null, h: 150, width: two ? mw / 2 - 10 : mw, noTable: true, idp: "evo-" + P.id + "-", label: "Dinheiro investido no período" }
-      : { dates, series: P.series, hours: true, fmt: fmtHours, legendVal: sr => "média " + fmtHours(avgOf(sr.vals)) + "/dia", ref: null, h: 150, width: two ? mw / 2 - 10 : mw, noTable: true, idp: "evo-" + P.id + "-", label: "Horas dedicadas por dia em " + P.title }));
+      : { dates, series: P.series, hours: true, fmt: fmtHours, legendItems: P.legendItems, legendVal: sr => "média " + fmtHours(avgOf(sr.vals)) + "/dia", ref: null, h: 150, width: two ? mw / 2 - 10 : mw, noTable: true, idp: "evo-" + P.id + "-", label: "Horas dedicadas por dia em " + P.title }));
     grid.appendChild(panel);
   });
   card.appendChild(grid);
   // tabela única com todas as áreas
-  const cols = []; panels.forEach(P => P.series.forEach(sr => cols.push({ name: P.money ? "Investido no dia" : sr.name, vals: P.money ? P.daily : sr.vals, fmt: P.money ? (v => v ? brl(v) : "—") : fmtHours })));
+  const cols = []; panels.forEach(P => (P.parts || P.series).forEach(sr => cols.push({ name: P.money ? "Investido no dia" : sr.name, vals: P.money ? P.daily : sr.vals, fmt: P.money ? (v => v ? brl(v) : "—") : fmtHours })));
   const det = el("details", "lc-table"); det.appendChild(el("summary", null, "Ver em tabela"));
   const tb = el("table"), hr = el("tr"); hr.appendChild(el("th", null, "Dia")); cols.forEach(c => hr.appendChild(el("th", null, c.name))); const th = el("thead"); th.appendChild(hr); tb.appendChild(th);
   const tbody = el("tbody"); dates.map((d, i) => i).reverse().forEach(i => { const tr = el("tr"); tr.appendChild(el("td", null, fmtDate(dates[i]).slice(0, 5))); cols.forEach(c => tr.appendChild(el("td", null, c.fmt(c.vals[i])))); tbody.appendChild(tr); });
   tb.appendChild(tbody); const sc = el("div", "lc-tscroll"); sc.appendChild(tb); det.appendChild(sc); card.appendChild(det);
   const notes = ["Tempo dedicado a cada área por dia, contando o cronômetro que estiver rodando. Cada gráfico tem a sua escala: compare as áreas pela média de cada um."];
-  if (fis.some(a => a.id === "forca")) notes.push("Força: cada dia com treino anotado conta 1h30 de academia.");
+  if (fis.some(a => a.id === "forca")) notes.push("Força: cada dia com treino anotado conta 1h30 de academia." + (fis.length === 2 ? " Estamina e Força: a linha é o total das duas; a cor mostra qual foi maior no dia." : ""));
   if (grA) notes.push("Graça: ritual marcado como feito sem cronômetro conta o tempo previsto dele.");
-  if (eco) notes.push("Economia: soma dos aportes em investimento do período (lançamentos classificados como Aporte em investimento).");
-  else if (modOn("financas")) notes.push("Economia aparece quando houver lançamentos classificados como Aporte em investimento.");
+  if (eco && eco.src === "tx") notes.push("Economia: soma dos aportes do período (lançamentos classificados como Aporte em investimento).");
+  else if (eco && eco.src === "ops") notes.push("Economia: soma das compras registradas em Investimentos no período.");
   card.appendChild(el("p", "hex-cap", notes.join(" ")));
   return card;
 }

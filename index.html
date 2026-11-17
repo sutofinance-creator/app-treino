@@ -514,6 +514,17 @@ ol.steps a { color: var(--accent); }
 .lc-hit { fill: transparent; cursor: crosshair; }
 .lc-tip { position: absolute; z-index: 5; pointer-events: none; min-width: 150px; padding: 8px 10px; background: rgba(12, 7, 24, .96); border: 1px solid var(--line); box-shadow: 0 6px 18px rgba(0, 0, 0, .5); font-size: 13px; display: grid; gap: 3px; }
 .lc-tip[hidden] { display: none; }
+.tipbox { position: relative; }
+.chart svg { touch-action: pan-y; }
+.chart .hit { fill: transparent; cursor: crosshair; }
+.chart .hit.on { fill: var(--accent); fill-opacity: .08; }
+.ch-tip { max-width: 270px; min-width: 130px; }
+.ch-tip-r { display: flex; align-items: center; gap: 6px; color: var(--ink); line-height: 1.3; }
+.ch-tip-r > span:last-child { color: var(--muted); }
+.ch-tip-r b:last-child { color: var(--ink); }
+.stk-bar > span { cursor: crosshair; }
+.stk-bar > span.on { box-shadow: inset 0 0 0 2px var(--ink); }
+.hx-ax.on .hx-name { fill: var(--accent); }
 .lc-tip-d { color: var(--muted); font-size: 12px; margin-bottom: 2px; }
 .lc-tip-r { display: grid; grid-template-columns: 14px auto 1fr; align-items: center; gap: 6px; color: var(--ink); }
 .lc-sw { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
@@ -1211,7 +1222,61 @@ function renderProgress(main) {
   main.appendChild(ev);
 }
 
-function chartBox(svg) { const d = el("div", "chart"); d.innerHTML = svg; return d; }
+function chartBox(svg) { const d = el("div", "chart"); d.innerHTML = svg; tipify(d); return d; }
+
+/* ---------- Dica ao passar o mouse (ou tocar) nos gráficos ----------
+   Cada marca leva data-tip = JSON [título, [valor, rótulo, cor?], ...]; tipify(caixa) mostra a dica do elemento sob o cursor.
+   No celular, o toque mostra a dica e um toque fora esconde. */
+let chTipOpen = null;
+document.addEventListener("pointerdown", e => { if (chTipOpen && !chTipOpen.box.contains(e.target)) chTipOpen.hide(); }, true);
+function chTipOwn(box, hide) { if (chTipOpen && chTipOpen.box !== box) chTipOpen.hide(); chTipOpen = { box, hide }; }
+function tipJSON(head, rows) { return JSON.stringify([head].concat(rows.filter(Boolean))); }
+function tipAttr(head, rows) { return ' data-tip="' + hxEsc(tipJSON(head, rows)) + '"'; }
+// coluna invisível do tamanho da área do gráfico (alvo maior que a marca); cx = centro, w = largura
+function hitCol(cx, w, head, rows) {
+  const x0 = Math.max(PL, cx - w / 2), x1 = Math.min(CW - PR, cx + w / 2);
+  return '<rect class="hit" x="' + x0.toFixed(1) + '" y="' + (PT - 6) + '" width="' + Math.max(1, x1 - x0).toFixed(1) + '" height="' + (CH - PB - PT + 6) + '"' + tipAttr(head, rows) + "/>";
+}
+function dayHead(iso) { return capFirst(DOW_SHORT[rtDow(iso)]) + ", " + fmtDate(iso).slice(0, 5); }
+function tipify(box) {
+  box.classList.add("tipbox");
+  const tip = el("div", "lc-tip ch-tip"); tip.hidden = true; tip.setAttribute("role", "status"); box.appendChild(tip);
+  let cur = null;
+  const hide = () => { if (cur) cur.classList.remove("on"); cur = null; tip.hidden = true; if (chTipOpen && chTipOpen.box === box) chTipOpen = null; };
+  const show = e => {
+    const t = e.target && e.target.closest ? e.target.closest("[data-tip]") : null;
+    if (!t || !box.contains(t)) { if (e.pointerType !== "touch") hide(); return; }
+    if (t !== cur) {
+      if (cur) cur.classList.remove("on");
+      cur = t; t.classList.add("on");
+      let spec; try { spec = JSON.parse(t.getAttribute("data-tip")); } catch (err) { return; }
+      tip.innerHTML = ""; tip.appendChild(el("div", "lc-tip-d", spec[0]));
+      spec.slice(1).forEach(([v, l, c]) => {
+        const r = el("div", "ch-tip-r");
+        if (c) { const sw = el("span", "lc-sw"); sw.style.background = c; r.appendChild(sw); }
+        if (v !== "" && v != null) r.appendChild(el("b", null, String(v)));
+        if (l) r.appendChild(el("span", null, l));
+        tip.appendChild(r);
+      });
+    }
+    tip.hidden = false; chTipOwn(box, hide);
+    const br = box.getBoundingClientRect(), tr = t.getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
+    let left, top;
+    if (tr.height > br.height * 0.5) { // coluna do gráfico: dica ao lado, no alto
+      const cx = tr.left + tr.width / 2 - br.left;
+      left = cx > br.width / 2 ? cx - tw - 14 : cx + 14; top = 4;
+    } else { // marca pequena (segmento, ponto): dica acima, ou abaixo se sairia do gráfico (o cartão corta o que passa da borda)
+      const cx = (e.clientX != null && e.pointerType !== "touch" ? e.clientX : tr.left + tr.width / 2) - br.left;
+      left = cx - tw / 2; top = tr.top - br.top - th - 8;
+      if (top < 0) top = tr.bottom - br.top + 8;
+    }
+    tip.style.left = Math.max(0, Math.min(br.width - tw, left)) + "px"; tip.style.top = top + "px";
+  };
+  box.addEventListener("pointermove", show); box.addEventListener("pointerdown", show);
+  box.addEventListener("pointerleave", e => { if (e.pointerType !== "touch") hide(); });
+  box.addEventListener("focusin", show); box.addEventListener("focusout", hide);
+  return box;
+}
 
 function weekStart(iso) { const [y, m, d] = iso.split("-").map(Number); const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() - (dt.getDay() + 6) % 7); return ymd(dt); }
 
@@ -1225,8 +1290,8 @@ function groupSeries(group) {
     ids.forEach(id => {
       const e = l.e[id]; if (!e) return;
       const wk = weekStart(date);
-      const w = weeks[wk] || (weeks[wk] = { sets: 0, hasSets: false, max: {}, rm: {} });
-      if (e.sets != null) { w.sets += e.sets; w.hasSets = true; }
+      const w = weeks[wk] || (weeks[wk] = { sets: 0, hasSets: false, max: {}, rm: {}, setsEx: {} });
+      if (e.sets != null) { w.sets += e.sets; w.hasSets = true; w.setsEx[id] = (w.setsEx[id] || 0) + e.sets; }
       if (e.kg > 0) {
         if (first[id] == null) first[id] = e.kg; w.max[id] = Math.max(w.max[id] || 0, e.kg);
         const x = exs[id]; if (x) { const v = fx1rm(fTotal(e.kg, fLoad(id, x.name)), e.reps != null ? e.reps : (x.hi || x.lo)); if (v > (w.rm[id] || 0)) w.rm[id] = v; }
@@ -1236,8 +1301,13 @@ function groupSeries(group) {
   return Object.keys(weeks).sort().slice(-12).map(wk => {
     const w = weeks[wk]; const r = Object.keys(w.max).map(id => w.max[id] / first[id]);
     // força: maior 1RM estimado de cada exercício na semana ÷ carga de referência para o seu peso; média do grupo
-    const fr = bw ? Object.keys(w.rm).map(id => { const k = fxStdKey(exs[id].name); return k ? Math.min(3, w.rm[id] / fxRef(FX_STD[k], bw, sx)) : null; }).filter(v => v != null) : [];
-    return { wk, sets: w.hasSets ? w.sets : null, load: r.length ? (r.reduce((a, b) => a + b, 0) / r.length - 1) * 100 : null, ref: fr.length ? fr.reduce((a, b) => a + b, 0) / fr.length * 100 : null };
+    const nm = id => (exs[id] && exs[id].name) || id;
+    const refEx = bw ? Object.keys(w.rm).map(id => { const k = fxStdKey(exs[id].name); return k ? { name: nm(id), rm: w.rm[id], pct: Math.min(3, w.rm[id] / fxRef(FX_STD[k], bw, sx)) * 100 } : null; }).filter(Boolean) : [];
+    const fr = refEx.map(x => x.pct / 100);
+    // detalhe por exercício para a dica do gráfico
+    const loadEx = Object.keys(w.max).map(id => ({ name: nm(id), kg: w.max[id], pct: (w.max[id] / first[id] - 1) * 100 }));
+    const setsEx = Object.keys(w.setsEx).map(id => ({ name: nm(id), sets: w.setsEx[id] }));
+    return { wk, sets: w.hasSets ? w.sets : null, load: r.length ? (r.reduce((a, b) => a + b, 0) / r.length - 1) * 100 : null, ref: fr.length ? fr.reduce((a, b) => a + b, 0) / fr.length * 100 : null, refEx, loadEx, setsEx };
   });
 }
 
@@ -1259,6 +1329,7 @@ function barSVG(data) {
     g += '<rect class="' + (last ? "bar last" : "bar") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(p.sets) + '" width="' + bw + '" height="' + (ys(0) - ys(p.sets)) + '" rx="3"/>';
     if (last) g += '<text class="val" x="' + xs(i) + '" y="' + (ys(p.sets) - 4) + '" text-anchor="middle">' + p.sets + '</text>';
   });
+  data.forEach((p, i) => { g += hitCol(xs(i), iw / data.length, "Semana de " + fmtDate(p.wk).slice(0, 5), [p.sets == null ? ["", "sem séries anotadas"] : [p.sets + (p.sets === 1 ? " série" : " séries"), "no grupo"]].concat(exTipRows(p.setsEx, x => [x.sets + "×"]))); });
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Séries por semana">' + g + xLabels(data, xs) + '</svg>';
 }
 function lineSVG(data) {
@@ -1276,6 +1347,8 @@ function lineSVG(data) {
   pts.forEach((p, k) => { const last = k === pts.length - 1; g += '<circle class="' + (last ? "dot last" : "dot") + '" cx="' + xs(p.i) + '" cy="' + ys(p.v) + '" r="' + (last ? 4.5 : 3) + '"/>'; });
   const lp = pts[pts.length - 1];
   g += '<text class="val" x="' + Math.min(xs(lp.i), CW - PR - 14) + '" y="' + (ys(lp.v) - 8) + '" text-anchor="middle">' + (lp.v >= 0 ? "+" : "") + lp.v.toFixed(0) + '%</text>';
+  const sg = v => (v >= 0 ? "+" : "") + Math.round(v) + "%";
+  data.forEach((p, i) => { g += hitCol(xs(i), iw / data.length, "Semana de " + fmtDate(p.wk).slice(0, 5), [p.load == null ? ["", "sem carga anotada"] : [sg(p.load), "de carga em relação ao primeiro registro"]].concat(exTipRows(p.loadEx, x => [sg(x.pct), fmtKg(x.kg)]))); });
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Carga em relação ao primeiro registro">' + g + xLabels(data, xs) + '</svg>';
 }
 
@@ -1293,7 +1366,16 @@ function refLineSVG(data) {
   pts.forEach((p, k) => { const last = k === pts.length - 1; g += '<circle class="' + (last ? "dot last" : "dot") + '" cx="' + xs(p.i) + '" cy="' + ys(p.v) + '" r="' + (last ? 4.5 : 3) + '"/>'; });
   const lp = pts[pts.length - 1];
   g += '<text class="val" x="' + Math.min(xs(lp.i), CW - PR - 14) + '" y="' + (ys(lp.v) - 8) + '" text-anchor="middle">' + Math.round(lp.v) + '%</text>';
+  data.forEach((p, i) => { g += hitCol(xs(i), iw / data.length, "Semana de " + fmtDate(p.wk).slice(0, 5), [p.ref == null ? ["", "sem carga com referência"] : [Math.round(p.ref) + "%", "da média de quem treina (grupo)"]].concat(exTipRows(p.refEx, x => [Math.round(x.pct) + "%", "1RM " + fmtKg(x.rm)]))); });
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Força do grupo em relação à média de quem treina para o seu peso">' + g + xLabels(data, xs) + '</svg>';
+}
+function fmtKg(v) { return fmtNum(Math.round(v * 10) / 10) + " kg"; }
+// linhas da dica com o detalhe de cada exercício do grupo (até 5)
+function exTipRows(list, fmt) {
+  if (!list || !list.length) return [];
+  const out = list.slice(0, 5).map(x => { const [v, d] = fmt(x); return [v, x.name + (d ? " · " + d : "")]; });
+  if (list.length > 5) out.push(["", "+ " + (list.length - 5) + " exercícios"]);
+  return out;
 }
 
 // Textos do Guia que valem para qualquer plano
@@ -2590,6 +2672,7 @@ function studySVG(rows) {
   });
   const step = 2;
   rows.forEach((r, i) => { if (i % step === (n - 1) % step) g += '<text class="ax" x="' + xs(i) + '" y="' + (CH - 6) + '" text-anchor="middle">' + fmtDate(r.iso).slice(0, 5) + '</text>'; });
+  rows.forEach((r, i) => { g += hitCol(xs(i), iw / n, dayHead(r.iso), [[fmtHM(r.sec), "estudados"], r.goal ? [fmtHM(r.goal), "meta"] : ["", "sem meta neste dia"], r.goal ? (r.sec >= r.goal ? ["", "meta batida"] : [fmtHM(r.goal - r.sec), "faltaram"]) : null]); });
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Horas de estudo por dia nos últimos 14 dias">' + g + '</svg>';
 }
 
@@ -3128,7 +3211,7 @@ function updateStaminaLive() {
 setInterval(updateStaminaLive, 250);
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && stamina && stamina.timer && sessionLen(stamina.timer.pid)) stWakeOn(); });
 
-function stBarsSVG(rows, aria) {
+function stBarsSVG(rows, aria, tipOf) {
   const mx = Math.max(1, ...rows.map(r => Math.max(r.v, r.goal))) * 1.1;
   const top = mx <= 20 ? Math.ceil(mx / 10) * 10 : mx <= 100 ? Math.ceil(mx / 20) * 20 : Math.ceil(mx / 100) * 100;
   const iw = CW - PL - PR, ih = CH - PT - PB, n = rows.length, bw = Math.min(18, iw / n * 0.6);
@@ -3141,6 +3224,7 @@ function stBarsSVG(rows, aria) {
   });
   const step = n > 8 ? 2 : 1;
   rows.forEach((r, i) => { if (i % step === (n - 1) % step) g += '<text class="ax" x="' + xs(i) + '" y="' + (CH - 6) + '" text-anchor="middle">' + r.label + '</text>'; });
+  rows.forEach((r, i) => { const t = tipOf ? tipOf(r) : [r.label, [[r.v, ""], [r.goal, "meta"]]]; g += hitCol(xs(i), iw / n, t[0], t[1]); });
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="' + aria + '">' + g + '</svg>';
 }
 
@@ -3159,7 +3243,7 @@ function renderStProgress(main) {
   c.appendChild(t1);
   c.appendChild(el("p", "note muted", "Minutos equivalentes, como na recomendação da OMS: no 4x4, os 16 min de tiros contam em dobro (a sessão de 40 min vale 56); em Outro vigoroso, todo minuto conta em dobro. O tempo além da sessão conta 1 para 1."));
   c.appendChild(el("p", "chart-t", "Minutos por semana (traço = meta)"));
-  c.appendChild(chartBox(stBarsSVG(weeks, "Minutos de cardio por semana nas últimas 8 semanas")));
+  c.appendChild(chartBox(stBarsSVG(weeks, "Minutos de cardio por semana nas últimas 8 semanas", r => ["Semana de " + r.label, [[r.v + " min", "equivalentes"], [Math.floor(weekRaw(r.st)) + " min", "no relógio"], [r.goal + " min", "meta"], r.v >= r.goal ? ["", "meta batida"] : [(r.goal - r.v) + " min", "faltaram"]]])));
   const x4w = weeks.filter(w => weekDays(w.st).some(dd => stSec(dd, "x4") >= 900)).length;
   c.appendChild(el("p", "note muted", "Intervalado 4x4 feito em " + x4w + " das últimas 8 semanas."));
   main.appendChild(c);
@@ -3174,7 +3258,7 @@ function renderStProgress(main) {
     stTile("Na meta", wk.filter(r => r.v >= fg).length + "/7", "dias da semana"));
   f.appendChild(t2);
   f.appendChild(el("p", "chart-t", "Minutos de foco por dia (traço = meta)"));
-  f.appendChild(chartBox(stBarsSVG(days, "Minutos de foco por dia nos últimos 14 dias")));
+  f.appendChild(chartBox(stBarsSVG(days, "Minutos de foco por dia nos últimos 14 dias", r => [dayHead(r.iso), [[r.v + " min", "de foco"], [r.goal + " min", "meta"], r.v >= r.goal ? ["", "meta batida"] : null]])));
   main.appendChild(f);
 
   const h = el("section", "guide"); h.appendChild(el("h3", null, "Histórico"));
@@ -3461,7 +3545,7 @@ function renderGrProgress(main) {
     stTile("Tempo", fmtHM(sec7), "em 7 dias"));
   c.appendChild(t1);
   c.appendChild(el("p", "chart-t", "Rituais feitos por dia (traço = do dia)"));
-  c.appendChild(chartBox(stBarsSVG(days, "Rituais feitos por dia nos últimos 14 dias")));
+  c.appendChild(chartBox(stBarsSVG(days, "Rituais feitos por dia nos últimos 14 dias", r => [dayHead(r.iso), [r.goal ? [r.v + " de " + r.goal, "rituais feitos"] : [r.v, r.v === 1 ? "ritual feito" : "rituais feitos"], r.goal ? ["", r.v >= r.goal ? "dia completo" : "faltaram " + (r.goal - r.v)] : ["", "nenhum ritual previsto"]]])));
   main.appendChild(c);
   const rs = el("section", "guide"); rs.appendChild(el("h3", null, "Por ritual (30 dias)"));
   g.rituals.forEach(r => {
@@ -4626,6 +4710,7 @@ function msHoursSVG(rows) {
   });
   const step = Math.max(1, Math.ceil(n / 8));
   rows.forEach((r, i) => { if (i % step === (n - 1) % step) g += '<text class="ax" x="' + xs(i) + '" y="' + (CH - 6) + '" text-anchor="middle">' + fmtDate(r.iso).slice(0, 5) + '</text>'; });
+  rows.forEach((r, i) => { g += hitCol(xs(i), iw / n, dayHead(r.iso), [[r.sec ? fmtHM(r.sec) : "0 min", "trabalhadas"], r.goal ? [fmtHM(r.goal), "meta mínima"] : ["", "sem meta neste dia"], r.goal ? (r.sec >= r.goal ? ["", "meta batida"] : [fmtHM(r.goal - r.sec), "faltaram"]) : null]); });
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Horas trabalhadas por dia">' + g + '</svg>';
 }
 // quadro "por projeto / setor / solicitante" do relatório
@@ -5782,7 +5867,7 @@ function stack(title, segs, opt) {
   const tot = segs.reduce((s, x) => s + x.value, 0); const w = el("div", "stk" + (opt && opt.selected ? " filtering" : ""));
   w.appendChild(el("span", "field-l", title));
   const on = s => opt && opt.selected === s.key;
-  const bar = el("div", "stk-bar"); segs.forEach(s => { if (!s.value) return; const sp = el("span", s.cls + (on(s) ? " on" : "")); sp.style.width = (s.value / tot * 100) + "%"; sp.title = s.label; if (opt) { sp.style.cursor = "pointer"; sp.addEventListener("click", () => opt.pick(s.key)); } bar.appendChild(sp); }); w.appendChild(bar);
+  const bar = el("div", "stk-bar"); segs.forEach(s => { if (!s.value) return; const sp = el("span", s.cls + (on(s) ? " on" : "")); sp.style.width = (s.value / tot * 100) + "%"; sp.dataset.tip = tipJSON(title, [[brl(s.value), s.label + " · " + pctf(s.value / tot)]]); if (opt) { sp.style.cursor = "pointer"; sp.addEventListener("click", () => opt.pick(s.key)); } bar.appendChild(sp); }); w.appendChild(bar);
   const lg = el("div", "stk-lg");
   segs.forEach(s => {
     const i = el(opt ? "button" : "span", "lg" + (opt ? " pick" : "") + (on(s) ? " on" : ""));
@@ -5790,7 +5875,7 @@ function stack(title, segs, opt) {
     i.append(el("span", "sw " + s.cls), document.createTextNode(s.label + " " + brl(s.value) + " (" + pctf(tot ? s.value / tot : 0) + ")")); lg.appendChild(i);
   });
   w.appendChild(lg);
-  return w;
+  return tipify(w);
 }
 function evoSVG(hist) {
   const vals = hist.flatMap(h => [h.recebido, h.gastos, Math.abs(h.saldo)]); const top = Math.max(100, ...vals) * 1.1;
@@ -5808,6 +5893,7 @@ function evoSVG(hist) {
   const pts = hist.map((h, i) => xs(i).toFixed(1) + "," + ys(h.saldo).toFixed(1));
   if (pts.length > 1) g += '<polyline class="line" points="' + pts.join(" ") + '"/>';
   hist.forEach((h, i) => { g += '<circle class="dot ' + (h.saldo >= 0 ? "pos" : "neg") + '" cx="' + xs(i) + '" cy="' + ys(h.saldo) + '" r="4"/>'; });
+  hist.forEach((h, i) => { g += hitCol(xs(i), gw, capFirst(monthShort(h.k)), [[brl(h.recebido), "recebido", "var(--good)"], [brl(h.gastos), "gastos", "var(--accent)"], [brl(h.saldo), h.saldo >= 0 ? "de sobra" : "faltou", h.saldo >= 0 ? "var(--good)" : "var(--bad)"]]); });
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Recebido e gastos por mês">' + g + '</svg>';
 }
 function cumSVG(a, p, k) {
@@ -5823,6 +5909,11 @@ function cumSVG(a, p, k) {
   [1, 10, 20, dim].forEach(d => { g += '<text class="ax" x="' + xs(d) + '" y="' + (CH - 6) + '" text-anchor="middle">' + d + '</text>'; });
   if (B.length) g += '<polyline class="line dash" points="' + B.map((v, i) => xs(i + 1).toFixed(1) + "," + ys(v).toFixed(1)).join(" ") + '"/>';
   if (A.length) { g += '<polyline class="line" points="' + A.map((v, i) => xs(i + 1).toFixed(1) + "," + ys(v).toFixed(1)).join(" ") + '"/>'; g += '<circle class="dot last" cx="' + xs(A.length) + '" cy="' + ys(A[A.length - 1]) + '" r="4"/><text class="val" x="' + Math.min(xs(A.length), CW - PR - 30) + '" y="' + (ys(A[A.length - 1]) - 8) + '" text-anchor="middle">' + brl(A[A.length - 1]) + '</text>'; }
+  const kp = addMonths(k, -1);
+  for (let d = 1; d <= dim; d++) {
+    if (d > A.length && d > B.length) continue;
+    g += hitCol(xs(d), iw / (dim - 1), "Dia " + d, [d <= A.length ? [brl(A[d - 1]), monthShort(k) + " até o dia", "var(--accent)"] : null, d <= A.length ? [brl(a.daily[d] || 0), "gasto neste dia"] : null, d <= B.length ? [brl(B[d - 1]), monthShort(kp) + " até o dia", "var(--muted)"] : null]);
+  }
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Gasto acumulado no mês">' + g + '</svg>';
 }
 function fv(monthly, months) { return monthly * ((Math.pow(1 + RATE_MES, months) - 1) / RATE_MES); }
@@ -6411,7 +6502,7 @@ function hexSVG(axes) {
     const anchor = side === 0 ? "middle" : side > 0 ? "start" : "end", top = y0 < cy - R, bot = y0 > cy + R;
     const yN = top ? y0 - 16 : bot ? y0 + 6 : y0 - 2, yP = yN + 16;
     const [dx, dy] = pt(i, rad(a)), tip = a.name + ": " + (a.off ? "indisponível" : hxPct(a.val));
-    s += '<g class="hx-ax' + (a.off || a.val == null ? " off" : "") + (hexUI.sel === a.id ? " sel" : "") + '" data-ax="' + a.id + '" tabindex="0" role="button" aria-label="' + hxEsc(tip + ". Ver detalhes") + '"><title>' + hxEsc(tip) + "</title>";
+    s += '<g class="hx-ax' + (a.off || a.val == null ? " off" : "") + (hexUI.sel === a.id ? " sel" : "") + '" data-ax="' + a.id + '" tabindex="0" role="button" aria-label="' + hxEsc(tip + ". Ver detalhes") + '"' + tipAttr(a.name, [a.off ? ["", "módulo indisponível"] : a.val == null ? null : [hxPct(a.val), "da referência (tracejado = 100%)"], a.you ? ["", a.you] : null, ["", "Toque para ver como é calculado"]]) + ">";
     s += '<circle class="hx-hit" cx="' + f(x0) + '" cy="' + f((yN + yP) / 2 - 4) + '" r="24"/>';
     if (a.val != null) s += '<circle class="hx-hit" cx="' + f(dx) + '" cy="' + f(dy) + '" r="14"/><circle class="hx-dot" cx="' + f(dx) + '" cy="' + f(dy) + '" r="4.5"/>';
     s += '<text class="hx-name" x="' + f(x0) + '" y="' + f(yN) + '" text-anchor="' + anchor + '">' + hxEsc(a.name.toUpperCase()) + "</text>";
@@ -6434,7 +6525,7 @@ function hexCard() {
   top.append(left, eb);
   const chart = el("div"); chart.id = "hex-chart";
   if (axes.length >= 3) {
-    chart.innerHTML = hexSVG(axes);
+    chart.innerHTML = hexSVG(axes); tipify(chart);
     card.append(top, chart, el("p", "hex-cap", "Linha tracejada = 100%: a média de quem tem o seu perfil ou a recomendação oficial. A borda é 200%. Últimos 28 dias."));
   } else { card.append(top, el("p", "hex-cap", "Com menos de 3 atributos ligados não dá para desenhar o gráfico: os percentuais estão logo abaixo. 100% é a média de quem tem o seu perfil ou a recomendação oficial; últimos 28 dias.")); hexUI.open = true; }
   if (hexUI.msg) { const m = el("p", "note flash ok", hexUI.msg); card.appendChild(m); hexUI.msg = ""; }
@@ -6523,11 +6614,11 @@ function lineChart(cfg) {
       row.append(sw, el("b", null, sr.vals[i] == null ? "—" : (cfg.tipFmt || fmt)(sr.vals[i])), el("span", null, sr.name)); tip.appendChild(row);
       (sr.tipRows ? sr.tipRows(i) : []).forEach(([c, v, t]) => { const r2 = el("div", "lc-tip-r"); const s2 = el("span", "lc-sw"); s2.style.background = c; r2.append(s2, el("b", null, v), el("span", null, t)); tip.appendChild(r2); });
     });
-    tip.hidden = false;
+    tip.hidden = false; chTipOwn(box, hide);
     const px = X(i) / W * r.width, left = px > r.width / 2 ? px - tip.offsetWidth - 12 : px + 12; tip.style.left = Math.max(0, left) + "px"; tip.style.top = "8px";
   };
-  const hide = () => { cross.setAttribute("visibility", "hidden"); dots.innerHTML = ""; tip.hidden = true; };
-  sv.addEventListener("pointermove", show); sv.addEventListener("pointerdown", show); sv.addEventListener("pointerleave", hide);
+  const hide = () => { cross.setAttribute("visibility", "hidden"); dots.innerHTML = ""; tip.hidden = true; if (chTipOpen && chTipOpen.box === box) chTipOpen = null; };
+  sv.addEventListener("pointermove", show); sv.addEventListener("pointerdown", show); sv.addEventListener("pointerleave", e => { if (e.pointerType !== "touch") hide(); });
   // legenda: toque num atributo para destacar a linha dele
   const lg = el("div", "lc-legend");
   cfg.series.forEach(sr => {

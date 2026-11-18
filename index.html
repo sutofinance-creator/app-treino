@@ -358,6 +358,10 @@ details.imp[open] { gap: 10px; }
 .cmp-col.down .hb-bar > span { background: #3987e5; box-shadow: 0 0 8px rgba(57, 135, 229, .5); }
 .cmp-col.up .hb-bar > span { background: #d55181; box-shadow: 0 0 8px rgba(213, 81, 129, .5); }
 .cmp-col .hb { cursor: crosshair; }
+.cmp-col .hb-top { flex-wrap: wrap; }
+.cmp-col .cmp-f { margin-left: auto; color: var(--muted); }
+.cmp-col.down .cmp-f b { color: #3987e5; }
+.cmp-col.up .cmp-f b { color: #d55181; }
 .stk { display: grid; gap: 6px; }
 .stk + .stk { margin-top: 6px; }
 .stk-bar { display: flex; height: 14px; border: 1px solid var(--line); background: var(--surface-2); overflow: hidden; }
@@ -6129,7 +6133,7 @@ function catCompareCard(k, a) {
   const rows = [...new Set(Object.keys(cur).concat(Object.keys(prv)))].map(c => ({ c, cur: r2(cur[c] || 0), prv: r2(prv[c] || 0) })).map(x => Object.assign(x, { d: r2(x.cur - x.prv) })).filter(x => Math.abs(x.d) >= 0.01);
   const down = rows.filter(x => x.d < 0).sort((x, y) => x.d - y.d), up = rows.filter(x => x.d > 0).sort((x, y) => y.d - x.d);
   const max = Math.max(1, ...rows.map(x => Math.abs(x.d))); // mesma escala nos dois lados
-  const pm = MONTHS[+kp.slice(5, 7) - 1], cm = MONTHS[+k.slice(5, 7) - 1];
+  const pm = MONTHS[+kp.slice(5, 7) - 1];
   const sec = el("section", "guide"); sec.id = "rel-cmp";
   sec.appendChild(el("h3", null, "Gastos que caíram e que subiram"));
   sec.appendChild(el("p", "note muted", lim ? "Do dia 1 ao dia " + lim + " deste mês, comparado com o mesmo período de " + pm + "." : monthLabel(k).replace("/", " de ") + " comparado com " + pm + "."));
@@ -6142,11 +6146,13 @@ function catCompareCard(k, a) {
     if (!list.length) { c.appendChild(el("p", "note muted", empty)); return c; }
     const box = el("div", "hbars");
     list.slice(0, 10).forEach(x => {
-      const row = el("div", "hb"), top = el("div", "hb-top");
-      top.append(el("span", "hb-l", x.c), el("span", "hb-v", (x.d > 0 ? "+" : "−") + brl(Math.abs(x.d))));
+      // a conta: mês passado − este mês = economia (ou gasto a mais, negativo) e o % sobre o mês passado
+      const row = el("div", "hb"), top = el("div", "hb-top"), z = r2(x.prv - x.cur), fv = el("span", "hb-v cmp-f");
+      fv.append(document.createTextNode(brl(x.prv) + " − " + brl(x.cur) + " = "), el("b", null, (z < 0 ? "−" : "") + brl(Math.abs(z))),
+        document.createTextNode(" (" + (x.prv > 0 ? (z < 0 ? "−" : "") + pctf(Math.abs(z) / x.prv) : "novo") + ")"));
+      top.append(el("span", "hb-l", x.c), fv);
       const bar = el("div", "hb-bar"), f = el("span"); f.style.width = (Math.abs(x.d) / max * 100) + "%"; bar.appendChild(f);
-      // a conta da diferença: quanto foi no mês passado e quanto foi neste
-      row.append(top, bar, el("span", "hb-n", pm.slice(0, 3) + " " + brl(x.prv) + " → " + cm.slice(0, 3) + " " + brl(x.cur)));
+      row.append(top, bar);
       row.dataset.tip = tipJSON(x.c, [[brl(x.cur), lim ? "neste mês até o dia " + lim : "em " + MONTHS[+k.slice(5, 7) - 1]], [brl(x.prv), lim ? "em " + pm + " até o dia " + lim : "em " + pm], [(x.d > 0 ? "+" : "−") + brl(Math.abs(x.d)), x.d > 0 ? "a mais" : "a menos"]]);
       box.appendChild(row);
     });

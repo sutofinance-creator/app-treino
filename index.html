@@ -1175,6 +1175,7 @@ function renderProgress(main) {
   if (state.calSel && !(state.calSel.startsWith(s.key) && hasEntries(state.calSel))) state.calSel = null;
   if (state.calSel) sec.appendChild(dayDetail(state.calSel));
   main.appendChild(sec);
+  main.appendChild(modEvoCard("forca-geral", "Força geral", evoForcaGeral, renderMain));
 
   // evolução
   const ev = el("section", "guide");
@@ -6692,10 +6693,26 @@ function modEvoCard(id, title, build, rerender) {
   const dates = evoDates(U.n), S = build(dates) || {};
   const series = (S.series || []).filter(sr => sr.vals.some(v => v != null));
   if (!series.length) { card.appendChild(el("p", "note muted", S.empty || "Ainda não há dados para mostrar a evolução.")); return card; }
+  if (S.lead) card.appendChild(el("p", "note", S.lead));
   card.appendChild(lineChart({ dates, series, ref: S.ref === undefined ? 1 : S.ref, minTop: S.minTop, cap: S.cap, fmt: S.fmt, hours: S.hours, idp: "evo-" + id + "-", label: title,
     focus: U.focus && series.some(x => x.id === U.focus) ? U.focus : null, onFocus: f => { U.focus = f; again(); } }));
   if (S.note) card.appendChild(el("p", "hex-cap", S.note));
   return card;
+}
+// Força geral: a mesma conta do eixo Força do hexágono, refeita para cada dia (100% = média de quem treina com o seu peso)
+function evoForcaGeral(dates) {
+  if (!profileId) return { empty: "Escolha seu plano de treino para ver a força geral." };
+  if (!perfil || !perfil.peso) return { empty: "Informe seu peso em Atributos › Meus dados para comparar a sua força com a de quem treina com o seu peso." };
+  const per = dates.map(d => modUserOff("forca", d) ? null : asOf(d, () => fxForca()));
+  const vals = per.map(r => r && r.val != null && isFinite(r.val) ? r.val : null);
+  const idx = vals.map((v, i) => v == null ? -1 : i).filter(i => i >= 0);
+  if (!idx.length) return { empty: "Anote a carga dos exercícios nos treinos para ver a força geral." };
+  const a = vals[idx[0]], z = vals[idx[idx.length - 1]], pts = Math.round((z - a) * 100);
+  const dz = Math.round((z - 1) * 100);
+  const lead = (idx[idx.length - 1] === dates.length - 1 ? "Hoje: " : "Em " + fmtDate(dates[idx[idx.length - 1]]).slice(0, 5) + ": ") + Math.round(z * 100) + "%, " + (dz === 0 ? "igual à" : Math.abs(dz) + "% " + (dz > 0 ? "acima da" : "abaixo da")) + " média de quem treina com o seu peso" +
+    (idx.length > 1 ? " · " + (pts === 0 ? "estável" : (pts > 0 ? "+" : "−") + Math.abs(pts) + " pontos") + " desde " + fmtDate(dates[idx[0]]).slice(0, 5) : "") + ".";
+  return { ref: 1, minTop: 1.5, lead, series: [{ id: "geral", name: "Força geral", color: HX_COLORS.forca, vals, tipRows: i => per[i] && per[i].gs ? per[i].gs.map(g => ["transparent", Math.round(g.pct * 100) + "%", g.g]) : [] }],
+    note: "A mesma conta do eixo Força do hexágono, refeita para cada dia: a maior carga de cada exercício nos 28 dias anteriores vira 1RM estimado e é comparada com o 1RM médio de quem treina com o seu peso. Os grupos entram com pesos diferentes (quadríceps e costas 3, glúteos 2,5, peito e posteriores 2, ombros 1,5, braços e panturrilhas 1). Tracejado = 100%, essa média." };
 }
 // Força: cada grupo muscular comparado ao seu peso (a mesma conta do atributo), dia a dia
 function evoForca(dates) {

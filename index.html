@@ -3265,7 +3265,7 @@ function updateStaminaLive() {
 setInterval(updateStaminaLive, 250);
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && stamina && stamina.timer && sessionLen(stamina.timer.pid)) stWakeOn(); });
 
-function stBarsSVG(rows, aria, tipOf) {
+function stBarsSVG(rows, aria, tipOf, tone) {
   const mx = Math.max(1, ...rows.map(r => Math.max(r.v, r.goal))) * 1.1;
   const top = mx <= 20 ? Math.ceil(mx / 10) * 10 : mx <= 100 ? Math.ceil(mx / 20) * 20 : Math.ceil(mx / 100) * 100;
   const iw = CW - PL - PR, ih = CH - PT - PB, n = rows.length, bw = Math.min(18, iw / n * 0.6);
@@ -3273,7 +3273,7 @@ function stBarsSVG(rows, aria, tipOf) {
   let g = "";
   [0, top / 2, top].forEach(v => { g += '<line class="grid" x1="' + PL + '" x2="' + (CW - PR) + '" y1="' + ys(v) + '" y2="' + ys(v) + '"/><text class="ax" x="' + (PL - 6) + '" y="' + (ys(v) + 4) + '" text-anchor="end">' + Math.round(v) + '</text>'; });
   rows.forEach((r, i) => {
-    if (r.v > 0) g += '<rect class="' + (r.v >= r.goal ? "bar last" : "bar") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(r.v) + '" width="' + bw + '" height="' + (ys(0) - ys(r.v)) + '" rx="2"/>';
+    if (r.v > 0) g += '<rect class="' + (r.v >= r.goal ? "bar last" : "bar") + (tone ? " " + tone : "") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(r.v) + '" width="' + bw + '" height="' + (ys(0) - ys(r.v)) + '" rx="2"/>';
     g += '<line class="goal" x1="' + (xs(i) - bw / 2 - 2) + '" x2="' + (xs(i) + bw / 2 + 2) + '" y1="' + ys(r.goal) + '" y2="' + ys(r.goal) + '"/>';
   });
   const step = n > 8 ? 2 : 1;
@@ -3599,7 +3599,7 @@ function renderGrProgress(main) {
     stTile("Tempo", fmtHM(sec7), "em 7 dias"));
   c.appendChild(t1);
   c.appendChild(el("p", "chart-t", "Rituais feitos por dia (traço = do dia)"));
-  c.appendChild(chartBox(stBarsSVG(days, "Rituais feitos por dia nos últimos 14 dias", r => [dayHead(r.iso), [r.goal ? [r.v + " de " + r.goal, "rituais feitos"] : [r.v, r.v === 1 ? "ritual feito" : "rituais feitos"], r.goal ? ["", r.v >= r.goal ? "dia completo" : "faltaram " + (r.goal - r.v)] : ["", "nenhum ritual previsto"]]])));
+  c.appendChild(chartBox(stBarsSVG(days, "Rituais feitos por dia nos últimos 14 dias", r => [dayHead(r.iso), [r.goal ? [r.v + " de " + r.goal, "rituais feitos"] : [r.v, r.v === 1 ? "ritual feito" : "rituais feitos"], r.goal ? ["", r.v >= r.goal ? "dia completo" : "faltaram " + (r.goal - r.v)] : ["", "nenhum ritual previsto"]]], "pink")));
   main.appendChild(c);
   const rs = el("section", "guide"); rs.appendChild(el("h3", null, "Por ritual (30 dias)"));
   g.rituals.forEach(r => {
@@ -7075,7 +7075,7 @@ function evoGraca(dates) {
   const g = grData(); if (!g.rituals.length) return { empty: "Crie um ritual para ver a evolução." };
   const rs = g.rituals.slice(0, ITEM_COLORS.length);
   const val = (r, d) => { let need = 0, done = 0; for (let i = 0; i < 28; i++) { const x = addDaysISO(d, -i); if (!grScheduled(r, x)) continue; const k = Math.max(1, r.times || 1); need += k; done += Math.min(k, grRec(x, r.id).count || 0); } return need ? done / need : null; };
-  return { minTop: 1, cap: 1, series: rs.map((r, i) => ({ id: r.id, name: r.name, color: [ITEM_COLORS[1], ITEM_COLORS[0]].concat(ITEM_COLORS.slice(2))[i], vals: dates.map(d => val(r, d)) })),
+  return { minTop: 1, cap: 1, series: rs.map((r, i) => ({ id: r.id, name: r.name, color: [HX_COLORS.graca].concat(ITEM_COLORS.filter(c => c !== HX_COLORS.graca))[i], vals: dates.map(d => val(r, d)) })),
     note: "Quanto de cada ritual você cumpriu nos 28 dias anteriores a cada ponto (100% = todas as vezes previstas)." + (g.rituals.length > ITEM_COLORS.length ? " Aparecem os " + ITEM_COLORS.length + " primeiros rituais." : "") };
 }
 // vários gráficos pequenos de horas por dia (um por item), cada um com a sua escala e uma tabela única

@@ -1,4 +1,4 @@
-const CACHE = "stek-v119";
+const CACHE = "stek-v120";
 const CORE = ["./", "index.html", "manifest.json", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "icon-maskable.png", "logo-s.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE.map(u => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting())); });
 const CRON_CACHE = "stek-cron"; // pausas tocadas na notificação do cronômetro, aplicadas quando o app abre

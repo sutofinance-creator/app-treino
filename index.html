@@ -1207,7 +1207,6 @@ function renderProgress(main) {
     exProgress(ev, state.group, data);
   }
   main.appendChild(ev);
-  main.appendChild(hoursMultiCard("forca-tempo", "Tempo dedicado ao treino", evoForcaTempo, renderMain));
 }
 
 /* Peso e 1RM de um exercício do grupo, semana a semana (mesmas semanas do gráfico de séries).
@@ -1264,16 +1263,6 @@ function exProgress(ev, group, data) {
   else if (!k) ev.appendChild(el("p", "note muted", "Este exercício ainda não tem referência de força no app, então a linha da média não aparece."));
   ev.appendChild(el("p", "note muted", "Peso: a maior carga total da semana" + (ld.side ? " (você anota por lado; o total é 2 × lado" + (ld.bar ? " + a barra de " + ld.bar + " kg" : "") + ")" : "") + ". 1RM estimado: a carga máxima para uma repetição, calculada pelo peso e pelas repetições anotadas (fórmula de Epley: carga × (1 + reps ÷ 30)); as séries não entram na conta." + (ref ? " Tracejado: o 1RM médio de quem treina com o seu peso (nível intermediário do Strength Level), a mesma régua do hexágono." : "")));
 }
-// Força: a academia não é cronometrada, então cada dia com treino anotado conta 1h30 (mesma conta do Dedicação por dia)
-function evoForcaTempo(dates) {
-  if (!profileId) return { empty: "Escolha seu plano de treino para ver o tempo dedicado." };
-  const first = hxFirst(Object.keys(state.logs), d => hasEntries(d));
-  if (!first) return { empty: "Nenhum treino anotado ainda." };
-  const it = { id: "treino", name: "Treino", color: HX_COLORS.forca, vals: dates.map(d => d < first ? null : forcaSecOn(d) / 3600), keep: true };
-  if (!it.vals.some(v => v > 0)) { it.vals = dates.map(() => 0); it.hint = "nenhum treino no período"; }
-  return { items: [it], note: "A Força não tem cronômetro: cada dia com pelo menos um exercício anotado conta 1h30 de academia, a mesma conta do gráfico Dedicação por dia em Atributos." };
-}
-
 function chartBox(svg) { const d = el("div", "chart"); d.innerHTML = svg; tipify(d); return d; }
 
 /* ---------- Dica ao passar o mouse (ou tocar) nos gráficos ----------

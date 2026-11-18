@@ -528,6 +528,7 @@ ol.steps a { color: var(--accent); }
 .lc-tip-d { color: var(--muted); font-size: 12px; margin-bottom: 2px; }
 .lc-tip-r { display: grid; grid-template-columns: 14px auto 1fr; align-items: center; gap: 6px; color: var(--ink); }
 .lc-sw { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+.lc-sw.dash { background: repeating-linear-gradient(90deg, var(--muted) 0 4px, transparent 4px 7px); }
 .lc-legend { display: flex; flex-wrap: wrap; gap: 6px; }
 .lc-leg { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); font: 500 13px var(--font-body); cursor: pointer; }
 .lc-leg b { font-weight: 700; }
@@ -1200,26 +1201,77 @@ function renderProgress(main) {
     ev.appendChild(el("p", "note muted", "Ainda não há registros de " + state.group.toLowerCase() + ". Anote carga e séries nos treinos para ver a evolução aqui."));
   } else {
     const lastW = data[data.length - 1];
-    const parts = [];
-    if (lastW.sets != null) parts.push(lastW.sets + " séries na semana de " + fmtDate(lastW.wk).slice(0, 5));
-    const useRef = !!(perfil && perfil.peso);
-    if (useRef && lastW.ref != null) parts.push("força " + Math.round(lastW.ref) + "% da média de quem treina para o seu peso");
-    else if (!useRef && lastW.load != null) parts.push("carga " + (lastW.load >= 0 ? "+" : "") + lastW.load.toFixed(0) + "% em relação ao primeiro registro");
-    ev.appendChild(el("p", "note", parts.join(" · ") || "Semana sem séries ou cargas anotadas."));
+    ev.appendChild(el("p", "note", lastW.sets != null ? lastW.sets + (lastW.sets === 1 ? " série" : " séries") + " na semana de " + fmtDate(lastW.wk).slice(0, 5) + "." : "Semana de " + fmtDate(lastW.wk).slice(0, 5) + " sem séries anotadas."));
     ev.appendChild(el("p", "chart-t", "Séries por semana"));
     ev.appendChild(chartBox(barSVG(data)));
-    if (useRef) {
-      ev.appendChild(el("p", "chart-t", "Força em relação à média de quem treina (tracejado = 100%)"));
-      ev.appendChild(chartBox(refLineSVG(data)));
-    } else {
-      ev.appendChild(el("p", "chart-t", "Carga em relação ao primeiro registro (%)"));
-      ev.appendChild(chartBox(lineSVG(data)));
-      ev.appendChild(el("p", "note muted", "Informe seu peso em Atributos › Meus dados para ver a força comparada à média de quem treina, a mesma régua do gráfico de atributos."));
-    }
-    if (useRef) ev.appendChild(el("p", "note muted", "A mesma régua do gráfico de atributos: em cada semana, a maior carga de cada exercício vira uma carga máxima estimada (1RM, fórmula de Epley, com a carga total da barra) e é comparada com a de quem treina, na média, para o seu peso (nível intermediário do Strength Level). 100% = essa média; o grupo é a média dos exercícios. Exercícios sem referência ficam fora."));
-    else ev.appendChild(el("p", "note muted", "A carga compara, exercício por exercício, o maior peso da semana com o primeiro peso anotado, e tira a média do grupo. Assim exercícios com pesos diferentes entram na mesma conta. Exercícios sem carga (como as paralelas) contam só nas séries."));
+    exProgress(ev, state.group, data);
   }
   main.appendChild(ev);
+  main.appendChild(hoursMultiCard("forca-tempo", "Tempo dedicado ao treino", evoForcaTempo, renderMain));
+}
+
+/* Peso e 1RM de um exercício do grupo, semana a semana (mesmas semanas do gráfico de séries).
+   Peso = maior carga total da semana (por lado × 2 + barra). 1RM = Epley com a carga total e as repetições anotadas.
+   Referência = 1RM médio de quem treina com o seu peso (nível intermediário do Strength Level), a régua do hexágono. */
+function planExList() { const out = []; (prof().plan || []).forEach(w => (w.ex || []).forEach(x => { if (!out.some(y => y.id === x.id)) out.push(x); })); return out; }
+function exHasKg(id) { return Object.keys(state.logs).some(d => { const l = state.logs[d]; return l && l.e && l.e[id] && l.e[id].kg > 0; }); }
+function exWeekly(x, wks) {
+  const ld = fLoad(x.id, x.name), by = {};
+  Object.keys(state.logs).sort().forEach(date => {
+    const l = state.logs[date], e = l && l.e && l.e[x.id]; if (!e || !(e.kg > 0)) return;
+    const wk = weekStart(date), tot = fTotal(e.kg, ld), assumed = e.reps == null, reps = assumed ? (x.hi || x.lo || null) : e.reps;
+    const rec = { tot, kg: e.kg, reps, assumed, date, rm: fx1rm(tot, reps) };
+    const w = by[wk] || (by[wk] = {});
+    if (!w.load || tot > w.load.tot || (tot === w.load.tot && (reps || 0) > (w.load.reps || 0))) w.load = rec;
+    if (!w.rm || rec.rm > w.rm.rm) w.rm = rec;
+  });
+  return { ld, rows: wks.map(wk => ({ wk, load: by[wk] ? by[wk].load : null, rm: by[wk] ? by[wk].rm : null })) };
+}
+function exRecTxt(r, ld) { return (ld.side ? fmtKg(r.kg) + " por lado" + (ld.bar ? " + barra " + ld.bar + " kg" : "") + " · " : "") + (r.reps ? r.reps + " reps" + (r.assumed ? " (do plano)" : "") : "sem reps") + " · " + dayHead(r.date); }
+function exProgress(ev, group, data) {
+  const list = planExList().filter(x => GROUP[x.id] === group && exHasKg(x.id));
+  if (!list.length) { ev.appendChild(el("p", "note muted", "Nenhum exercício de " + group.toLowerCase() + " com carga anotada ainda. Anote a carga nos treinos para ver o peso e o 1RM estimado.")); return; }
+  state.fxEx = state.fxEx || {};
+  let x = list.find(y => y.id === state.fxEx[group]);
+  if (!x) { const lastWk = data[data.length - 1].wk; x = list.find(y => exWeekly(y, [lastWk]).rows[0].load) || list[0]; }
+  if (list.length > 1) {
+    ev.appendChild(el("p", "field-l", "Exercício"));
+    const ch = el("div", "chips"); ch.setAttribute("aria-label", "Exercício do gráfico de peso e 1RM");
+    list.forEach(y => { const b = el("button", "gchip", y.name); b.type = "button"; b.id = "fex-" + y.id; b.setAttribute("aria-pressed", String(y === x)); b.addEventListener("click", () => { state.fxEx[group] = y.id; renderMain(); const n = document.getElementById("fex-" + y.id); if (n) n.focus(); }); ch.appendChild(b); });
+    ev.appendChild(ch);
+  }
+  const { ld, rows } = exWeekly(x, data.map(p => p.wk));
+  const bw = perfil && perfil.peso, sx = perfil && (perfil.sexo === "f" || perfil.sexo === "m") ? perfil.sexo : null, k = fxStdKey(x.name);
+  const ref = bw && k ? fxRef(FX_STD[k], bw, sx) : null;
+  const lastR = rows.slice().reverse().find(r => r.rm);
+  if (lastR) {
+    let t = x.name + ": 1RM estimado de " + fmtKg(lastR.rm.rm) + " na semana de " + fmtDate(lastR.wk).slice(0, 5);
+    if (ref) { const d = lastR.rm.rm - ref; t += " · " + (Math.abs(d) < 0.5 ? "igual à" : fmtKg(Math.abs(d)) + (d > 0 ? " acima da" : " abaixo da")) + " média de quem treina com o seu peso (" + fmtKg(ref) + ")"; }
+    ev.appendChild(el("p", "note", t + "."));
+  } else ev.appendChild(el("p", "note muted", "Sem carga de " + x.name + " nas semanas do gráfico."));
+  ev.appendChild(el("p", "chart-t", "Peso por semana (kg)" + (list.length === 1 ? " · " + x.name : "")));
+  ev.appendChild(chartBox(kgBarSVG(rows, ld)));
+  ev.appendChild(el("p", "chart-t", "1RM estimado (kg)" + (list.length === 1 ? " · " + x.name : "")));
+  if (ref) {
+    const lg = el("div", "lc-legend");
+    const leg = (sw, txt) => { const i = el("span", "lc-leg static"); i.append(sw, document.createTextNode(txt)); lg.appendChild(i); };
+    const s1 = el("span", "lc-sw"); s1.style.background = "var(--accent)"; leg(s1, "1RM estimado");
+    leg(el("span", "lc-sw dash"), "Média para o seu peso: " + fmtKg(ref));
+    ev.appendChild(lg);
+  }
+  ev.appendChild(chartBox(rmLineSVG(rows, ref, ld)));
+  if (!bw) ev.appendChild(el("p", "note muted", "Informe seu peso em Atributos › Meus dados para ver a linha do 1RM médio de quem treina com o seu peso."));
+  else if (!k) ev.appendChild(el("p", "note muted", "Este exercício ainda não tem referência de força no app, então a linha da média não aparece."));
+  ev.appendChild(el("p", "note muted", "Peso: a maior carga total da semana" + (ld.side ? " (você anota por lado; o total é 2 × lado" + (ld.bar ? " + a barra de " + ld.bar + " kg" : "") + ")" : "") + ". 1RM estimado: a carga máxima para uma repetição, calculada pelo peso e pelas repetições anotadas (fórmula de Epley: carga × (1 + reps ÷ 30)); as séries não entram na conta." + (ref ? " Tracejado: o 1RM médio de quem treina com o seu peso (nível intermediário do Strength Level), a mesma régua do hexágono." : "")));
+}
+// Força: a academia não é cronometrada, então cada dia com treino anotado conta 1h30 (mesma conta do Dedicação por dia)
+function evoForcaTempo(dates) {
+  if (!profileId) return { empty: "Escolha seu plano de treino para ver o tempo dedicado." };
+  const first = hxFirst(Object.keys(state.logs), d => hasEntries(d));
+  if (!first) return { empty: "Nenhum treino anotado ainda." };
+  const it = { id: "treino", name: "Treino", color: HX_COLORS.forca, vals: dates.map(d => d < first ? null : forcaSecOn(d) / 3600), keep: true };
+  if (!it.vals.some(v => v > 0)) { it.vals = dates.map(() => 0); it.hint = "nenhum treino no período"; }
+  return { items: [it], note: "A Força não tem cronômetro: cada dia com pelo menos um exercício anotado conta 1h30 de academia, a mesma conta do gráfico Dedicação por dia em Atributos." };
 }
 
 function chartBox(svg) { const d = el("div", "chart"); d.innerHTML = svg; tipify(d); return d; }
@@ -1282,32 +1334,20 @@ function weekStart(iso) { const [y, m, d] = iso.split("-").map(Number); const dt
 
 function groupSeries(group) {
   const ids = Object.keys(GROUP).filter(k => GROUP[k] === group);
-  const first = {}; const weeks = {};
+  const weeks = {};
   const exs = {}; (prof().plan || []).forEach(w => (w.ex || []).forEach(x => { exs[x.id] = x; }));
-  const bw = perfil && perfil.peso, sx = perfil && (perfil.sexo === "f" || perfil.sexo === "m") ? perfil.sexo : null;
   Object.keys(state.logs).sort().forEach(date => {
     const l = state.logs[date]; if (!l || !l.e) return;
     ids.forEach(id => {
       const e = l.e[id]; if (!e) return;
-      const wk = weekStart(date);
-      const w = weeks[wk] || (weeks[wk] = { sets: 0, hasSets: false, max: {}, rm: {}, setsEx: {} });
+      const w = weeks[weekStart(date)] || (weeks[weekStart(date)] = { sets: 0, hasSets: false, setsEx: {} });
       if (e.sets != null) { w.sets += e.sets; w.hasSets = true; w.setsEx[id] = (w.setsEx[id] || 0) + e.sets; }
-      if (e.kg > 0) {
-        if (first[id] == null) first[id] = e.kg; w.max[id] = Math.max(w.max[id] || 0, e.kg);
-        const x = exs[id]; if (x) { const v = fx1rm(fTotal(e.kg, fLoad(id, x.name)), e.reps != null ? e.reps : (x.hi || x.lo)); if (v > (w.rm[id] || 0)) w.rm[id] = v; }
-      }
     });
   });
+  const nm = id => (exs[id] && exs[id].name) || id;
   return Object.keys(weeks).sort().slice(-12).map(wk => {
-    const w = weeks[wk]; const r = Object.keys(w.max).map(id => w.max[id] / first[id]);
-    // força: maior 1RM estimado de cada exercício na semana ÷ carga de referência para o seu peso; média do grupo
-    const nm = id => (exs[id] && exs[id].name) || id;
-    const refEx = bw ? Object.keys(w.rm).map(id => { const k = fxStdKey(exs[id].name); return k ? { name: nm(id), rm: w.rm[id], pct: Math.min(3, w.rm[id] / fxRef(FX_STD[k], bw, sx)) * 100 } : null; }).filter(Boolean) : [];
-    const fr = refEx.map(x => x.pct / 100);
-    // detalhe por exercício para a dica do gráfico
-    const loadEx = Object.keys(w.max).map(id => ({ name: nm(id), kg: w.max[id], pct: (w.max[id] / first[id] - 1) * 100 }));
-    const setsEx = Object.keys(w.setsEx).map(id => ({ name: nm(id), sets: w.setsEx[id] }));
-    return { wk, sets: w.hasSets ? w.sets : null, load: r.length ? (r.reduce((a, b) => a + b, 0) / r.length - 1) * 100 : null, ref: fr.length ? fr.reduce((a, b) => a + b, 0) / fr.length * 100 : null, refEx, loadEx, setsEx };
+    const w = weeks[wk];
+    return { wk, sets: w.hasSets ? w.sets : null, setsEx: Object.keys(w.setsEx).map(id => ({ name: nm(id), sets: w.setsEx[id] })) };
   });
 }
 
@@ -1332,42 +1372,47 @@ function barSVG(data) {
   data.forEach((p, i) => { g += hitCol(xs(i), iw / data.length, "Semana de " + fmtDate(p.wk).slice(0, 5), [p.sets == null ? ["", "sem séries anotadas"] : [p.sets + (p.sets === 1 ? " série" : " séries"), "no grupo"]].concat(exTipRows(p.setsEx, x => [x.sets + "×"]))); });
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Séries por semana">' + g + xLabels(data, xs) + '</svg>';
 }
-function lineSVG(data) {
-  const pts = data.map((p, i) => ({ i, v: p.load })).filter(p => p.v != null);
-  if (!pts.length) return '<p class="note muted">Sem cargas anotadas para este grupo.</p>';
-  let lo = Math.min(0, ...pts.map(p => p.v)), hi = Math.max(10, ...pts.map(p => p.v));
-  lo = Math.floor(lo / 10) * 10; hi = Math.ceil(hi / 10) * 10;
-  const iw = CW - PL - PR, ih = CH - PT - PB;
-  const xs = i => PL + iw * (i + 0.5) / data.length; const ys = v => PT + ih * (1 - (v - lo) / (hi - lo));
+function niceTop(v) { const st = v > 200 ? 50 : v > 80 ? 20 : v > 30 ? 10 : 5; return Math.ceil(v / st) * st; }
+function kgBarSVG(rows, ld) {
+  const vals = rows.map(r => r.load ? r.load.tot : 0); const top = niceTop(Math.max(10, ...vals) * 1.1);
+  const iw = CW - PL - PR, ih = CH - PT - PB, bw = Math.min(26, iw / rows.length * 0.6);
+  const xs = i => PL + iw * (i + 0.5) / rows.length, ys = v => PT + ih * (1 - v / top);
   let g = "";
-  [lo, 0, hi].filter((v, k, a) => a.indexOf(v) === k).forEach(v => { g += '<line class="' + (v === 0 ? "grid zero" : "grid") + '" x1="' + PL + '" x2="' + (CW - PR) + '" y1="' + ys(v) + '" y2="' + ys(v) + '"/><text class="ax" x="' + (PL - 6) + '" y="' + (ys(v) + 4) + '" text-anchor="end">' + (v > 0 ? "+" : "") + v + '%</text>'; });
-  const path = pts.map((p, k) => (k ? "L" : "M") + xs(p.i).toFixed(1) + " " + ys(p.v).toFixed(1)).join(" ");
-  const area = path + " L" + xs(pts[pts.length - 1].i).toFixed(1) + " " + ys(lo) + " L" + xs(pts[0].i).toFixed(1) + " " + ys(lo) + " Z";
-  g += '<path class="area" d="' + area + '"/><path class="line" d="' + path + '"/>';
-  pts.forEach((p, k) => { const last = k === pts.length - 1; g += '<circle class="' + (last ? "dot last" : "dot") + '" cx="' + xs(p.i) + '" cy="' + ys(p.v) + '" r="' + (last ? 4.5 : 3) + '"/>'; });
-  const lp = pts[pts.length - 1];
-  g += '<text class="val" x="' + Math.min(xs(lp.i), CW - PR - 14) + '" y="' + (ys(lp.v) - 8) + '" text-anchor="middle">' + (lp.v >= 0 ? "+" : "") + lp.v.toFixed(0) + '%</text>';
-  const sg = v => (v >= 0 ? "+" : "") + Math.round(v) + "%";
-  data.forEach((p, i) => { g += hitCol(xs(i), iw / data.length, "Semana de " + fmtDate(p.wk).slice(0, 5), [p.load == null ? ["", "sem carga anotada"] : [sg(p.load), "de carga em relação ao primeiro registro"]].concat(exTipRows(p.loadEx, x => [sg(x.pct), fmtKg(x.kg)]))); });
-  return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Carga em relação ao primeiro registro">' + g + xLabels(data, xs) + '</svg>';
+  [0, top / 2, top].forEach(v => { g += '<line class="grid" x1="' + PL + '" x2="' + (CW - PR) + '" y1="' + ys(v) + '" y2="' + ys(v) + '"/><text class="ax" x="' + (PL - 6) + '" y="' + (ys(v) + 4) + '" text-anchor="end">' + fmtNum(v) + '</text>'; });
+  const li = rows.map(r => !!r.load).lastIndexOf(true);
+  rows.forEach((r, i) => {
+    if (!r.load) return;
+    g += '<rect class="' + (i === li ? "bar last" : "bar") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(r.load.tot) + '" width="' + bw + '" height="' + (ys(0) - ys(r.load.tot)) + '" rx="3"/>';
+    if (i === li) g += '<text class="val" x="' + Math.min(xs(i), CW - PR - 18) + '" y="' + (ys(r.load.tot) - 4) + '" text-anchor="middle">' + fmtKg(r.load.tot) + '</text>';
+  });
+  rows.forEach((r, i) => { g += hitCol(xs(i), iw / rows.length, "Semana de " + fmtDate(r.wk).slice(0, 5), r.load ? [[fmtKg(r.load.tot), ld.side ? "carga total (maior da semana)" : "maior carga da semana"], ["", exRecTxt(r.load, ld)]] : [["", "sem carga anotada nesta semana"]]); });
+  return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Peso por semana">' + g + xLabels(rows, xs) + '</svg>';
 }
-
-function refLineSVG(data) {
-  const pts = data.map((p, i) => ({ i, v: p.ref })).filter(p => p.v != null);
-  if (!pts.length) return '<p class="note muted">Os exercícios deste grupo ainda não têm referência ou carga anotada.</p>';
-  const lo = Math.min(50, Math.floor(Math.min(...pts.map(p => p.v)) / 25) * 25), hi = Math.max(150, Math.ceil(Math.max(...pts.map(p => p.v)) / 25) * 25);
+function rmLineSVG(rows, ref, ld) {
+  const pts = rows.map((r, i) => ({ i, v: r.rm ? r.rm.rm : null })).filter(p => p.v != null);
+  if (!pts.length) return '<p class="note muted">Sem carga anotada nas semanas do gráfico.</p>';
+  const all = pts.map(p => p.v).concat(ref ? [ref] : []);
+  const span = Math.max(...all) - Math.min(...all), pad = Math.max(5, span * 0.15);
+  const st = span + 2 * pad > 120 ? 20 : span + 2 * pad > 50 ? 10 : 5;
+  const lo = Math.max(0, Math.floor((Math.min(...all) - pad) / st) * st), hi = lo + Math.ceil((Math.max(...all) + pad - lo) / (2 * st)) * 2 * st; // meio do eixo também redondo
   const iw = CW - PL - PR, ih = CH - PT - PB;
-  const xs = i => PL + iw * (i + 0.5) / data.length, ys = v => PT + ih * (1 - (v - lo) / (hi - lo));
+  const xs = i => PL + iw * (i + 0.5) / rows.length, ys = v => PT + ih * (1 - (v - lo) / (hi - lo));
   let g = "";
-  [lo, 100, hi].forEach(v => { g += '<line class="' + (v === 100 ? "grid zero" : "grid") + '" x1="' + PL + '" x2="' + (CW - PR) + '" y1="' + ys(v) + '" y2="' + ys(v) + '"/><text class="ax" x="' + (PL - 6) + '" y="' + (ys(v) + 4) + '" text-anchor="end">' + v + '%</text>'; });
+  [lo, (lo + hi) / 2, hi].forEach(v => { g += '<line class="grid" x1="' + PL + '" x2="' + (CW - PR) + '" y1="' + ys(v) + '" y2="' + ys(v) + '"/><text class="ax" x="' + (PL - 6) + '" y="' + (ys(v) + 4) + '" text-anchor="end">' + fmtNum(Math.round(v)) + '</text>'; });
+  if (ref) g += '<line class="line dash" x1="' + PL + '" x2="' + (CW - PR) + '" y1="' + ys(ref).toFixed(1) + '" y2="' + ys(ref).toFixed(1) + '"/>';
   const path = pts.map((p, k) => (k ? "L" : "M") + xs(p.i).toFixed(1) + " " + ys(p.v).toFixed(1)).join(" ");
-  const area = path + " L" + xs(pts[pts.length - 1].i).toFixed(1) + " " + ys(lo) + " L" + xs(pts[0].i).toFixed(1) + " " + ys(lo) + " Z";
-  g += '<path class="area" d="' + area + '"/><path class="line" d="' + path + '"/>';
+  g += '<path class="line" d="' + path + '"/>';
   pts.forEach((p, k) => { const last = k === pts.length - 1; g += '<circle class="' + (last ? "dot last" : "dot") + '" cx="' + xs(p.i) + '" cy="' + ys(p.v) + '" r="' + (last ? 4.5 : 3) + '"/>'; });
-  const lp = pts[pts.length - 1];
-  g += '<text class="val" x="' + Math.min(xs(lp.i), CW - PR - 14) + '" y="' + (ys(lp.v) - 8) + '" text-anchor="middle">' + Math.round(lp.v) + '%</text>';
-  data.forEach((p, i) => { g += hitCol(xs(i), iw / data.length, "Semana de " + fmtDate(p.wk).slice(0, 5), [p.ref == null ? ["", "sem carga com referência"] : [Math.round(p.ref) + "%", "da média de quem treina (grupo)"]].concat(exTipRows(p.refEx, x => [Math.round(x.pct) + "%", "1RM " + fmtKg(x.rm)]))); });
-  return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Força do grupo em relação à média de quem treina para o seu peso">' + g + xLabels(data, xs) + '</svg>';
+  const lp = pts[pts.length - 1], above = !ref || lp.v >= ref || ys(lp.v) - 8 > ys(ref) + 12;
+  g += '<text class="val" x="' + Math.min(xs(lp.i), CW - PR - 20) + '" y="' + (above ? ys(lp.v) - 8 : ys(lp.v) + 17) + '" text-anchor="middle">' + fmtKg(lp.v) + '</text>';
+  rows.forEach((r, i) => {
+    if (!r.rm) { g += hitCol(xs(i), iw / rows.length, "Semana de " + fmtDate(r.wk).slice(0, 5), [["", "sem carga anotada nesta semana"], ref ? [fmtKg(ref), "média para o seu peso", "var(--muted)"] : null]); return; }
+    const d = ref ? r.rm.rm - ref : null;
+    g += hitCol(xs(i), iw / rows.length, "Semana de " + fmtDate(r.wk).slice(0, 5), [[fmtKg(r.rm.rm), "1RM estimado", "var(--accent)"], ref ? [fmtKg(ref), "média para o seu peso", "var(--muted)"] : null,
+      ref ? [(d >= 0 ? "+" : "−") + fmtKg(Math.abs(d)), (d >= 0 ? "acima" : "abaixo") + " da média (" + Math.round(r.rm.rm / ref * 100) + "%)"] : null,
+      ["", "de " + fmtKg(r.rm.tot) + " × " + (r.rm.reps || 1) + (r.rm.assumed ? " reps do plano" : " reps") + " · " + dayHead(r.rm.date)]]);
+  });
+  return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="1RM estimado por semana' + (ref ? " e média para o seu peso" : "") + '">' + g + xLabels(rows, xs) + '</svg>';
 }
 function fmtKg(v) { return fmtNum(Math.round(v * 10) / 10) + " kg"; }
 // linhas da dica com o detalhe de cada exercício do grupo (até 5)

@@ -6711,7 +6711,7 @@ function evoForcaGeral(dates) {
   const dz = Math.round((z - 1) * 100);
   const lead = (idx[idx.length - 1] === dates.length - 1 ? "Hoje: " : "Em " + fmtDate(dates[idx[idx.length - 1]]).slice(0, 5) + ": ") + Math.round(z * 100) + "%, " + (dz === 0 ? "igual à" : Math.abs(dz) + "% " + (dz > 0 ? "acima da" : "abaixo da")) + " média de quem treina com o seu peso" +
     (idx.length > 1 ? " · " + (pts === 0 ? "estável" : (pts > 0 ? "+" : "−") + Math.abs(pts) + " pontos") + " desde " + fmtDate(dates[idx[0]]).slice(0, 5) : "") + ".";
-  return { ref: 1, minTop: 1.5, lead, series: [{ id: "geral", name: "Força geral", color: HX_COLORS.forca, vals, tipRows: i => per[i] && per[i].gs ? per[i].gs.map(g => ["transparent", Math.round(g.pct * 100) + "%", g.g]) : [] }],
+  return { ref: 1, minTop: 1.5, lead, series: [{ id: "geral", name: "Força geral", color: "#b07cff", vals, tipRows: i => per[i] && per[i].gs ? per[i].gs.map(g => ["transparent", Math.round(g.pct * 100) + "%", g.g]) : [] }],
     note: "A mesma conta do eixo Força do hexágono, refeita para cada dia: a maior carga de cada exercício nos 28 dias anteriores vira 1RM estimado e é comparada com o 1RM médio de quem treina com o seu peso. Os grupos entram com pesos diferentes (quadríceps e costas 3, glúteos 2,5, peito e posteriores 2, ombros 1,5, braços e panturrilhas 1). Tracejado = 100%, essa média." };
 }
 // Força: cada grupo muscular comparado ao seu peso (a mesma conta do atributo), dia a dia

@@ -7071,7 +7071,7 @@ function evoGraca(dates) {
   const g = grData(); if (!g.rituals.length) return { empty: "Crie um ritual para ver a evolução." };
   const rs = g.rituals.slice(0, ITEM_COLORS.length);
   const val = (r, d) => { let need = 0, done = 0; for (let i = 0; i < 28; i++) { const x = addDaysISO(d, -i); if (!grScheduled(r, x)) continue; const k = Math.max(1, r.times || 1); need += k; done += Math.min(k, grRec(x, r.id).count || 0); } return need ? done / need : null; };
-  return { minTop: 1, cap: 1, series: rs.map((r, i) => ({ id: r.id, name: r.name, color: ITEM_COLORS[i], vals: dates.map(d => val(r, d)) })),
+  return { minTop: 1, cap: 1, series: rs.map((r, i) => ({ id: r.id, name: r.name, color: [ITEM_COLORS[1], ITEM_COLORS[0]].concat(ITEM_COLORS.slice(2))[i], vals: dates.map(d => val(r, d)) })),
     note: "Quanto de cada ritual você cumpriu nos 28 dias anteriores a cada ponto (100% = todas as vezes previstas)." + (g.rituals.length > ITEM_COLORS.length ? " Aparecem os " + ITEM_COLORS.length + " primeiros rituais." : "") };
 }
 // vários gráficos pequenos de horas por dia (um por item), cada um com a sua escala e uma tabela única

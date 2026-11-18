@@ -185,7 +185,7 @@ button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .chart .val { fill: var(--ink); font: 700 12px var(--font-display); }
 .chart .bar { fill: var(--accent); opacity: .35; }
 .chart .bar.last { opacity: 1; filter: drop-shadow(0 0 6px rgba(166, 107, 255, .8)); }
-.chart .line { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; filter: drop-shadow(0 0 4px rgba(166, 107, 255, .7)); }
+.chart .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .chart .area { fill: var(--accent); opacity: .1; }
 .chart .dot { fill: var(--bg); stroke: var(--accent); stroke-width: 2; }
 .chart .dot.last { fill: var(--accent); }
@@ -357,14 +357,13 @@ details.imp[open] { gap: 10px; }
 .ess-luxo.sw, .stk-bar .ess-luxo { background: var(--bad); }
 .s0.sw, .stk-bar .s0 { background: var(--accent); }
 .s1.sw, .stk-bar .s1 { background: #5b3f9e; }
-.chart .bar-in { fill: var(--good); opacity: .85; }
-.chart .bar-out { fill: var(--accent); }
-.chart .dot.pos { fill: var(--good); stroke: var(--bg); stroke-width: 1.5; }
-.chart .dot.neg { fill: var(--bad); stroke: var(--bg); stroke-width: 1.5; }
-.chart .line.dash { stroke: var(--muted); stroke-dasharray: 5 4; stroke-width: 2; }
-.sw.leg-in { background: var(--good); }
-.sw.leg-out { background: var(--accent); }
-.sw.leg-dot { background: var(--ink); border-radius: 50%; }
+.chart .bar-in { fill: #3987e5; }
+.chart .bar-out { fill: #d55181; }
+.chart .dot.pos { fill: #3987e5; stroke: var(--bg); stroke-width: 1.5; }
+.chart .dot.neg { fill: #d55181; stroke: var(--bg); stroke-width: 1.5; }
+.chart .line.dash { stroke: var(--muted); stroke-dasharray: 6 5; stroke-width: 2; stroke-linecap: butt; }
+.sw.leg-in { background: #3987e5; }
+.sw.leg-out { background: #d55181; }
 .sw.leg-line { background: var(--accent); height: 3px; }
 .sw.leg-dash { background: repeating-linear-gradient(90deg, var(--muted) 0 4px, transparent 4px 7px); height: 3px; }
 .pos-list { display: grid; gap: 12px; }
@@ -6069,9 +6068,9 @@ function renderRelatorio(main) {
   // evolução + ritmo
   const ev = el("section", "guide"); ev.appendChild(el("h3", null, "Evolução"));
   const hist = []; for (let i = 5; i >= 0; i--) { const m = addMonths(k, -i); const g = monthAgg(m); if (g.n || i === 0) hist.push(g); }
-  ev.appendChild(el("p", "chart-t", "Recebido x gastos por mês (ponto = sobra)"));
+  ev.appendChild(el("p", "chart-t", "Recebido x gastos por mês (ponto = sobra: azul sobrou, rosa faltou)"));
   ev.appendChild(chartBox(evoSVG(hist)));
-  ev.appendChild(legend([["leg-in", "Recebido"], ["leg-out", "Gastos"], ["leg-dot", "Sobra"]]));
+  ev.appendChild(legend([["leg-in", "Recebido"], ["leg-out", "Gastos"], ["leg-line", "Sobra"]]));
   ev.appendChild(el("p", "chart-t", "Gasto acumulado no mês, dia a dia"));
   ev.appendChild(chartBox(cumSVG(a, p, k)));
   ev.appendChild(legend([["leg-line", monthShort(k)], ["leg-dash", monthShort(addMonths(k, -1))]]));
@@ -6137,7 +6136,7 @@ function evoSVG(hist) {
   const pts = hist.map((h, i) => xs(i).toFixed(1) + "," + ys(h.saldo).toFixed(1));
   if (pts.length > 1) g += '<polyline class="line" points="' + pts.join(" ") + '"/>';
   hist.forEach((h, i) => { g += '<circle class="dot ' + (h.saldo >= 0 ? "pos" : "neg") + '" cx="' + xs(i) + '" cy="' + ys(h.saldo) + '" r="4"/>'; });
-  hist.forEach((h, i) => { g += hitCol(xs(i), gw, capFirst(monthShort(h.k)), [[brl(h.recebido), "recebido", "var(--good)"], [brl(h.gastos), "gastos", "var(--accent)"], [brl(h.saldo), h.saldo >= 0 ? "de sobra" : "faltou", h.saldo >= 0 ? "var(--good)" : "var(--bad)"]]); });
+  hist.forEach((h, i) => { g += hitCol(xs(i), gw, capFirst(monthShort(h.k)), [[brl(h.recebido), "recebido", "#3987e5"], [brl(h.gastos), "gastos", "#d55181"], [brl(h.saldo), h.saldo >= 0 ? "de sobra" : "faltou", h.saldo >= 0 ? "#3987e5" : "#d55181"]]); });
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Recebido e gastos por mês">' + g + '</svg>';
 }
 function cumSVG(a, p, k) {

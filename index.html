@@ -346,6 +346,18 @@ details.imp[open] { gap: 10px; }
 .hb-bar { height: 8px; background: var(--surface-2); border: 1px solid var(--line); }
 .hb-bar > span { display: block; height: 100%; background: linear-gradient(90deg, #6a2bff, var(--accent)); box-shadow: 0 0 8px rgba(166, 107, 255, .5); }
 .hb-n { font-size: 12px; color: var(--muted); }
+.cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+@media (max-width: 620px) { .cmp-grid { grid-template-columns: 1fr; } }
+.cmp-col { border: 1px solid var(--line); background: var(--surface-2); padding: 12px; display: grid; gap: 10px; }
+.cmp-t { margin: 0; font: 700 12px var(--font-display); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.cmp-head { display: grid; gap: 2px; }
+.cmp-tot { font: 700 22px var(--font-display); font-variant-numeric: tabular-nums; }
+.cmp-sub { font-size: 13px; color: var(--muted); }
+.cmp-col.down .cmp-tot { color: #3987e5; }
+.cmp-col.up .cmp-tot { color: #d55181; }
+.cmp-col.down .hb-bar > span { background: #3987e5; box-shadow: 0 0 8px rgba(57, 135, 229, .5); }
+.cmp-col.up .hb-bar > span { background: #d55181; box-shadow: 0 0 8px rgba(213, 81, 129, .5); }
+.cmp-col .hb { cursor: crosshair; }
 .stk { display: grid; gap: 6px; }
 .stk + .stk { margin-top: 6px; }
 .stk-bar { display: flex; height: 14px; border: 1px solid var(--line); background: var(--surface-2); overflow: hidden; }
@@ -6064,6 +6076,7 @@ function renderRelatorio(main) {
   else w.appendChild(hbars(cats.slice(0, 12).map(x => ({ label: x.c, value: x.v, note: x.n + "×" + (x.pv ? " · " + (x.v >= x.pv ? "+" : "−") + brl(Math.abs(x.v - x.pv)) : "") })), fe ? (a.byEss[fe] || 0) : a.gastos));
   if (cats.length > 12) w.appendChild(el("p", "note muted", "+ " + (cats.length - 12) + " categorias menores: " + brl(cats.slice(12).reduce((s, x) => s + x.v, 0))));
   main.appendChild(w);
+  const cmp = catCompareCard(k, a); if (cmp) main.appendChild(cmp);
 
   // evolução + ritmo
   const ev = el("section", "guide"); ev.appendChild(el("h3", null, "Evolução"));
@@ -6101,6 +6114,53 @@ function loanCard() {
   return sec;
 }
 function legend(items) { const l = el("div", "legend"); items.forEach(([c, t]) => { const i = el("span", "lg"); i.append(el("span", "sw " + c), document.createTextNode(t)); l.appendChild(i); }); return l; }
+/* Gastos por categoria comparados com o mês anterior: à esquerda as que caíram (azul), à direita as que subiram (rosa).
+   No mês em andamento, compara com o mesmo período do mês anterior (dia 1 até o dia de hoje), para não premiar o mês incompleto. */
+function catSpend(k, lim) {
+  const o = {};
+  finFlat().forEach(t => { if (t.status !== "done" || t.kind !== "gasto" || monthKey(t.date) !== k) return; if (lim && +t.date.slice(8, 10) > lim) return; o[t.cat] = (o[t.cat] || 0) + t.amount; });
+  return o;
+}
+function catCompareCard(k, a) {
+  const kp = addMonths(k, -1), lim = k === monthKey(todayISO()) ? +todayISO().slice(8, 10) : null;
+  const cur = catSpend(k, lim), prv = catSpend(kp, lim);
+  if (!Object.keys(prv).length) return null;
+  const r2 = v => Math.round(v * 100) / 100;
+  const rows = [...new Set(Object.keys(cur).concat(Object.keys(prv)))].map(c => ({ c, cur: r2(cur[c] || 0), prv: r2(prv[c] || 0) })).map(x => Object.assign(x, { d: r2(x.cur - x.prv) })).filter(x => Math.abs(x.d) >= 0.01);
+  const down = rows.filter(x => x.d < 0).sort((x, y) => x.d - y.d), up = rows.filter(x => x.d > 0).sort((x, y) => y.d - x.d);
+  const max = Math.max(1, ...rows.map(x => Math.abs(x.d))); // mesma escala nos dois lados
+  const pm = MONTHS[+kp.slice(5, 7) - 1];
+  const sec = el("section", "guide"); sec.id = "rel-cmp";
+  sec.appendChild(el("h3", null, "Gastos que caíram e que subiram"));
+  sec.appendChild(el("p", "note muted", lim ? "Do dia 1 ao dia " + lim + " deste mês, comparado com o mesmo período de " + pm + "." : monthLabel(k).replace("/", " de ") + " comparado com " + pm + "."));
+  const grid = el("div", "cmp-grid");
+  const col = (cls, title, list, tot, totTxt, pctTxt, empty) => {
+    const c = el("div", "cmp-col " + cls); c.id = "cmp-" + cls;
+    c.appendChild(el("p", "cmp-t", title));
+    const h = el("div", "cmp-head"); h.append(el("span", "cmp-tot money", brl(tot)), el("span", "cmp-sub", totTxt + (a.recebido > 0 ? " · " + pctf(tot / a.recebido) + " " + pctTxt : "")));
+    c.appendChild(h);
+    if (!list.length) { c.appendChild(el("p", "note muted", empty)); return c; }
+    const box = el("div", "hbars");
+    list.slice(0, 10).forEach(x => {
+      const row = el("div", "hb"), top = el("div", "hb-top"), pc = x.prv ? (x.d / x.prv) : null;
+      top.append(el("span", "hb-l", x.c), el("span", "hb-v", (x.d > 0 ? "+" : "−") + brl(Math.abs(x.d)) + (pc != null ? " (" + (x.d > 0 ? "+" : "−") + pctf(Math.abs(pc)) + ")" : " (novo)")));
+      const bar = el("div", "hb-bar"), f = el("span"); f.style.width = (Math.abs(x.d) / max * 100) + "%"; bar.appendChild(f);
+      row.append(top, bar);
+      row.dataset.tip = tipJSON(x.c, [[brl(x.cur), lim ? "neste mês até o dia " + lim : "em " + MONTHS[+k.slice(5, 7) - 1]], [brl(x.prv), lim ? "em " + pm + " até o dia " + lim : "em " + pm], [(x.d > 0 ? "+" : "−") + brl(Math.abs(x.d)), x.d > 0 ? "a mais" : "a menos"]]);
+      box.appendChild(row);
+    });
+    c.appendChild(box);
+    if (list.length > 10) c.appendChild(el("p", "note muted", "+ " + (list.length - 10) + " categorias: " + (cls === "down" ? "−" : "+") + brl(Math.abs(list.slice(10).reduce((s, x) => s + x.d, 0)))));
+    return tipify(c);
+  };
+  const td = r2(-down.reduce((s, x) => s + x.d, 0)), tu = r2(up.reduce((s, x) => s + x.d, 0));
+  grid.append(col("down", "Gastou menos", down, td, "economizados", "da receita poupada", "Nenhuma categoria com gasto menor que em " + pm + "."),
+    col("up", "Gastou mais", up, tu, "a mais", "da receita", "Nenhuma categoria com gasto maior que em " + pm + "."));
+  sec.appendChild(grid);
+  const net = r2(td - tu);
+  sec.appendChild(el("p", "note", "No saldo, " + (Math.abs(net) < 0.01 ? "você gastou o mesmo que" : brl(Math.abs(net)) + (net > 0 ? " a menos que" : " a mais que")) + " no mesmo período de " + pm + (a.recebido > 0 && Math.abs(net) >= 0.01 ? " (" + pctf(Math.abs(net) / a.recebido) + " da receita)" : "") + "."));
+  return sec;
+}
 function hbars(rows, total) {
   const box = el("div", "hbars"); const max = Math.max(...rows.map(r => r.value), 1);
   rows.forEach(r => { const row = el("div", "hb"); const top = el("div", "hb-top"); top.append(el("span", "hb-l", r.label), el("span", "hb-v", brl(r.value) + (total ? " · " + pctf(r.value / total) : ""))); const bar = el("div", "hb-bar"); const f = el("span"); f.style.width = (r.value / max * 100) + "%"; bar.appendChild(f); row.append(top, bar); if (r.note) row.appendChild(el("span", "hb-n", r.note)); box.appendChild(row); });

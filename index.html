@@ -516,6 +516,8 @@ ol.steps a { color: var(--accent); }
 .lc-tip { position: absolute; z-index: 5; pointer-events: none; min-width: 150px; padding: 8px 10px; background: rgba(12, 7, 24, .96); border: 1px solid var(--line); box-shadow: 0 6px 18px rgba(0, 0, 0, .5); font-size: 13px; display: grid; gap: 3px; }
 .lc-tip[hidden] { display: none; }
 .tipbox { position: relative; }
+.note.warn { color: var(--warn); }
+.loan-chips .gchip { text-transform: none; letter-spacing: .02em; }
 .inv-rows { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
 .inv-rows li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 .inv-rows li > span:first-child { flex: 1 1 180px; }
@@ -4903,8 +4905,9 @@ const FIN_TABS = [{ id: "fin-pendentes", label: "Pendentes" }, { id: "fin-classi
 const ESS = [["necessario", "Necessário"], ["substituivel", "Substituível"], ["superfluo", "Supérfluo"], ["luxo", "Luxo"]];
 const FREQ = [["recorrente", "Recorrente"], ["esporadico", "Esporádico"]];
 const NAT = [["fixo", "Fixo"], ["variavel", "Variável"]];
-const KIND_OUT = [["gasto", "Gasto"], ["investimento", "Aporte em investimento"], ["transferencia", "Transferência entre contas"]];
-const KIND_IN = [["receita", "Receita"], ["transferencia", "Transferência entre contas"]];
+const KIND_OUT = [["gasto", "Gasto"], ["investimento", "Aporte em investimento"], ["transferencia", "Transferência entre contas"], ["pag_emprestimo", "Pagamento de empréstimo"]];
+const KIND_IN = [["receita", "Receita"], ["transferencia", "Transferência entre contas"], ["emprestimo", "Empréstimo recebido"]];
+const LOAN_KINDS = ["emprestimo", "pag_emprestimo"];
 const ESS_COLOR = { necessario: "var(--good)", substituivel: "var(--accent)", superfluo: "var(--warn)", luxo: "var(--bad)" };
 const LABEL = Object.fromEntries([...ESS, ...FREQ, ...NAT, ...KIND_OUT, ...KIND_IN, ["rateio", "Rateio"]]);
 const RATE_MES = 0.01; // premissa de rendimento usada nas simulações (1% ao mês)
@@ -4960,6 +4963,7 @@ function methodFrom(s) {
 function ruleKey(desc) { return normTxt(cleanDesc(desc)); }
 function learnRule(t) {
   const k = ruleKey(t.desc); if (!k) return;
+  if (LOAN_KINDS.includes(t.kind)) { if (fin.rules[k] && /empr[eé]stimo/i.test(fin.rules[k].cat || "")) delete fin.rules[k]; return; }
   const r = fin.rules[k] || { n: 0 };
   Object.assign(r, { cat: t.cat, item: t.item || r.item || "", kind: t.kind, ess: t.ess, freq: t.freq, nat: t.nat, dir: t.dir });
   // rateio: guarda a proporção de cada parte para sugerir a mesma divisão da próxima vez
@@ -4986,10 +4990,30 @@ function splitOk(d) {
 }
 // cada parte de um rateio classificado vira um "lançamento" próprio nos relatórios
 function txParts(t) {
+  if (t.status === "done" && t.kind === "pag_emprestimo") return loanParts(t);
   if (t.status !== "done" || !isSplit(t)) return [t];
   return t.split.map((p, i) => Object.assign({}, t, { kind: p.kind, cat: p.cat, item: p.item, ess: p.ess, freq: p.freq, nat: p.nat, amount: p.amount, split: undefined, part: i }));
 }
-function finFlat() { const out = []; fin.tx.forEach(t => { if (t.status === "done" && isSplit(t)) txParts(t).forEach(x => out.push(x)); else out.push(t); }); return out; }
+function finFlat() { const out = []; fin.tx.forEach(t => txParts(t).forEach(x => out.push(x))); return out; }
+/* ---------- Empréstimos ----------
+   Entrada marcada como "Empréstimo recebido": não é receita. Saída marcada como "Pagamento de empréstimo" e ligada ao empréstimo:
+   a parte que abate a dívida não conta; só os juros entram, como gasto na categoria Empréstimo. */
+function loanList() { return fin.tx.filter(t => t.status === "done" && t.kind === "emprestimo" && t.dir === "in").sort((a, b) => a.date < b.date ? 1 : -1); }
+function loanPays(id) { return fin.tx.filter(x => x.status === "done" && x.kind === "pag_emprestimo" && x.loan === id).sort((a, b) => a.date < b.date ? -1 : 1); }
+function loanJ(t) { return Math.min(t.amount, Math.max(0, t.juros || 0)); }
+function loanLeft(L, exceptId) { return Math.round((L.amount - loanPays(L.id).filter(x => x.id !== exceptId).reduce((a, x) => a + x.amount - loanJ(x), 0)) * 100) / 100; }
+// sem o total do contrato, cada pagamento abate primeiro a dívida e o que passar é juros; com ele, os juros ficam proporcionais em cada parcela
+function loanDefaultJuros(L, amount, exceptId) {
+  const r = v => Math.round(v * 100) / 100;
+  if (L.loanTotal > L.amount) return r(amount * (1 - L.amount / L.loanTotal));
+  return r(Math.max(0, amount - Math.max(0, loanLeft(L, exceptId))));
+}
+function loanParts(t) {
+  const j = Math.round(loanJ(t) * 100) / 100, pr = Math.round((t.amount - j) * 100) / 100, out = [];
+  if (pr > 0) out.push(Object.assign({}, t, { kind: "transferencia", cat: "Empréstimo", item: "Dívida do empréstimo", amount: pr, part: 0 }));
+  if (j > 0) out.push(Object.assign({}, t, { kind: "gasto", cat: "Empréstimo", item: "Juros do empréstimo", amount: j, part: 1 }));
+  return out.length ? out : [Object.assign({}, t, { kind: "transferencia" })];
+}
 function suggestFor(t) {
   const k = ruleKey(t.desc);
   let r = fin.rules[k];
@@ -5005,6 +5029,8 @@ function suggestFor(t) {
 function isComplete(t) {
   if (t.fxPending) return false; // compra em moeda estrangeira sem o valor em reais: precisa do valor da fatura
   if (isSplit(t)) return splitOk(t);
+  if (t.kind === "emprestimo") return t.dir === "in";
+  if (t.kind === "pag_emprestimo") return t.dir === "out" && t.loan != null && typeof t.juros === "number" && t.juros >= 0 && t.juros <= t.amount + 0.001 && !!(t.ess && t.freq && t.nat);
   if (!t.cat || !t.kind) return false;
   if (t.dir === "out" && t.kind === "gasto") return !!(t.ess && t.freq && t.nat && (t.item || "").trim());
   return true;
@@ -5694,9 +5720,13 @@ function txRow(t, pending) {
       t.split.slice(0, 4).forEach(p => chips.appendChild(el("span", "mini" + (p.kind === "gasto" && p.ess ? " ess-" + p.ess : ""), p.cat + " " + brl(p.amount))));
       if (t.split.length > 4) chips.appendChild(el("span", "mini", "+" + (t.split.length - 4)));
     } else {
+      if (t.kind === "emprestimo") { const lf = loanLeft(t); chips.append(el("span", "mini", t.cat), el("span", "mini", "Empréstimo recebido"), el("span", "mini", lf > 0.009 ? "falta " + brl(lf) : "quitado")); }
+      else if (t.kind === "pag_emprestimo") chips.append(el("span", "mini", "Pagamento de empréstimo"), el("span", "mini ess-" + t.ess, "juros " + brl(loanJ(t))));
+      else {
       chips.appendChild(el("span", "mini", t.cat));
       if (t.kind === "gasto") chips.appendChild(el("span", "mini ess-" + t.ess, LABEL[t.ess]));
       else chips.appendChild(el("span", "mini", LABEL[t.kind]));
+      }
     }
     left.appendChild(chips);
   } else {
@@ -5717,6 +5747,63 @@ function chipGroup(label, opts, value, onPick, idp) {
   g.appendChild(row); return g;
 }
 
+// campos próprios do empréstimo (e limpeza deles quando o tipo muda)
+function loanSave(d) {
+  const r = v => Math.round(v * 100) / 100, none = { loan: undefined, juros: undefined, jurosManual: undefined, loanTotal: undefined };
+  if (d.kind === "emprestimo") return Object.assign(none, { cat: (d.cat || "").trim() || "Empréstimo", item: "", loanTotal: d.loanTotal > 0 ? r(d.loanTotal) : undefined });
+  if (d.kind === "pag_emprestimo") return Object.assign(none, { cat: "Empréstimo", item: "Juros do empréstimo", ess: d.ess, freq: d.freq, nat: d.nat, loan: d.loan || "", juros: r(d.juros), jurosManual: d.jurosManual || undefined });
+  return none;
+}
+function loanEditor(box, d, t, draw, upd) {
+  const money = v => v != null && v !== "" && !isNaN(v) ? Number(v).toFixed(2).replace(".", ",") : "";
+  const numFld = (key, label, ph, onIn) => {
+    const f = el("div", "field"), l = el("label", null, label), i = el("input"); l.htmlFor = "f-" + key + "-" + t.id; i.id = "f-" + key + "-" + t.id; i.inputMode = "decimal"; i.placeholder = ph; i.value = money(d[key]);
+    i.addEventListener("input", () => { onIn(i.value.trim() === "" ? null : parseMoney(i.value)); upd(); }); f.append(l, i); return f;
+  };
+  if (d.kind === "emprestimo") {
+    const g = el("div", "inputs two"), f = el("div", "field"), l = el("label", null, "De quem (banco ou pessoa)"), i = el("input");
+    l.htmlFor = "f-cat-" + t.id; i.id = "f-cat-" + t.id; i.placeholder = "Ex.: Nubank"; i.value = d.cat && !/^empr[eé]stimo$/i.test(d.cat) ? d.cat : ""; i.addEventListener("input", () => { d.cat = i.value; upd(); }); f.append(l, i);
+    g.append(f, numFld("loanTotal", "Total a pagar (opcional, R$)", "Ex.: 330,00", v => { d.loanTotal = v > 0 ? v : null; }));
+    box.appendChild(g);
+    box.appendChild(el("p", "note muted", "Não entra como receita. Quando o pagamento aparecer no extrato, classifique-o como Pagamento de empréstimo e escolha este empréstimo: o app separa o que abate a dívida dos juros, e só os juros entram como gasto. O total a pagar (do contrato) é opcional: com ele, os juros ficam divididos entre as parcelas; sem ele, cada pagamento abate primeiro a dívida e o que passar é juros."));
+    return;
+  }
+  // pagamento: escolher o empréstimo e conferir os juros
+  if (d.ess == null) d.ess = "necessario"; if (d.freq == null) d.freq = "esporadico"; if (d.nat == null) d.nat = "variavel";
+  const loans = loanList().filter(L => L.id === d.loan || loanLeft(L, t.id) > 0.009);
+  if (d.loan === undefined && loans.length === 1) d.loan = loans[0].id;
+  const L = d.loan ? fin.tx.find(x => x.id === d.loan) : null;
+  if (L && !d.jurosManual && d.juros == null) d.juros = loanDefaultJuros(L, d.amount, t.id);
+  box.appendChild(el("p", "field-l", "Qual empréstimo este pagamento quita?"));
+  const ch = el("div", "chips loan-chips"); ch.setAttribute("aria-label", "Empréstimo");
+  loans.forEach(x => {
+    const b = el("button", "gchip", (x.cat || "Empréstimo") + " · " + brl(x.amount) + " em " + fmtDate(x.date).slice(0, 5) + " · falta " + brl(Math.max(0, loanLeft(x, t.id))));
+    b.type = "button"; b.id = "loan-" + t.id + "-" + x.id; b.setAttribute("aria-pressed", String(d.loan === x.id));
+    b.addEventListener("click", () => { d.loan = x.id; if (!d.jurosManual) d.juros = loanDefaultJuros(x, d.amount, t.id); draw(); });
+    ch.appendChild(b);
+  });
+  const no = el("button", "gchip", "Não está no app"); no.type = "button"; no.id = "loan-" + t.id + "-none"; no.setAttribute("aria-pressed", String(d.loan === ""));
+  no.addEventListener("click", () => { d.loan = ""; draw(); }); ch.appendChild(no);
+  box.appendChild(ch);
+  if (!loans.length) box.appendChild(el("p", "note muted", "Nenhum empréstimo em aberto no app. Marque a entrada do dinheiro como Empréstimo recebido para ligar os dois, ou escolha Não está no app e informe os juros."));
+  const sum = el("p", "note"); sum.id = "loan-sum-" + t.id;
+  const showSum = () => {
+    const j = typeof d.juros === "number" ? d.juros : null;
+    if (d.loan === undefined) { sum.textContent = "Escolha o empréstimo acima."; sum.className = "note muted"; return; }
+    if (j == null || j < 0 || j > d.amount + 0.001) { sum.textContent = "Informe os juros: de R$ 0,00 até " + brl(d.amount) + "."; sum.className = "note muted"; return; }
+    const pr = d.amount - j, left = L ? loanLeft(L, t.id) : null;
+    sum.className = "note" + (L && pr > left + 0.009 ? " warn" : "");
+    sum.textContent = "Abate " + brl(pr) + " da dívida" + (L ? (pr > left + 0.009 ? ", mais do que falta (" + brl(left) + "): confira os juros" : " · depois deste pagamento falta " + brl(Math.max(0, left - pr))) : "") + ". " + brl(j) + " de juros entram como gasto na categoria Empréstimo; o resto não entra nos números do mês.";
+  };
+  const g = el("div", "inputs two"), rs = el("button", "linkbtn", "Recalcular os juros");
+  rs.type = "button"; rs.id = "loan-recalc-" + t.id; rs.hidden = !(L && d.jurosManual);
+  rs.addEventListener("click", () => { d.jurosManual = false; d.juros = loanDefaultJuros(L, d.amount, t.id); draw(); });
+  g.appendChild(numFld("juros", "Juros neste pagamento (R$)", "0,00", v => { d.juros = v != null && v >= 0 ? Math.round(v * 100) / 100 : null; d.jurosManual = true; rs.hidden = !L; showSum(); }));
+  box.appendChild(g); showSum(); box.appendChild(sum); box.appendChild(rs);
+  box.appendChild(chipGroup("Essencialidade dos juros", ESS, d.ess, v => { d.ess = v; draw(); }, "e-" + t.id));
+  box.appendChild(chipGroup("Frequência", FREQ, d.freq, v => { d.freq = v; draw(); }, "fq-" + t.id));
+  box.appendChild(chipGroup("Natureza", NAT, d.nat, v => { d.nat = v; draw(); }, "n-" + t.id));
+}
 // opts.draft: não classifica na hora; devolve os campos em opts.onSave (revisão das sugestões)
 function txEditor(t, opts) {
   const draft = !!(opts && opts.draft);
@@ -5753,6 +5840,8 @@ function txEditor(t, opts) {
     if (!d.split) {
       if (t.status !== "done" && suggestFor(t)) box.appendChild(el("p", "note muted", "Campos preenchidos com base no que você já classificou para \"" + t.desc + "\". Confira e ajuste."));
       box.appendChild(chipGroup("Tipo de lançamento", kinds, d.kind, v => { d.kind = v; draw(); }, "k-" + t.id));
+      if (LOAN_KINDS.includes(d.kind)) loanEditor(box, d, t, draw, () => upd());
+      else {
       const grid = el("div", "inputs two");
       const fld = (k, label, ph, list) => { const f = el("div", "field"); const l = el("label", null, label); l.htmlFor = "f-" + k + "-" + t.id; const i = el("input"); i.id = "f-" + k + "-" + t.id; i.value = d[k] || ""; i.placeholder = ph; if (list) i.setAttribute("list", list); i.addEventListener("input", () => { d[k] = i.value; upd(); }); f.append(l, i); grid.appendChild(f); };
       if (d.kind === "gasto") fld("item", "O que foi comprado", "Ex.: compras da semana");
@@ -5771,6 +5860,7 @@ function txEditor(t, opts) {
         draw(); const f = document.getElementById("f-amount-" + t.id + "-0"); if (f) f.focus();
       });
       rr.appendChild(rb); box.appendChild(rr);
+      }
     } else {
       box.appendChild(el("p", "note muted", sugSplit
         ? "Rateio sugerido na mesma proporção da última vez para \"" + t.desc + "\". Confira os valores de cada parte."
@@ -5781,7 +5871,7 @@ function txEditor(t, opts) {
         const hd = el("div", "rat-head"); hd.appendChild(el("span", "rat-n", "Parte " + (i + 1)));
         if (d.split.length > 2) { const rm = el("button", "linkbtn", "Remover parte"); rm.type = "button"; rm.id = "rat-rm-" + idp; rm.addEventListener("click", () => { d.split.splice(i, 1); draw(); }); hd.appendChild(rm); }
         sec.appendChild(hd);
-        sec.appendChild(chipGroup("Tipo", kinds, p.kind || defKind, v => { p.kind = v; draw(); }, "k-" + idp));
+        sec.appendChild(chipGroup("Tipo", kinds.filter(([k]) => !LOAN_KINDS.includes(k)), p.kind || defKind, v => { p.kind = v; draw(); }, "k-" + idp));
         const grid = el("div", "inputs two");
         const fld = (k, label, ph, list) => {
           const f = el("div", "field" + (k === "item" ? " span2" : "")); const l = el("label", null, label); l.htmlFor = "f-" + k + "-" + idp; const inp = el("input"); inp.id = "f-" + k + "-" + idp; inp.placeholder = ph;
@@ -5810,7 +5900,7 @@ function txEditor(t, opts) {
       off.addEventListener("click", () => { const p0 = d.split[0]; Object.assign(d, { kind: p0.kind || defKind, cat: p0.cat || "", item: p0.item || "", ess: p0.ess || null, freq: p0.freq || null, nat: p0.nat || null }); delete d.split; sugSplit = false; draw(); });
       rb.append(add, fillBtn, off); box.appendChild(rb);
     }
-    const same = draft ? [] : fin.tx.filter(x => x.id !== t.id && x.status !== "done" && x.dir === t.dir && ruleKey(x.desc) === ruleKey(t.desc));
+    const same = draft || LOAN_KINDS.includes(d.kind) ? [] : fin.tx.filter(x => x.id !== t.id && x.status !== "done" && x.dir === t.dir && ruleKey(x.desc) === ruleKey(t.desc));
     let cb = null;
     if (same.length) { const lab = el("label", "theory"); cb = el("input"); cb.type = "checkbox"; cb.id = "same-" + t.id; lab.htmlFor = cb.id; lab.append(cb, el("span", null, (d.split ? "Aplicar o mesmo rateio, na mesma proporção, aos outros " : "Aplicar a mesma classificação aos outros ") + same.length + " pendente(s) de \"" + t.desc + "\"")); box.appendChild(lab); }
     const btns = el("div", "btns");
@@ -5825,7 +5915,7 @@ function txEditor(t, opts) {
         fillBtn.disabled = cents(rem) === 0 || !(((d.split[d.split.length - 1].amount || 0) + rem) > 0);
         hint.textContent = ok ? "" : cents(rem) !== 0 ? (cents(rem) > 0 ? "Distribua o valor todo: ainda falta " + brl(rem) + "." : "As partes passam do total em " + brl(-rem) + ".") : "Preencha valor, categoria e as classificações de cada parte.";
       } else if (d.fxPending) hint.textContent = "Digite o valor em reais que aparece na fatura.";
-      else hint.textContent = ok ? "" : (d.kind === "gasto" ? "Preencha o que foi comprado, a categoria e as três classificações." : "Preencha a " + (d.kind === "receita" ? "origem." : "categoria."));
+      else hint.textContent = ok ? "" : d.kind === "pag_emprestimo" ? "Escolha o empréstimo, confira os juros e marque as três classificações dos juros." : (d.kind === "gasto" ? "Preencha o que foi comprado, a categoria e as três classificações." : "Preencha a " + (d.kind === "receita" ? "origem." : "categoria."));
     }
     sv.addEventListener("click", () => {
       if (!isComplete(d)) return;
@@ -5838,6 +5928,7 @@ function txEditor(t, opts) {
           fields = { kind: d.kind, cat: (d.cat || "").trim(), item: (d.item || "").trim(), split: undefined };
           if (d.kind === "gasto") Object.assign(fields, { ess: d.ess, freq: d.freq, nat: d.nat }); else Object.assign(fields, { ess: null, freq: null, nat: null });
         }
+        Object.assign(fields, loanSave(fields.split ? {} : d));
         opts.onSave(fields, t.cur && cents(d.amount) !== cents(t.amount) ? d.amount : null);
         return;
       }
@@ -5846,11 +5937,13 @@ function txEditor(t, opts) {
       if (d.split) {
         const parts = d.split.map(p => { const o = { amount: Math.round(p.amount * 100) / 100, kind: p.kind, cat: (p.cat || "").trim(), item: (p.item || "").trim() }; if (p.kind === "gasto") Object.assign(o, { ess: p.ess, freq: p.freq, nat: p.nat }); else Object.assign(o, { ess: null, freq: null, nat: null }); return o; });
         fields = { kind: "rateio", cat: "Rateio", item: parts.map(p => p.item || p.cat).join(" + "), ess: null, freq: null, nat: null, split: parts };
+        Object.assign(fields, loanSave({}));
         Object.assign(t, fields, { status: "done" }); learnRule(t);
         if (cb && cb.checked) same.forEach(x => { Object.assign(x, fields, { split: scaleSplit(parts, x.amount), status: "done" }); learnRule(x); });
       } else {
         fields = { kind: d.kind, cat: (d.cat || "").trim(), item: (d.item || "").trim(), split: undefined };
         if (d.kind === "gasto") Object.assign(fields, { ess: d.ess, freq: d.freq, nat: d.nat }); else Object.assign(fields, { ess: null, freq: null, nat: null });
+        Object.assign(fields, loanSave(d));
         Object.assign(t, fields, { status: "done" }); learnRule(t);
         if (cb && cb.checked) same.forEach(x => { Object.assign(x, fields, { status: "done" }); learnRule(x); });
       }
@@ -5932,7 +6025,7 @@ function renderRelatorio(main) {
   f.append(ml, ms, el("span", "hint", est.partial ? "Mês em andamento: " + est.elapsed + " de " + est.dim + " dias" : "Mês fechado"));
   main.appendChild(f);
   if (a.pending) main.appendChild(el("p", "banner", a.pending + " lançamento(s) deste mês ainda estão pendentes e não entram nos números abaixo."));
-  if (!a.n) { main.appendChild(el("p", "note muted", "Sem lançamentos classificados neste mês.")); main.appendChild(invEvoCard()); return; }
+  if (!a.n) { main.appendChild(el("p", "note muted", "Sem lançamentos classificados neste mês.")); const lc = loanCard(); if (lc) main.appendChild(lc); main.appendChild(invEvoCard()); return; }
 
   main.appendChild(finTiles(k, a, p, est));
   const tile = finTile;
@@ -5990,7 +6083,23 @@ function renderRelatorio(main) {
   es.appendChild(et);
   es.appendChild(el("p", "note muted", "Custos fixos repetem o último valor; variáveis usam a média dos últimos 3 meses" + (est.partial ? " (com o mês atual projetado pelo ritmo de gasto)" : "") + "; recebimentos usam a média dos meses fechados."));
   main.appendChild(es);
+  const lc = loanCard(); if (lc) main.appendChild(lc);
   main.appendChild(invEvoCard());
+}
+function loanCard() {
+  const loans = loanList(); if (!loans.length) return null;
+  const sec = el("section", "guide"); sec.id = "loans"; sec.appendChild(el("h3", null, "Empréstimos"));
+  const ul = el("ul", "inv-rows");
+  loans.forEach(L => {
+    const pays = loanPays(L.id), j = pays.reduce((a, x) => a + loanJ(x), 0), left = loanLeft(L), paid = L.amount - left, li = el("li");
+    li.append(el("span", null, L.cat + " · " + brl(L.amount) + " em " + fmtDate(L.date).slice(0, 5)),
+      el("span", "muted", left > 0.009 ? (paid > 0.009 ? "pago " + brl(paid) + " · " : "") + "falta " + brl(left) + (L.loanTotal ? " (contrato: " + brl(L.loanTotal) + ")" : "") : "quitado em " + fmtDate(pays[pays.length - 1].date).slice(0, 5)),
+      el("b", "money", "juros " + brl(j) + (j > 0 ? " (" + pctf(j / L.amount) + ")" : "")));
+    ul.appendChild(li);
+  });
+  sec.appendChild(ul);
+  sec.appendChild(el("p", "note muted", "O dinheiro do empréstimo e o que abate a dívida não entram nos números do mês. Só os juros entram, como gasto na categoria Empréstimo, no mês de cada pagamento."));
+  return sec;
 }
 function legend(items) { const l = el("div", "legend"); items.forEach(([c, t]) => { const i = el("span", "lg"); i.append(el("span", "sw " + c), document.createTextNode(t)); l.appendChild(i); }); return l; }
 function hbars(rows, total) {

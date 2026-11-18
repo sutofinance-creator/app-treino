@@ -185,10 +185,6 @@ button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .chart .val { fill: var(--ink); font: 700 12px var(--font-display); }
 .chart .bar { fill: var(--accent); opacity: .35; }
 .chart .bar.last { opacity: 1; filter: drop-shadow(0 0 6px rgba(166, 107, 255, .8)); }
-.chart .bar.pink { fill: #d55181; } /* rosa da Graça nos gráficos */
-.chart .bar.pink.last { filter: drop-shadow(0 0 6px rgba(213, 81, 129, .8)); }
-.chart .bar.blue { fill: #3987e5; } /* azul da Inteligência nos gráficos */
-.chart .bar.blue.last { filter: drop-shadow(0 0 6px rgba(57, 135, 229, .8)); }
 .chart .line { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; filter: drop-shadow(0 0 4px rgba(166, 107, 255, .7)); }
 .chart .area { fill: var(--accent); opacity: .1; }
 .chart .dot { fill: var(--bg); stroke: var(--accent); stroke-width: 2; }
@@ -1375,7 +1371,7 @@ function barSVG(data) {
   data.forEach((p, i) => {
     if (p.sets == null) return;
     const last = i === data.length - 1;
-    g += '<rect class="' + (last ? "bar pink last" : "bar pink") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(p.sets) + '" width="' + bw + '" height="' + (ys(0) - ys(p.sets)) + '" rx="3"/>';
+    g += '<rect class="' + (last ? "bar last" : "bar") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(p.sets) + '" width="' + bw + '" height="' + (ys(0) - ys(p.sets)) + '" rx="3"/>';
     if (last) g += '<text class="val" x="' + xs(i) + '" y="' + (ys(p.sets) - 4) + '" text-anchor="middle">' + p.sets + '</text>';
   });
   data.forEach((p, i) => { g += hitCol(xs(i), iw / data.length, "Semana de " + fmtDate(p.wk).slice(0, 5), [p.sets == null ? ["", "sem séries anotadas"] : [p.sets + (p.sets === 1 ? " série" : " séries"), "no grupo"]].concat(exTipRows(p.setsEx, x => [x.sets + "×"]))); });
@@ -1391,7 +1387,7 @@ function kgBarSVG(rows, ld) {
   const li = rows.map(r => !!r.load).lastIndexOf(true);
   rows.forEach((r, i) => {
     if (!r.load) return;
-    g += '<rect class="' + (i === li ? "bar blue last" : "bar blue") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(r.load.tot) + '" width="' + bw + '" height="' + (ys(0) - ys(r.load.tot)) + '" rx="3"/>';
+    g += '<rect class="' + (i === li ? "bar last" : "bar") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(r.load.tot) + '" width="' + bw + '" height="' + (ys(0) - ys(r.load.tot)) + '" rx="3"/>';
     if (i === li) g += '<text class="val" x="' + Math.min(xs(i), CW - PR - 18) + '" y="' + (ys(r.load.tot) - 4) + '" text-anchor="middle">' + fmtKg(r.load.tot) + '</text>';
   });
   rows.forEach((r, i) => { g += hitCol(xs(i), iw / rows.length, "Semana de " + fmtDate(r.wk).slice(0, 5), r.load ? [[fmtKg(r.load.tot), ld.side ? "carga total (maior da semana)" : "maior carga da semana"], ["", exRecTxt(r.load, ld)]] : [["", "sem carga anotada nesta semana"]]); });
@@ -3265,7 +3261,7 @@ function updateStaminaLive() {
 setInterval(updateStaminaLive, 250);
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && stamina && stamina.timer && sessionLen(stamina.timer.pid)) stWakeOn(); });
 
-function stBarsSVG(rows, aria, tipOf, tone) {
+function stBarsSVG(rows, aria, tipOf) {
   const mx = Math.max(1, ...rows.map(r => Math.max(r.v, r.goal))) * 1.1;
   const top = mx <= 20 ? Math.ceil(mx / 10) * 10 : mx <= 100 ? Math.ceil(mx / 20) * 20 : Math.ceil(mx / 100) * 100;
   const iw = CW - PL - PR, ih = CH - PT - PB, n = rows.length, bw = Math.min(18, iw / n * 0.6);
@@ -3273,7 +3269,7 @@ function stBarsSVG(rows, aria, tipOf, tone) {
   let g = "";
   [0, top / 2, top].forEach(v => { g += '<line class="grid" x1="' + PL + '" x2="' + (CW - PR) + '" y1="' + ys(v) + '" y2="' + ys(v) + '"/><text class="ax" x="' + (PL - 6) + '" y="' + (ys(v) + 4) + '" text-anchor="end">' + Math.round(v) + '</text>'; });
   rows.forEach((r, i) => {
-    if (r.v > 0) g += '<rect class="' + (r.v >= r.goal ? "bar last" : "bar") + (tone ? " " + tone : "") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(r.v) + '" width="' + bw + '" height="' + (ys(0) - ys(r.v)) + '" rx="2"/>';
+    if (r.v > 0) g += '<rect class="' + (r.v >= r.goal ? "bar last" : "bar") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(r.v) + '" width="' + bw + '" height="' + (ys(0) - ys(r.v)) + '" rx="2"/>';
     g += '<line class="goal" x1="' + (xs(i) - bw / 2 - 2) + '" x2="' + (xs(i) + bw / 2 + 2) + '" y1="' + ys(r.goal) + '" y2="' + ys(r.goal) + '"/>';
   });
   const step = n > 8 ? 2 : 1;
@@ -3599,7 +3595,7 @@ function renderGrProgress(main) {
     stTile("Tempo", fmtHM(sec7), "em 7 dias"));
   c.appendChild(t1);
   c.appendChild(el("p", "chart-t", "Rituais feitos por dia (traço = do dia)"));
-  c.appendChild(chartBox(stBarsSVG(days, "Rituais feitos por dia nos últimos 14 dias", r => [dayHead(r.iso), [r.goal ? [r.v + " de " + r.goal, "rituais feitos"] : [r.v, r.v === 1 ? "ritual feito" : "rituais feitos"], r.goal ? ["", r.v >= r.goal ? "dia completo" : "faltaram " + (r.goal - r.v)] : ["", "nenhum ritual previsto"]]], "pink")));
+  c.appendChild(chartBox(stBarsSVG(days, "Rituais feitos por dia nos últimos 14 dias", r => [dayHead(r.iso), [r.goal ? [r.v + " de " + r.goal, "rituais feitos"] : [r.v, r.v === 1 ? "ritual feito" : "rituais feitos"], r.goal ? ["", r.v >= r.goal ? "dia completo" : "faltaram " + (r.goal - r.v)] : ["", "nenhum ritual previsto"]]])));
   main.appendChild(c);
   const rs = el("section", "guide"); rs.appendChild(el("h3", null, "Por ritual (30 dias)"));
   g.rituals.forEach(r => {
@@ -6211,7 +6207,7 @@ function invEvoCard() {
     : "Aportado até hoje: " + brl(a) + ". O montante aparece a partir da primeira atualização da conta."));
   card.appendChild(lineChart({ dates, money: true, fmt: fmtMoneyShort, tipFmt: brl, ref: null, idp: "evo-" + key + "-", label: "Patrimônio investido e total aportado",
     series: [
-      { id: "montante", name: "Montante", color: "#3987e5", vals: T.map(x => x ? x.tot : null),
+      { id: "montante", name: "Montante", color: "#b07cff", vals: T.map(x => x ? x.tot : null),
         tipRows: i => T[i] ? [["transparent", brl(T[i].alo), "alocado"], ["transparent", brl(T[i].disp), "disponível"]].concat(A[i] != null ? [["transparent", sg(T[i].tot - A[i]), "rendimento"]] : []) : [] },
       { id: "aportado", name: "Total aportado", color: "#9d8fbd", dash: true, vals: A }
     ] }));
@@ -7075,7 +7071,7 @@ function evoGraca(dates) {
   const g = grData(); if (!g.rituals.length) return { empty: "Crie um ritual para ver a evolução." };
   const rs = g.rituals.slice(0, ITEM_COLORS.length);
   const val = (r, d) => { let need = 0, done = 0; for (let i = 0; i < 28; i++) { const x = addDaysISO(d, -i); if (!grScheduled(r, x)) continue; const k = Math.max(1, r.times || 1); need += k; done += Math.min(k, grRec(x, r.id).count || 0); } return need ? done / need : null; };
-  return { minTop: 1, cap: 1, series: rs.map((r, i) => ({ id: r.id, name: r.name, color: [HX_COLORS.graca].concat(ITEM_COLORS.filter(c => c !== HX_COLORS.graca))[i], vals: dates.map(d => val(r, d)) })),
+  return { minTop: 1, cap: 1, series: rs.map((r, i) => ({ id: r.id, name: r.name, color: [ITEM_COLORS[1], ITEM_COLORS[0]].concat(ITEM_COLORS.slice(2))[i], vals: dates.map(d => val(r, d)) })),
     note: "Quanto de cada ritual você cumpriu nos 28 dias anteriores a cada ponto (100% = todas as vezes previstas)." + (g.rituals.length > ITEM_COLORS.length ? " Aparecem os " + ITEM_COLORS.length + " primeiros rituais." : "") };
 }
 // vários gráficos pequenos de horas por dia (um por item), cada um com a sua escala e uma tabela única

@@ -185,6 +185,10 @@ button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .chart .val { fill: var(--ink); font: 700 12px var(--font-display); }
 .chart .bar { fill: var(--accent); opacity: .35; }
 .chart .bar.last { opacity: 1; filter: drop-shadow(0 0 6px rgba(166, 107, 255, .8)); }
+.chart .bar.pink { fill: #d55181; } /* rosa da Graça nos gráficos */
+.chart .bar.pink.last { filter: drop-shadow(0 0 6px rgba(213, 81, 129, .8)); }
+.chart .bar.blue { fill: #3987e5; } /* azul da Inteligência nos gráficos */
+.chart .bar.blue.last { filter: drop-shadow(0 0 6px rgba(57, 135, 229, .8)); }
 .chart .line { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; filter: drop-shadow(0 0 4px rgba(166, 107, 255, .7)); }
 .chart .area { fill: var(--accent); opacity: .1; }
 .chart .dot { fill: var(--bg); stroke: var(--accent); stroke-width: 2; }
@@ -1371,7 +1375,7 @@ function barSVG(data) {
   data.forEach((p, i) => {
     if (p.sets == null) return;
     const last = i === data.length - 1;
-    g += '<rect class="' + (last ? "bar last" : "bar") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(p.sets) + '" width="' + bw + '" height="' + (ys(0) - ys(p.sets)) + '" rx="3"/>';
+    g += '<rect class="' + (last ? "bar pink last" : "bar pink") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(p.sets) + '" width="' + bw + '" height="' + (ys(0) - ys(p.sets)) + '" rx="3"/>';
     if (last) g += '<text class="val" x="' + xs(i) + '" y="' + (ys(p.sets) - 4) + '" text-anchor="middle">' + p.sets + '</text>';
   });
   data.forEach((p, i) => { g += hitCol(xs(i), iw / data.length, "Semana de " + fmtDate(p.wk).slice(0, 5), [p.sets == null ? ["", "sem séries anotadas"] : [p.sets + (p.sets === 1 ? " série" : " séries"), "no grupo"]].concat(exTipRows(p.setsEx, x => [x.sets + "×"]))); });
@@ -1387,7 +1391,7 @@ function kgBarSVG(rows, ld) {
   const li = rows.map(r => !!r.load).lastIndexOf(true);
   rows.forEach((r, i) => {
     if (!r.load) return;
-    g += '<rect class="' + (i === li ? "bar last" : "bar") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(r.load.tot) + '" width="' + bw + '" height="' + (ys(0) - ys(r.load.tot)) + '" rx="3"/>';
+    g += '<rect class="' + (i === li ? "bar blue last" : "bar blue") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(r.load.tot) + '" width="' + bw + '" height="' + (ys(0) - ys(r.load.tot)) + '" rx="3"/>';
     if (i === li) g += '<text class="val" x="' + Math.min(xs(i), CW - PR - 18) + '" y="' + (ys(r.load.tot) - 4) + '" text-anchor="middle">' + fmtKg(r.load.tot) + '</text>';
   });
   rows.forEach((r, i) => { g += hitCol(xs(i), iw / rows.length, "Semana de " + fmtDate(r.wk).slice(0, 5), r.load ? [[fmtKg(r.load.tot), ld.side ? "carga total (maior da semana)" : "maior carga da semana"], ["", exRecTxt(r.load, ld)]] : [["", "sem carga anotada nesta semana"]]); });
@@ -6207,7 +6211,7 @@ function invEvoCard() {
     : "Aportado até hoje: " + brl(a) + ". O montante aparece a partir da primeira atualização da conta."));
   card.appendChild(lineChart({ dates, money: true, fmt: fmtMoneyShort, tipFmt: brl, ref: null, idp: "evo-" + key + "-", label: "Patrimônio investido e total aportado",
     series: [
-      { id: "montante", name: "Montante", color: "#b07cff", vals: T.map(x => x ? x.tot : null),
+      { id: "montante", name: "Montante", color: "#3987e5", vals: T.map(x => x ? x.tot : null),
         tipRows: i => T[i] ? [["transparent", brl(T[i].alo), "alocado"], ["transparent", brl(T[i].disp), "disponível"]].concat(A[i] != null ? [["transparent", sg(T[i].tot - A[i]), "rendimento"]] : []) : [] },
       { id: "aportado", name: "Total aportado", color: "#9d8fbd", dash: true, vals: A }
     ] }));

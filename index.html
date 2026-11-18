@@ -911,7 +911,9 @@ function fillCard(card, ex) {
   } else {
     last.textContent = state.loaded === true ? "Sem registro anterior." : "";
   }
-  card.querySelector('[data-role="chip"]').hidden = !(prev && prev.e.reps != null && ex.hi != null && prev.e.reps >= ex.hi);
+  // "Suba a carga": o último treino chegou ao topo da faixa de reps e a carga anotada neste dia ainda não subiu
+  const raised = cur && cur.kg != null && prev && cur.kg > (prev.e.kg || 0);
+  card.querySelector('[data-role="chip"]').hidden = !(prev && prev.e.reps != null && ex.hi != null && prev.e.reps >= ex.hi && !raised);
   fillLoad(card, ex);
   const sum = card.querySelector('[data-role="sum"]');
   sum.textContent = "Histórico (" + all.length + ")";
@@ -1415,7 +1417,7 @@ function exTipRows(list, fmt) {
 
 // Textos do Guia que valem para qualquer plano
 const GUIDE_COMMON = [
-  ["Progressão", "Leve cada série até 0–2 repetições da falha. Quando bater o topo da faixa de repetições em todas as séries, aumente a carga. O app mostra \"Suba a carga\" quando as repetições do último treino chegaram ao topo da faixa. Anote também quantas séries fez: elas alimentam o gráfico da aba Progresso."],
+  ["Progressão", "Leve cada série até 0–2 repetições da falha. Quando bater o topo da faixa de repetições em todas as séries, aumente a carga. O app mostra \"Suba a carga\" quando as repetições do último treino chegaram ao topo da faixa; a marca some quando você anota uma carga maior no treino do dia. Anote também quantas séries fez: elas alimentam o gráfico da aba Progresso."],
   ["Nível", "Você sobe de nível a cada 5 dias de treino registrados. A barra no topo mostra quanto falta para o próximo."],
   ["Seus registros", "As cargas e repetições ficam salvas no aparelho e, se você entrar na sua conta, na nuvem. Cada pessoa tem os próprios registros. Sem conta, faça um backup de vez em quando."]
 ];

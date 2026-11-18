@@ -7144,9 +7144,11 @@ function forcaSecOn(d) { return hasEntries(d) ? FORCA_DIA_SEC : 0; }
 // ritual marcado como feito sem cronômetro (Concluir na Rotina ou Marcar feito) conta o tempo previsto dele
 function grDaySec(d) { return grData().rituals.reduce((a, r) => { const sec = grSec(d, r.id), c = grRec(d, r.id).count || 0; return a + (sec > 0 ? sec : c * grLimit(r) || c * 15 * 60); }, 0); }
 // Economia: aportes em investimento (lançamentos classificados como "Aporte em investimento")
-function finInvSource() { if (!fin) return null; if (finFlat().some(t => t.status === "done" && t.kind === "investimento")) return "tx"; if ((fin.invest.ops || []).some(o => o.type === "compra")) return "ops"; return null; }
+function finInvSource() { if (!fin) return null; if (fin.invest && fin.invest.of && fin.invest.of.itemId) return "of"; if (finFlat().some(t => t.status === "done" && t.kind === "investimento")) return "tx"; if ((fin.invest.ops || []).some(o => o.type === "compra")) return "ops"; return null; }
 function finAporteOn(d, src) {
   if (!fin) return 0;
+  // corretora conectada: o que entrou na conta dela por Pix/TED menos o que saiu (o mesmo dinheiro do "Aporte em investimento" do banco, então não soma os dois)
+  if ((src || finInvSource()) === "of") return (fin.invest.of.moves || []).filter(m => m.date === d && invKind(m)).reduce((a, m) => a + (invKind(m) === "in" ? m.amount : -m.amount), 0);
   if ((src || finInvSource()) === "ops") return (fin.invest.ops || []).filter(o => o.type === "compra" && o.date === d).reduce((a, o) => a + (o.qty || 0) * (o.price || 0), 0);
   return finFlat().filter(t => t.status === "done" && t.kind === "investimento" && t.date === d).reduce((a, t) => a + t.amount, 0);
 }
@@ -7201,7 +7203,8 @@ function evoCard() {
     if (P.money) hd.appendChild(el("span", null, brl(P.series[0].vals[P.series[0].vals.length - 1]) + " no período · hoje " + brl(P.daily[P.daily.length - 1])));
     else if (P.series.length === 1) hd.appendChild(el("span", null, "média " + fmtHours(avgOf(P.series[0].vals)) + " por dia · hoje " + fmtHours(P.series[0].vals[P.series[0].vals.length - 1])));
     else hd.appendChild(el("span", null, "hoje " + P.series.map(sr => sr.name + " " + fmtHours(sr.vals[sr.vals.length - 1])).join(" · ")));
-    if (P.money && !P.src) hd.appendChild(el("span", "evo-hint", "Nenhum aporte ainda: classifique as transferências para a corretora como Aporte em investimento (Economia › Pendentes) ou registre as compras em Investimentos."));
+    if (P.money && !P.src) hd.appendChild(el("span", "evo-hint", "Nenhum aporte ainda: conecte a corretora em Economia › Investimentos ou classifique as transferências para ela como Aporte em investimento (Economia › Pendentes)."));
+    else if (P.money && P.src === "of" && !P.daily.some(v => v)) hd.appendChild(el("span", "evo-hint", "Nenhuma transferência para a corretora no período (extrato da conta de investimentos)."));
     panel.appendChild(hd);
     panel.appendChild(lineChart(P.money
       ? { dates, series: P.series, money: true, fmt: fmtMoneyShort, tipFmt: v => brl(v) + " até o dia", ref: null, h: 150, width: two ? mw / 2 - 10 : mw, noTable: true, idp: "evo-" + P.id + "-", label: "Dinheiro investido no período" }
@@ -7218,7 +7221,8 @@ function evoCard() {
   const notes = ["Tempo dedicado a cada área por dia, contando o cronômetro que estiver rodando. Cada gráfico tem a sua escala: compare as áreas pela média de cada um."];
   if (fis.some(a => a.id === "forca")) notes.push("Força: cada dia com treino anotado conta 1h30 de academia." + (fis.length === 2 ? " Estamina e Força: a linha é o total das duas; a cor mostra qual foi maior no dia." : ""));
   if (grA) notes.push("Graça: ritual marcado como feito sem cronômetro conta o tempo previsto dele.");
-  if (eco && eco.src === "tx") notes.push("Economia: soma dos aportes do período (lançamentos classificados como Aporte em investimento).");
+  if (eco && eco.src === "of") notes.push("Economia: o que você transferiu para a corretora no período, menos o que tirou de lá (extrato da conta de investimentos).");
+  else if (eco && eco.src === "tx") notes.push("Economia: soma dos aportes do período (lançamentos classificados como Aporte em investimento).");
   else if (eco && eco.src === "ops") notes.push("Economia: soma das compras registradas em Investimentos no período.");
   card.appendChild(el("p", "hex-cap", notes.join(" ")));
   return card;

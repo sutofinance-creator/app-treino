@@ -4882,7 +4882,7 @@ function renderMsRelatorio(main) {
   const dch = el("div", "chips");
   [1, 2, 3, 4, 5, 6, 0].forEach(w => { const on = g.goal.days.includes(w); const c = el("button", "gchip", DOW_SHORT[w]); c.type = "button"; c.id = "ms-wd-" + w; c.setAttribute("aria-pressed", String(on)); c.addEventListener("click", () => { const gg = ensureMs(); const nd = on ? gg.goal.days.filter(x => x !== w) : gg.goal.days.concat(w); if (nd.length) { gg.goal.days = nd; saveMs(); renderMissoes(); } }); dch.appendChild(c); });
   s6.appendChild(dch);
-  main.appendChild(modEvoCard("missoes", "Horas de trabalho por dia", dates => { const v = areaHours("missoes", dates); return { hours: true, fmt: fmtHours, ref: null, series: v ? [{ id: "missoes", name: "Missões", color: HX_COLORS.missoes, vals: v }] : [], empty: "Cronometre o trabalho nas Missões para ver a evolução.", note: "Tempo de trabalho cronometrado em cada dia (geral + missões), contando o cronômetro que estiver rodando." }; }, renderMissoes));
+  main.appendChild(modEvoCard("missoes", "Horas de trabalho por dia", dates => { const v = areaHours("missoes", dates); return { hours: true, fmt: fmtHours, ref: null, series: v ? [{ id: "missoes", name: "Missões", color: "#b07cff", vals: v }] : [], empty: "Cronometre o trabalho nas Missões para ver a evolução.", note: "Tempo de trabalho cronometrado em cada dia (geral + missões), contando o cronômetro que estiver rodando." }; }, renderMissoes));
   main.appendChild(s6);
 }
 

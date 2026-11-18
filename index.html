@@ -5214,7 +5214,8 @@ function positions() {
 function investedInMonth(k) {
   const compras = fin.invest.ops.filter(o => o.type === "compra" && monthKey(o.date) === k).reduce((s, o) => s + o.qty * o.price, 0);
   const aportes = finFlat().filter(t => t.status === "done" && t.kind === "investimento" && monthKey(t.date) === k).reduce((s, t) => s + t.amount, 0);
-  return Math.max(compras, aportes);
+  const o = fin.invest.of, corretora = o && o.itemId ? (o.moves || []).filter(m => monthKey(m.date) === k && invKind(m)).reduce((s, m) => s + (invKind(m) === "in" ? m.amount : -m.amount), 0) : 0;
+  return Math.max(compras, aportes, corretora);
 }
 function sobraInfo() {
   const cur = monthKey(todayISO()), prev = addMonths(cur, -1), a = monthAgg(prev);
@@ -6025,7 +6026,7 @@ function renderRelatorio(main) {
   f.append(ml, ms, el("span", "hint", est.partial ? "Mês em andamento: " + est.elapsed + " de " + est.dim + " dias" : "Mês fechado"));
   main.appendChild(f);
   if (a.pending) main.appendChild(el("p", "banner", a.pending + " lançamento(s) deste mês ainda estão pendentes e não entram nos números abaixo."));
-  if (!a.n) { main.appendChild(el("p", "note muted", "Sem lançamentos classificados neste mês.")); const lc = loanCard(); if (lc) main.appendChild(lc); main.appendChild(invEvoCard()); return; }
+  if (!a.n) { main.appendChild(el("p", "note muted", "Sem lançamentos classificados neste mês.")); const lc = loanCard(); if (lc) main.appendChild(lc); return; }
 
   main.appendChild(finTiles(k, a, p, est));
   const tile = finTile;
@@ -6084,7 +6085,6 @@ function renderRelatorio(main) {
   es.appendChild(el("p", "note muted", "Custos fixos repetem o último valor; variáveis usam a média dos últimos 3 meses" + (est.partial ? " (com o mês atual projetado pelo ritmo de gasto)" : "") + "; recebimentos usam a média dos meses fechados."));
   main.appendChild(es);
   const lc = loanCard(); if (lc) main.appendChild(lc);
-  main.appendChild(invEvoCard());
 }
 function loanCard() {
   const loans = loanList(); if (!loans.length) return null;
@@ -6201,7 +6201,7 @@ function invEvoCard() {
   [[30, "30 dias"], [90, "90 dias"], [365, "1 ano"]].forEach(([k, t]) => { const b = el("button", "gchip", t); b.type = "button"; b.id = "evo-" + key + "-n-" + k; b.setAttribute("aria-pressed", String(U.n === k)); b.addEventListener("click", () => { U.n = k; again(); }); ch.appendChild(b); });
   card.appendChild(ch);
   const dates = evoDates(U.n), T = invTotalsOn(dates), A = invAportOn(dates);
-  if (!T.some(Boolean) && !A.some(v => v != null)) { card.appendChild(el("p", "note muted", invLoading ? "Buscando a conta de investimentos…" : "Ainda sem dados da conta: toque em Atualizar agora em Investimentos.")); return card; }
+  if (!T.some(Boolean) && !A.some(v => v != null)) { card.appendChild(el("p", "note muted", invLoading ? "Buscando a conta de investimentos…" : "Ainda sem dados da conta: toque em Atualizar agora, no card acima.")); return card; }
   const t = T[T.length - 1], a = A[A.length - 1], sg = v => (v >= 0 ? "+" : "−") + brl(Math.abs(v));
   card.appendChild(el("p", "note", t ? "Hoje: " + brl(t.tot) + " na conta (" + brl(t.alo) + " alocado + " + brl(t.disp) + " disponível)" + (a != null ? " · aportado " + brl(a) + " · rendimento " + sg(t.tot - a) + (a > 0 ? " (" + pctf((t.tot - a) / a) + ")" : "") : "") + "."
     : "Aportado até hoje: " + brl(a) + ". O montante aparece a partir da primeira atualização da conta."));
@@ -6272,7 +6272,7 @@ function invOfCard() {
     return sec;
   }
   // escolher a conexão
-  sec.appendChild(el("p", "note", "Conecte a sua corretora (Clear) pelo Open Finance para ver aqui, e no gráfico Patrimônio investido do Relatório, quanto está alocado e disponível na conta e quanto você já transferiu para lá."));
+  sec.appendChild(el("p", "note", "Conecte a sua corretora (Clear) pelo Open Finance para ver aqui, com o gráfico do patrimônio, quanto está alocado e disponível na conta e quanto você já transferiu para lá."));
   if (!o.itemId) {
     const ol = el("ol", "of-steps");
     ol.append(el("li", null, "No Meu Pluggy (meu.pluggy.ai), conecte a Clear Corretora pelo Open Finance, na opção Investimentos."),
@@ -6301,8 +6301,9 @@ function invOfCard() {
   return sec;
 }
 function renderInvest(main) {
-  head2(main, "Investimentos", "Conta da corretora, carteira, rendimento e o hábito de investir a sobra.");
+  head2(main, "Investimentos", "Conta da corretora, evolução do patrimônio e o hábito de investir a sobra.");
   main.appendChild(invOfCard());
+  if (invOf().itemId) main.appendChild(invEvoCard());
   const s = sobraInfo();
   if (s) {
     const h = el("section", "guide habit");
@@ -6311,7 +6312,7 @@ function renderInvest(main) {
     else {
       h.appendChild(el("p", "note", "Sobrou " + brl(s.sobra) + ". Investido em " + monthLabel(s.cur) + ": " + brl(s.invested) + (s.complete ? (s.flag === "skip" ? ". Você pulou este mês." : ". Meta cumprida.") : ". Faltam " + brl(s.sobra - s.invested) + ".")));
       const b = el("div", "goalbar"); const f = el("span"); f.style.width = Math.min(100, s.invested / s.sobra * 100) + "%"; b.appendChild(f); h.appendChild(b);
-      h.appendChild(el("p", "note muted", "Conta como investido: compras registradas aqui neste mês ou lançamentos classificados como aporte."));
+      h.appendChild(el("p", "note muted", "Conta como investido: transferências para a corretora neste mês ou lançamentos classificados como aporte."));
       if (!s.complete) {
         const bb = el("div", "btns");
         const done = el("button", "btn", "Já investi"); done.type = "button"; done.id = "habit-done"; done.addEventListener("click", () => { fin.habit[s.cur] = "done"; saveFin(); renderFin(); });
@@ -6322,6 +6323,8 @@ function renderInvest(main) {
     main.appendChild(h);
   }
 
+  // Carteira e Operações (registro à mão) saíram: a conta da corretora vem pelo Open Finance. Ficam só para quem já tinha operações anotadas.
+  if (!fin.invest.ops.length) return;
   const pos = positions().filter(p => p.qty > 0 || p.divs > 0 || p.realized);
   const cost = pos.reduce((s, p) => s + p.cost, 0), val = pos.reduce((s, p) => s + (p.value != null ? p.value : p.cost), 0);
   const divs = pos.reduce((s, p) => s + p.divs, 0), real = pos.reduce((s, p) => s + p.realized, 0);

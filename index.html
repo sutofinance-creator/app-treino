@@ -3774,7 +3774,7 @@ const MS_PRI_RANK = { alta: 0, media: 1, baixa: 2 };
 const MS_GERAL = "_geral";
 const MS_REC = [["", "Não repete"], ["util", "Todo dia útil"], ["diaria", "Todos os dias"], ["semanal", "Toda semana"], ["mensal", "Todo mês"]];
 let mis = null;
-const msUI = { open: null, closing: null, closeDraft: null, draft: null, period: "semana", proj: "", msg: "", confirm: null, q: "", newAtt: [], attOpen: null, newOpen: false, dayNewOpen: false, editing: null, waiting: null, timeEdit: null, timeDraft: null };
+const msUI = { open: null, closing: null, closeDraft: null, draft: null, week: "", proj: "", msg: "", confirm: null, q: "", newAtt: [], attOpen: null, newOpen: false, dayNewOpen: false, editing: null, waiting: null, timeEdit: null, timeDraft: null };
 // fecha o formulário de missão nova; arquivos já enviados para o rascunho saem do servidor
 function msCloseNew() { const a = msUI.newAtt; msUI.newAtt = []; msUI.newOpen = false; msDropFiles(a); }
 
@@ -4816,13 +4816,6 @@ function renderKb(main) {
   if (!shown.length) main.appendChild(el("p", "note muted", "Nenhum card bate com a pesquisa ou o filtro."));
   shown.forEach(c => main.appendChild(kbCard(c)));
 }
-function msPeriod(k) {
-  const today = todayISO(), [y, m, d] = today.split("-").map(Number);
-  if (k === "mes") return [ymd(new Date(y, m - 1, 1)), today, "Este mês"];
-  if (k === "mespass") return [ymd(new Date(y, m - 2, 1)), ymd(new Date(y, m - 1, 0)), "Mês passado"];
-  if (k === "30") return [addDaysISO(today, -29), today, "Últimos 30 dias"];
-  return [weekStart(today), today, "Esta semana"];
-}
 function msHoursSVG(rows) {
   const hs = rows.map(r => r.sec / 3600), gs = rows.map(r => r.goal / 3600);
   const top = Math.max(4, Math.ceil(Math.max(...hs, ...gs, 1)));
@@ -4836,7 +4829,7 @@ function msHoursSVG(rows) {
   });
   const step = Math.max(1, Math.ceil(n / 8));
   rows.forEach((r, i) => { if (i % step === (n - 1) % step) g += '<text class="ax" x="' + xs(i) + '" y="' + (CH - 6) + '" text-anchor="middle">' + fmtDate(r.iso).slice(0, 5) + '</text>'; });
-  rows.forEach((r, i) => { g += hitCol(xs(i), iw / n, dayHead(r.iso), [[r.sec ? fmtHM(r.sec) : "0 min", "trabalhadas"], r.goal ? [fmtHM(r.goal), "meta mínima"] : ["", "sem meta neste dia"], r.goal ? (r.sec >= r.goal ? ["", "meta batida"] : [fmtHM(r.goal - r.sec), "faltaram"]) : null]); });
+  rows.forEach((r, i) => { g += hitCol(xs(i), iw / n, dayHead(r.iso), r.fut ? [r.goal ? [fmtHM(r.goal), "meta mínima"] : ["", "sem meta neste dia"], ["", "dia ainda não chegou"]] : [[r.sec ? fmtHM(r.sec) : "0 min", "trabalhadas"], r.goal ? [fmtHM(r.goal), "meta mínima"] : ["", "sem meta neste dia"], r.goal ? (r.sec >= r.goal ? ["", "meta batida"] : [fmtHM(r.goal - r.sec), "faltaram"]) : null]); });
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Horas trabalhadas por dia">' + g + '</svg>';
 }
 // card "Horas em missões por dia": uma barra horizontal por dia com o tempo somado das missões daquele dia.
@@ -4849,11 +4842,9 @@ function msMissionDay(iso) {
 }
 function msTaskHoursCard(days) {
   const s = el("section", "guide"); s.id = "ms-task-hours"; s.appendChild(el("h3", null, "Horas em missões por dia"));
-  const rows = days.filter(r => r.sec > 0 || (r.goal && r.iso <= todayISO())).map(r => msMissionDay(r.iso));
-  const tot = rows.reduce((a, r) => a + r.sec, 0);
-  if (!tot) { s.appendChild(el("p", "note muted", "Nenhum tempo cronometrado em missões no período.")); return s; }
-  const n = new Set(rows.flatMap(r => r.list.map(x => x.id))).size;
-  s.appendChild(el("p", "note", fmtHM(tot) + " em " + n + (n === 1 ? " missão" : " missões") + " no período. Só entra o tempo cronometrado em missões; o Trabalho geral fica de fora."));
+  const rows = days.map(r => r.fut ? { iso: r.iso, sec: 0, list: [], fut: true } : msMissionDay(r.iso));
+  const tot = rows.reduce((a, r) => a + r.sec, 0), n = new Set(rows.flatMap(r => r.list.map(x => x.id))).size;
+  s.appendChild(el("p", tot ? "note" : "note muted", (tot ? fmtHM(tot) + " em " + n + (n === 1 ? " missão" : " missões") + " nesta semana." : "Nenhum tempo cronometrado em missões nesta semana.") + " Só entra o tempo cronometrado em missões; o Trabalho geral fica de fora."));
   const max = Math.max(...rows.map(r => r.sec), 1), box = el("div", "hbars ms-dh");
   const nm = id => { const t = msTask(id); return t ? t.title : "Missão apagada"; };
   rows.forEach(r => {
@@ -4861,7 +4852,7 @@ function msTaskHoursCard(days) {
     top.append(el("span", "hb-l", dayHead(r.iso)), el("span", "hb-v", r.sec ? fmtHM(r.sec) + " · " + r.list.length + (r.list.length === 1 ? " missão" : " missões") : "—"));
     const bar = el("div", "hb-bar"), f = el("span"); f.style.width = (r.sec / max * 100) + "%"; bar.appendChild(f);
     row.append(top, bar);
-    row.dataset.tip = tipJSON(dayHead(r.iso), r.sec ? [[fmtHM(r.sec), "em missões"]].concat(r.list.map(x => [fmtHM(x.sec), nm(x.id)])) : [["", "nenhuma missão cronometrada"]]);
+    row.dataset.tip = tipJSON(dayHead(r.iso), r.sec ? [[fmtHM(r.sec), "em missões"]].concat(r.list.map(x => [fmtHM(x.sec), nm(x.id)])) : [["", r.fut ? "dia ainda não chegou" : "nenhuma missão cronometrada"]]);
     box.appendChild(row);
   });
   s.appendChild(tipify(box));
@@ -4894,30 +4885,15 @@ function msGroupSection(title, keyFn, closed, days) {
 function renderMsRelatorio(main) {
   const g = msData(), today = todayISO();
   head2(main, "Relatório", "Como estão suas entregas: prazo, qualidade, resolução e horas de trabalho.");
-  // totais de agora
+  // os números analisam tudo, desde o primeiro dia do módulo; só os gráficos de horas mostram uma semana fechada
+  const a = msSince();
+  const days = []; for (let d = a; d <= today; d = addDaysISO(d, 1)) days.push({ iso: d, sec: msDaySec(d), goal: msGoalSec(d) });
   const openAll = g.tasks.filter(x => x.status === "aberta"), lateNow = openAll.filter(x => x.due && x.due < today && !x.wait), waitNow = openAll.filter(x => x.wait);
   const todayOpen = msDayList(today).filter(x => x.status === "aberta");
-  const allSolved = g.tasks.filter(x => x.status === "feita"), allNao = g.tasks.filter(x => x.status === "nao");
-  const s0 = el("section", "guide"); s0.appendChild(el("h3", null, "Totais"));
-  const t0 = el("div", "tiles tiles-3");
-  t0.append(stTile("Pendentes", openAll.length, "missões abertas agora" + (waitNow.length ? " · " + waitNow.length + " aguardando terceiros" : ""), openAll.length ? "" : "good"),
-    stTile("Atrasadas", lateNow.length, "abertas fora do prazo" + (waitNow.length ? " (sem contar as que aguardam terceiros)" : ""), lateNow.length ? "bad" : "good"),
-    stTile("Para hoje", todayOpen.length, "abertas no dia de hoje"),
-    stTile("Entregues", allSolved.length, "resolvidas desde o início", allSolved.length ? "good" : ""),
-    stTile("Com atraso", allSolved.filter(x => msLateDays(x) > 0).length, "entregues depois do prazo"),
-    stTile("Não resolvidas", allNao.length, "encerradas sem resolver"));
-  s0.appendChild(t0);
-  main.appendChild(s0);
-
-  const ch = el("div", "chips"); ch.setAttribute("aria-label", "Período");
-  [["semana", "Esta semana"], ["mes", "Este mês"], ["30", "30 dias"], ["mespass", "Mês passado"]].forEach(([k, t]) => { const c = el("button", "gchip", t); c.type = "button"; c.id = "ms-p-" + k; c.setAttribute("aria-pressed", String(msUI.period === k)); c.addEventListener("click", () => { msUI.period = k; renderMissoes(); }); ch.appendChild(c); });
-  main.appendChild(ch);
-  const [a, b, label] = msPeriod(msUI.period);
-  const days = []; for (let d = a, i = 0; d <= b && i < 62; d = addDaysISO(d, 1), i++) days.push({ iso: d, sec: msDaySec(d), goal: msGoalSec(d) });
   const workDays = days.filter(r => r.goal);
   const counted = workDays.filter(r => r.iso < today || r.sec >= r.goal), met = counted.filter(r => r.sec >= r.goal).length; // hoje só entra quando a meta é batida
   const totalSec = days.reduce((x, r) => x + r.sec, 0);
-  const closed = g.tasks.filter(x => x.status !== "aberta" && x.closed >= a && x.closed <= b);
+  const closed = g.tasks.filter(x => x.status !== "aberta");
   const solved = closed.filter(x => x.status === "feita"), unsolved = closed.filter(x => x.status === "nao");
   const withDue = solved.filter(x => x.due), onTime = withDue.filter(x => !msLateDays(x));
   const lateDays = withDue.filter(x => msLateDays(x) > 0).map(x => msLateDays(x));
@@ -4926,25 +4902,43 @@ function renderMsRelatorio(main) {
   const rework = solved.filter(x => x.rework).length;
   const pct = (n, d) => d ? Math.round(n / d * 100) + "%" : "—";
 
-  const s1 = el("section", "guide"); s1.appendChild(el("h3", null, label));
-  const t1 = el("div", "tiles tiles-3");
-  t1.append(stTile("Horas", fmtHM(totalSec), workDays.length ? "média " + fmtHM(Math.round(totalSec / workDays.length)) + " por dia útil" : "trabalhadas"),
+  const s0 = el("section", "guide"); s0.id = "ms-totais"; s0.appendChild(el("h3", null, "Totais"));
+  s0.appendChild(el("p", "note muted", "Desde " + fmtDate(a) + ", quando você começou a usar as Missões."));
+  const t0 = el("div", "tiles tiles-3");
+  t0.append(stTile("Pendentes", openAll.length, "missões abertas agora" + (waitNow.length ? " · " + waitNow.length + " aguardando terceiros" : ""), openAll.length ? "" : "good"),
+    stTile("Atrasadas", lateNow.length, "abertas fora do prazo" + (waitNow.length ? " (sem contar as que aguardam terceiros)" : ""), lateNow.length ? "bad" : "good"),
+    stTile("Para hoje", todayOpen.length, "abertas no dia de hoje"),
+    stTile("Horas", fmtHM(totalSec), workDays.length ? "média " + fmtHM(Math.round(totalSec / workDays.length)) + " por dia útil" : "trabalhadas"),
     stTile("Meta " + fmtGoal(Math.round(g.goal.hours * 3600)), met + "/" + counted.length, counted.length ? "dias úteis com a meta" : "hoje ainda está valendo", counted.length && met === counted.length ? "good" : ""),
     stTile("Entregues", solved.length, "de " + closed.length + " encerradas (" + pct(solved.length, closed.length) + ")", closed.length && unsolved.length === 0 ? "good" : ""),
-    stTile("No prazo", pct(onTime.length, withDue.length), withDue.length ? onTime.length + " de " + withDue.length + " entregas com prazo" + (waited.length ? " · espera de terceiros não conta como atraso" : "") : "nenhuma entrega com prazo", withDue.length && onTime.length === withDue.length ? "good" : ""),
+    stTile("No prazo", pct(onTime.length, withDue.length), withDue.length ? onTime.length + " de " + withDue.length + " entregas com prazo · " + lateDays.length + " com atraso" + (waited.length ? " · espera de terceiros não conta como atraso" : "") : "nenhuma entrega com prazo", withDue.length && onTime.length === withDue.length ? "good" : ""),
     stTile("Qualidade", rated.length ? qAvg.toFixed(1).replace(".", ",") : "—", rated.length ? "média de 5 · " + rework + " com retrabalho" : "sem avaliações", qAvg >= 4 ? "good" : ""),
-    stTile("Não resolvidas", unsolved.length, "no período", unsolved.length ? "" : "good"));
-  s1.appendChild(t1);
-  s1.appendChild(el("p", "chart-t", "Horas por dia (traço = meta mínima)"));
-  s1.appendChild(chartBox(msHoursSVG(days)));
+    stTile("Não resolvidas", unsolved.length, "encerradas sem resolver", unsolved.length ? "" : "good"));
+  s0.appendChild(t0);
+  main.appendChild(s0);
+
+  // gráficos de horas: sempre uma semana fechada, de segunda a domingo
+  const w0 = weekStart(today), wPrev = addDaysISO(w0, -7), weeks = [];
+  for (let w = w0; w >= weekStart(a); w = addDaysISO(w, -7)) weeks.push(w);
+  if (!weeks.includes(msUI.week)) msUI.week = w0;
+  const wRange = w => fmtDate(w).slice(0, 5) + " a " + fmtDate(addDaysISO(w, 6)).slice(0, 5);
+  const wName = w => (w === w0 ? "Esta semana · " : w === wPrev ? "Semana passada · " : "") + wRange(w);
+  const wb = el("div", "datebar"), wlb = el("label", null, "Semana"), wsel = el("select", "sel"); wsel.id = "ms-week"; wsel.style.width = "auto"; wlb.htmlFor = wsel.id;
+  weeks.forEach(w => { const o = el("option", null, wName(w)); o.value = w; if (w === msUI.week) o.selected = true; wsel.appendChild(o); });
+  wsel.addEventListener("change", () => { msUI.week = wsel.value; renderMissoes(); const n = document.getElementById("ms-week"); if (n) n.focus(); });
+  wb.append(wlb, wsel); main.appendChild(wb);
+  const wk = []; for (let i = 0; i < 7; i++) { const d = addDaysISO(msUI.week, i), fut = d > today; wk.push({ iso: d, sec: fut ? 0 : msDaySec(d), goal: msGoalSec(d), fut }); }
+  const s1 = el("section", "guide"); s1.id = "ms-week-hours"; s1.appendChild(el("h3", null, "Horas por dia"));
+  s1.appendChild(el("p", "chart-t", wName(msUI.week) + " (traço = meta mínima)"));
+  s1.appendChild(chartBox(msHoursSVG(wk)));
   main.appendChild(s1);
-  main.appendChild(msTaskHoursCard(days));
+  main.appendChild(msTaskHoursCard(wk));
 
   // pontos de atenção
   const tips = [];
-  if (counted.length) tips.push(met === counted.length ? "Meta de " + fmtGoal(Math.round(g.goal.hours * 3600)) + " batida em todos os dias úteis do período." : "Meta de horas batida em " + met + " de " + counted.length + " dias úteis; faltaram " + fmtHM(counted.reduce((x, r) => x + Math.max(0, r.goal - r.sec), 0)) + " no total.");
+  if (counted.length) tips.push(met === counted.length ? "Meta de " + fmtGoal(Math.round(g.goal.hours * 3600)) + " batida em todos os dias úteis desde o início." : "Meta de horas batida em " + met + " de " + counted.length + " dias úteis; faltaram " + fmtHM(counted.reduce((x, r) => x + Math.max(0, r.goal - r.sec), 0)) + " no total.");
   if (lateDays.length) tips.push(lateDays.length + (lateDays.length === 1 ? " entrega saiu" : " entregas saíram") + " depois do prazo, com atraso médio de " + (lateDays.reduce((x, y) => x + y, 0) / lateDays.length).toFixed(1).replace(".", ",") + " dia(s).");
-  if (waited.length) { const wd = waited.map(msWaitDays); tips.push(waited.length + (waited.length === 1 ? " missão encerrada no período esperou" : " missões encerradas no período esperaram") + " terceiros, em média " + (wd.reduce((x, y) => x + y, 0) / wd.length).toFixed(1).replace(".", ",") + " dias. Esse tempo não conta como atraso seu."); }
+  if (waited.length) { const wd = waited.map(msWaitDays); tips.push(waited.length + (waited.length === 1 ? " missão encerrada esperou" : " missões encerradas esperaram") + " terceiros, em média " + (wd.reduce((x, y) => x + y, 0) / wd.length).toFixed(1).replace(".", ",") + " dias. Esse tempo não conta como atraso seu."); }
   if (waitNow.length) tips.push(waitNow.length + (waitNow.length === 1 ? " missão aguarda" : " missões aguardam") + " terceiros agora: " + waitNow.slice(0, 3).map(x => x.title + (x.wait.who ? " (" + x.wait.who + ", cobrar " + fmtDate(x.wait.until).slice(0, 5) + ")" : " (cobrar " + fmtDate(x.wait.until).slice(0, 5) + ")")).join("; ") + (waitNow.length > 3 ? "…" : "") + ".");
   if (lateNow.length) tips.push(lateNow.length + (lateNow.length === 1 ? " missão aberta está atrasada" : " missões abertas estão atrasadas") + ": " + lateNow.slice(0, 3).map(x => x.title).join(", ") + (lateNow.length > 3 ? "…" : "") + ". Planeje para hoje ou renegocie o prazo.");
   const estDone = solved.filter(x => x.est), estSum = estDone.reduce((s, x) => s + x.est * 60, 0), realSum = estDone.reduce((s, x) => s + msTaskSec(x.id), 0);
@@ -4953,14 +4947,14 @@ function renderMsRelatorio(main) {
   if (unsolved.length) tips.push(unsolved.length + " não " + (unsolved.length === 1 ? "resolvida" : "resolvidas") + (unsolved.some(x => x.closeNote) ? ": " + unsolved.filter(x => x.closeNote).slice(0, 2).map(x => x.closeNote).join("; ") : "") + ".");
   const bySetor = {}; closed.concat(openAll).forEach(x => { if (x.setor) bySetor[x.setor] = (bySetor[x.setor] || 0) + 1; });
   const topSetor = Object.keys(bySetor).sort((p, q) => bySetor[q] - bySetor[p])[0];
-  if (topSetor && Object.keys(bySetor).length > 1) tips.push("O setor que mais gera demandas é " + topSetor + " (" + bySetor[topSetor] + " missões entre abertas e encerradas no período).");
+  if (topSetor && Object.keys(bySetor).length > 1) tips.push("O setor que mais gera demandas é " + topSetor + " (" + bySetor[topSetor] + " missões entre abertas e encerradas).");
   const geral = days.reduce((x, r) => x + ((g.days[r.iso] && g.days[r.iso][MS_GERAL]) || 0), 0);
   if (totalSec && geral / totalSec > 0.4) tips.push(Math.round(geral / totalSec * 100) + "% do tempo foi como trabalho geral, sem missão: cronometrar nas missões deixa as estimativas e o relatório mais precisos.");
   if (tips.length) { const s2 = el("section", "guide"); s2.appendChild(el("h3", null, "Pontos de atenção")); const ul = el("ul", "insights"); tips.forEach(t => { const li = el("li"); li.textContent = t; ul.appendChild(li); }); s2.appendChild(ul); main.appendChild(s2); }
 
   [["Por projeto", x => x.proj || "Sem projeto"], ["Por setor de origem", x => x.setor || "Sem setor"], ["Por solicitante", x => x.sol || "Sem solicitante"]].forEach(([t, fn]) => { const sec = msGroupSection(t, fn, closed, days); if (sec) main.appendChild(sec); });
 
-  // horas por missão no período
+  // horas por missão, desde o início
   const perTask = {}; days.forEach(r => Object.keys(g.days[r.iso] || {}).forEach(id => { if (id !== MS_GERAL) perTask[id] = (perTask[id] || 0) + g.days[r.iso][id]; }));
   const ptKeys = Object.keys(perTask).filter(id => perTask[id] > 0).sort((p, q) => perTask[q] - perTask[p]);
   if (ptKeys.length || geral) {
@@ -4971,9 +4965,9 @@ function renderMsRelatorio(main) {
     s5.appendChild(ul); main.appendChild(s5);
   }
 
-  // entregas do período
-  const s4 = el("section", "guide"); s4.appendChild(el("h3", null, "Entregas do período"));
-  if (!closed.length) s4.appendChild(el("p", "note muted", "Nenhuma missão encerrada neste período."));
+  // entregas, desde o início
+  const s4 = el("section", "guide"); s4.appendChild(el("h3", null, "Entregas"));
+  if (!closed.length) s4.appendChild(el("p", "note muted", "Nenhuma missão encerrada ainda."));
   else { const ul = el("ul", "hist"); closed.sort((x, y) => y.closed.localeCompare(x.closed)).forEach(x => { const li = el("li"); const di = msDueInfo(x, x.closed); li.append(el("span", null, fmtDate(x.closed).slice(0, 5)), el("span", null, x.title + [x.proj, x.setor, x.sol].filter(Boolean).map(v => " · " + v).join("") + " · " + (x.status === "feita" ? "resolvida" + (x.quality ? " " + msStars(x.quality) : "") : "não resolvida") + (di ? " · " + di.text.toLowerCase() : ""))); ul.appendChild(li); }); s4.appendChild(ul); }
   main.appendChild(s4);
 

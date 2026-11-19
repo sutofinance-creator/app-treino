@@ -746,6 +746,8 @@ ol.steps a { color: var(--accent); }
 .rt-pg-bar > span { display: block; height: 100%; background: linear-gradient(90deg, #6a2bff, var(--accent)); box-shadow: 0 0 8px rgba(166, 107, 255, .5); }
 .rt-pg.full .rt-pg-bar > span { background: var(--good); box-shadow: 0 0 8px rgba(60, 240, 165, .45); }
 .rt-pg.full .rt-ico, .rt-pg.full .rt-pg-v { color: var(--good); }
+.rt-pg.none .rt-ico, .rt-pg.none .rt-pg-n { opacity: .55; }
+.rt-pg.none .rt-pg-bar { opacity: .5; }
 .rt-pg-v { font-size: 13px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 110px; text-align: right; }
 @media (max-width: 480px) { .rt-pg { grid-template-columns: 22px 1fr auto; } .rt-pg-bar { grid-column: 1 / -1; grid-row: 2; } .rt-pg-v { min-width: 0; } }
 /* cronômetro de cada missão / matéria dentro do card */
@@ -8259,13 +8261,23 @@ function renderRtHoje(main) {
   rtTodayNodes(R, nowMin).forEach(n => main.appendChild(n));
 }
 const RT_MODS = [["inteligencia", "Inteligência"], ["estamina", "Estamina"], ["forca", "Força"], ["graca", "Graça"], ["missoes", "Missões"], ["financas", "Economia"]];
-// quanto de cada módulo já foi feito hoje (o que foi pulado não conta)
-function rtProgress(prog) {
-  const rows = RT_MODS.filter(([id]) => prog[id] && prog[id].t > 0);
+// quanto de cada módulo já foi feito hoje (o que foi pulado não conta); mostra sempre todos os atributos ligados
+function rtProgress(prog, skipped) {
+  const rows = RT_MODS.filter(([id]) => modOn(id));
   if (!rows.length) return null;
   const sec = el("section", "guide rt-prog"); sec.id = "rt-prog"; sec.setAttribute("aria-label", "Quanto já foi feito hoje em cada módulo");
   rows.forEach(([id, name]) => {
-    const p = prog[id], f = Math.min(1, p.d / p.t), full = f >= 0.999;
+    const p = prog[id];
+    if (!p || !(p.t > 0)) { // nada para hoje neste módulo
+      const why = (skipped || []).some(it => it.mod === id) ? "Pulado hoje"
+        : id === "forca" ? (profileId && !strengthDay(todayISO()) ? "Descanso hoje" : "Nada para hoje")
+        : id === "financas" ? "Nada pendente" : id === "missoes" ? "Sem meta hoje" : "Nada para hoje";
+      const row = el("div", "rt-pg none"); row.id = "rt-pg-" + id;
+      const bar = el("div", "rt-pg-bar"); bar.setAttribute("aria-hidden", "true");
+      row.append(rtIcon(id), el("span", "rt-pg-n", name), bar, el("span", "rt-pg-v", why));
+      sec.appendChild(row); return;
+    }
+    const f = Math.min(1, p.d / p.t), full = f >= 0.999;
     const sing = { vezes: "vez", "exercícios": "exercício", "lançamentos": "lançamento" };
     const val = p.unit === "min" ? rtDur(p.d) + " de " + rtDur(p.t) : Math.round(p.d) + " de " + Math.round(p.t) + " " + (Math.round(p.t) === 1 && sing[p.unit] ? sing[p.unit] : p.unit);
     const row = el("div", "rt-pg" + (full ? " full" : "")); row.id = "rt-pg-" + id;
@@ -8293,7 +8305,7 @@ function rtTimerRow(o) {
 }
 function rtTodayNodes(R, nowMin) {
   const out = [], d = R.day;
-  const pgs = rtProgress(R.dem.prog || {}); if (pgs) out.push(pgs);
+  const pgs = rtProgress(R.dem.prog || {}, R.dem.skipped); if (pgs) out.push(pgs);
   if (R.dem.pen && R.dem.pen.length) out.push(penBox(R.dem.pen, "pen-box"));
   const ch = rtChanges(R);
   if (ch.length) { const b = el("p", "banner rt-warn", "Para caber tudo hoje: " + ch.join(", ") + "."); b.id = "rt-changes"; out.push(b); }

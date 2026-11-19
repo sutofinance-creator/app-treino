@@ -721,6 +721,30 @@ ol.steps a { color: var(--accent); }
 .rt-time { display: grid; gap: 1px; }
 .rt-time b { font-weight: 700; }
 .rt-end { font: 600 12px var(--font-display); color: var(--muted); letter-spacing: .02em; }
+/* concluído: o card fica, em verde */
+.rt-row.done { border-color: rgba(60, 240, 165, .45); border-left-color: var(--good); background: rgba(60, 240, 165, .07); }
+.rt-row.done .rt-time b, .rt-row.done .rt-ico, .rt-row.done .rt-end { color: var(--good); }
+.rt-row.done .rt-conc { color: var(--muted); }
+/* progresso de cada módulo no topo */
+.rt-prog { display: grid; gap: 8px; }
+.rt-pg { display: grid; grid-template-columns: 22px 132px 1fr auto; align-items: center; gap: 10px; }
+.rt-pg .rt-ico { width: 22px; height: 22px; } .rt-pg .rt-ico svg { width: 18px; height: 18px; }
+.rt-pg-n { font: 600 14px var(--font-display); letter-spacing: .06em; text-transform: uppercase; }
+.rt-pg-bar { height: 10px; background: var(--surface-2); border: 1px solid var(--line); }
+.rt-pg-bar > span { display: block; height: 100%; background: linear-gradient(90deg, #6a2bff, var(--accent)); box-shadow: 0 0 8px rgba(166, 107, 255, .5); }
+.rt-pg.full .rt-pg-bar > span { background: var(--good); box-shadow: 0 0 8px rgba(60, 240, 165, .45); }
+.rt-pg.full .rt-ico, .rt-pg.full .rt-pg-v { color: var(--good); }
+.rt-pg-v { font-size: 13px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 110px; text-align: right; }
+@media (max-width: 480px) { .rt-pg { grid-template-columns: 22px 1fr auto; } .rt-pg-bar { grid-column: 1 / -1; grid-row: 2; } .rt-pg-v { min-width: 0; } }
+/* cronômetro de cada missão / matéria dentro do card */
+.rt-tms { display: grid; gap: 6px; }
+@media (max-width: 560px) { .rt-tms { padding-left: 12px; } }
+.rt-tm { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; }
+.rt-tm-name { min-width: 0; }
+.rt-tm-time { font-size: 14px; color: var(--muted); min-width: 64px; text-align: right; }
+.rt-tm.run .rt-tm-time { color: var(--accent); }
+.rt-tm.run .rt-tm-name { border-color: var(--accent); color: var(--accent); }
+.rt-tm .btn { padding: 6px 12px; font-size: 13px; }
 </style>
 </head>
 <body data-view="home">
@@ -7678,6 +7702,10 @@ function rtDemand(iso, plan, sim) {
   const today = todayISO(), isT = iso === today, c = rt(), d = rtBase(iso), skip = c.skip[iso] || [];
   const items = [], done = [], skipped = [], concl = [], okd = c.done[iso] || [], run = isT ? rtRunning() : {};
   const add = it => { if (skip.includes(it.key)) skipped.push(it); else if (okd.includes(it.key)) concl.push(it); else items.push(it); };
+  // doneIt: o que já foi feito hoje (vira card verde); parts: quanto de cada módulo já foi feito (barras do topo)
+  const doneIt = [], parts = [];
+  const dn = (o, txt) => { done.push(txt); doneIt.push(o); };
+  const part = (mod, key, d0, t, unit) => { if (t > 0) parts.push({ mod, key, d: Math.max(0, Math.min(d0, t)), t, unit }); };
   // missão de penalidade de hoje: entra na agenda somando ao que o módulo já pede
   const P = isT ? penToday() : [], pp = k => P.find(p => p.key === k && !p.done);
   const grLeft = {};
@@ -7691,20 +7719,25 @@ function rtDemand(iso, plan, sim) {
       add({ key: "gr-" + r.id + "-" + k, mod: "graca", rid: r.id, running: run.graca === r.id && k === did, title: r.name + (need > 1 ? " (" + (k + 1) + "ª vez)" : ""), sub: r.limit ? r.limit + " min" : "", dur, win, fromEnd, rank: 0, go: () => { enterGraca("gr-hoje"); rtFocus("gr-" + r.id); } });
     }
     if (did) done.push(r.name + (need > 1 ? " " + did + "/" + need : ""));
+    for (let k = 0; k < need; k++) {
+      part("graca", "gr-" + r.id + "-" + k, k < did ? 1 : 0, 1, "vezes");
+      if (k < did) doneIt.push({ key: "gr-" + r.id + "-" + k, mod: "graca", rid: r.id, title: r.name + (need > 1 ? " (" + (k + 1) + "ª vez)" : ""), sub: "Feito" });
+    }
     grLeft[r.id] = need - did;
   });
   const pg = pp("pen-graca");
   if (pg && modOn("graca")) {
     const r0 = grTodayPlan(iso)[0] || grData().rituals[0];
     if (r0) add({ key: "pen-graca", mod: "graca", rid: r0.id, running: run.graca === r0.id && !(grLeft[r0.id] > 0), title: "Penalidade: " + r0.name + " (1 a mais)", sub: "Missão de penalidade da Graça: " + pg.txt, dur: Math.max(5, Math.round(r0.limit || 15)), win: [d.wake, d.sleep], rank: 1.5, pen: true, go: () => { enterGraca("gr-hoje"); rtFocus("gr-" + r0.id); } });
-  } else if (P.some(p => p.key === "pen-graca")) done.push("Penalidade da Graça");
+  } else if (P.some(p => p.key === "pen-graca")) dn({ key: "pen-graca", mod: "graca", title: "Penalidade da Graça", sub: "Feita" }, "Penalidade da Graça");
   const wo = rtWorkout(iso), tw = rtTreinoWin(d);
   if (wo) {
-    let dur = wo.dur;
+    let dur = wo.dur, exDone = 0, exTot = wo.w ? wo.w.ex.length : 1;
     if (isT) {
       const rec = (state.logs[iso] && state.logs[iso].e) || {};
-      if (wo.w) { const dn = wo.w.ex.filter(x => exerciseDone(rec[x.id])).length; dur = dn >= wo.w.ex.length ? 0 : Math.round(wo.dur * (1 - dn / wo.w.ex.length)); }
-      else if (hasEntries(iso)) dur = 0;
+      if (wo.w) { exDone = wo.w.ex.filter(x => exerciseDone(rec[x.id])).length; dur = exDone >= wo.w.ex.length ? 0 : Math.round(wo.dur * (1 - exDone / wo.w.ex.length)); }
+      else if (hasEntries(iso)) { dur = 0; exDone = 1; }
+      part("forca", "forca", exDone, exTot, wo.w ? "exercícios" : "treino");
     }
     if (dur > 0) add({ key: "forca", mod: "forca", title: "Treino: " + wo.name, sub: wo.w ? wo.w.focus : "", dur: Math.max(10, dur), win: tw, rank: 1, go: () => {
       // abre o treino do dia já no próximo exercício que falta
@@ -7712,7 +7745,7 @@ function rtDemand(iso, plan, sim) {
       const rec = (state.logs[todayISO()] && state.logs[todayISO()].e) || {}, nx = wo.w.ex.find(x => !exerciseDone(rec[x.id]));
       if (nx) rtFocus("card-" + nx.id);
     } });
-    else done.push("Treino " + wo.name);
+    else dn({ key: "forca", mod: "forca", title: "Treino: " + wo.name, sub: wo.w ? exDone + " de " + exTot + " exercícios" : "Feito" }, "Treino " + wo.name);
   }
   const pf = P.find(p => p.key === "pen-forca");
   if (pf && modOn("forca") && (!pf.done || okd.includes("pen-forca"))) add({ key: "pen-forca", mod: "forca", title: "Penalidade: " + PEN_FLEX + " flexões", sub: "Missão de penalidade da Força. Faça e toque em Concluir.", dur: 10, win: tw, rank: 1, pen: true, go: () => rtFocus("pen-box") });
@@ -7727,17 +7760,20 @@ function rtDemand(iso, plan, sim) {
     const have = isT ? Math.floor(stKindSec(iso, "cardio") / 60) : 0, need = cp.target - have;
     if (sim && need > 0 && !cp.optional) { if (cp.pid === "x4") sim.x4[ws] = true; sim.eq[ws] = (sim.eq[ws] || 0) + need * (practice(cp.pid).factor || 1); }
     if (need > 0) add({ key: "cardio", mod: "estamina", pid: cp.pid, running: !!run.cardio, title: "Cardio: " + practice(cp.pid).name, sub: cp.optional ? "Opcional · " + cp.why : cp.why, dur: Math.max(10, need), optional: !!cp.optional, win: tw, afterForca: !!wo, rank: cp.optional ? 9 : 2, go: () => { enterStamina("est-hoje"); rtFocus("st-cardio"); } });
-    else if (have) done.push("Cardio");
+    else if (have) dn({ key: "cardio", mod: "estamina", title: "Cardio", sub: have + " min" }, "Cardio");
+    if (isT && !cp.optional) part("estamina", "cardio", have, cp.target, "min");
     const fg = Math.round(stam().goals.focusMin), fh = isT ? Math.floor(stKindSec(iso, "foco") / 60) : 0;
     if (fg - fh > 0) add({ key: "foco", mod: "estamina", running: !!run.foco, title: "Foco: meditação ou respiração", sub: "Logo antes de estudar.", dur: fg - fh, beforeStudy: true, rank: 5, go: () => { enterStamina("est-hoje"); rtFocus("st-foco"); } });
-    else if (fh) done.push("Foco");
+    else if (fh) dn({ key: "foco", mod: "estamina", title: "Foco: meditação ou respiração", sub: fh + " min" }, "Foco");
+    if (isT) part("estamina", "foco", fh, fg, "min");
   }
   if (modOn("missoes") && mis) {
     const pw = pp("pen-work"), goal = Math.round(msGoalSec(iso) / 60) + (pw ? 60 : 0), have = isT ? Math.floor(msDaySec(iso) / 60) : 0, ms = (plan && plan.byDay[iso]) || [];
     const need = Math.max(goal - have, ms.reduce((s, x) => s + x.need, 0));
     const w = rt().work, ws = hmToMin(w.start) ?? 480, we = hmToMin(w.end) ?? 1080;
     if (need > 0) add({ key: "trabalho", mod: "missoes", running: !!run.trabalho, title: pw ? "Trabalho (com +1h de penalidade)" : "Trabalho", dur: need, missions: ms, split: 120, minChunk: 30, gapAfter: 10, win: [ws, we > ws ? we : we + 1440], rank: 3, go: () => { enterMissoes("ms-hoje"); rtFocus("ms-work"); } });
-    else if (goal && have) done.push("Trabalho " + rtDur(have));
+    else if (goal && have) dn({ key: "trabalho", mod: "missoes", title: "Trabalho", sub: rtDur(have) + " de " + rtDur(goal) }, "Trabalho " + rtDur(have));
+    if (isT) part("missoes", "trabalho", have, goal, "min");
   }
   if (modOn("inteligencia") && intel) {
     const im = imCfg(), IR = IM_RITMO[im.ritmo];
@@ -7760,13 +7796,22 @@ function rtDemand(iso, plan, sim) {
       return { id: s.id, label: s.name + (p.qty ? " (" + p.qty + " " + unitWord(s, p.qty) + ")" : "") };
     }).filter(Boolean);
     if (need > 0) add({ key: "estudo", mod: "inteligencia", running: !!run.estudo && !/^rev-/.test(run.rtKey || ""), title: ph ? "Estudo (com +1h de penalidade)" : "Estudo", sub: subs.map(x => x.label).join(" · "), subjects: subs, dur: need, split: IR.work, minChunk: IR.min, gapAfter: IR.brk, longEvery: IR.every, longGap: IR.long, rank: 4, go: () => rtGoSubj(subs.length ? subs[0].id : null) });
-    else if (have) done.push("Estudo " + rtDur(have));
+    else if (have) dn({ key: "estudo", mod: "inteligencia", title: "Estudo", sub: rtDur(have) + (goal ? " de " + rtDur(goal) : "") }, "Estudo " + rtDur(have));
+    if (isT) part("inteligencia", "estudo", have, goal, "min");
   }
   if (isT && modOn("financas") && fin) {
-    const n = fin.tx.filter(t => t.status !== "done").length;
+    const n = fin.tx.filter(t => t.status !== "done").length, cd = fin.tx.filter(t => t.status === "done" && t.doneAt === iso).length;
+    part("financas", "eco", cd, n + cd, "lançamentos");
     if (n) add({ key: "eco", mod: "financas", title: "Classificar " + n + (n === 1 ? " lançamento" : " lançamentos"), sub: pp("pen-eco") ? "Missão de penalidade: zerar todos os pendentes da Economia." : "Pendentes da Economia.", dur: Math.min(30, Math.max(5, Math.ceil(n * 1.5 / 5) * 5)), win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6, go: () => rtGoFin() });
   }
-  return { items, done, skipped, concl, day: d, pen: P };
+  // pulado não conta; concluído com o botão conta como feito
+  const prog = {};
+  parts.forEach(x => {
+    if (skip.includes(x.key)) return;
+    const p = prog[x.mod] = prog[x.mod] || { d: 0, t: 0, unit: x.unit };
+    p.d += okd.includes(x.key) ? x.t : x.d; p.t += x.t; if (p.unit !== x.unit) p.unit = "min";
+  });
+  return { items, done, doneIt, skipped, concl, day: d, pen: P, prog };
 }
 
 // Encaixa os itens no tempo livre, do mais fixo ao mais flexível
@@ -8042,8 +8087,42 @@ function renderRtHoje(main) {
   rtDefaultsBanner(main);
   rtTodayNodes(R, nowMin).forEach(n => main.appendChild(n));
 }
+const RT_MODS = [["inteligencia", "Inteligência"], ["estamina", "Estamina"], ["forca", "Força"], ["graca", "Graça"], ["missoes", "Missões"], ["financas", "Economia"]];
+// quanto de cada módulo já foi feito hoje (o que foi pulado não conta)
+function rtProgress(prog) {
+  const rows = RT_MODS.filter(([id]) => prog[id] && prog[id].t > 0);
+  if (!rows.length) return null;
+  const sec = el("section", "guide rt-prog"); sec.id = "rt-prog"; sec.setAttribute("aria-label", "Quanto já foi feito hoje em cada módulo");
+  rows.forEach(([id, name]) => {
+    const p = prog[id], f = Math.min(1, p.d / p.t), full = f >= 0.999;
+    const sing = { vezes: "vez", "exercícios": "exercício", "lançamentos": "lançamento" };
+    const val = p.unit === "min" ? rtDur(p.d) + " de " + rtDur(p.t) : Math.round(p.d) + " de " + Math.round(p.t) + " " + (Math.round(p.t) === 1 && sing[p.unit] ? sing[p.unit] : p.unit);
+    const row = el("div", "rt-pg" + (full ? " full" : "")); row.id = "rt-pg-" + id;
+    const bar = el("div", "rt-pg-bar"); const fill = el("span"); fill.style.width = (f * 100) + "%"; bar.appendChild(fill);
+    bar.setAttribute("role", "progressbar"); bar.setAttribute("aria-label", name); bar.setAttribute("aria-valuemin", "0"); bar.setAttribute("aria-valuemax", "100"); bar.setAttribute("aria-valuenow", String(Math.round(f * 100)));
+    row.append(rtIcon(id), el("span", "rt-pg-n", name), bar, el("span", "rt-pg-v", (full ? "✓ " : "") + val));
+    sec.appendChild(row);
+  });
+  return sec;
+}
+function rtGoMod(mod) {
+  if (mod === "inteligencia") enterIntel("estudo"); else if (mod === "estamina") enterStamina("est-hoje"); else if (mod === "graca") enterGraca("gr-hoje");
+  else if (mod === "missoes") enterMissoes("ms-hoje"); else if (mod === "financas") enterFin("fin-pendentes"); else if (mod === "forca") enterForca();
+}
+// cada missão / matéria do card com o seu próprio cronômetro, sem sair da Rotina
+function rtTimerRow(o) {
+  const row = el("div", "rt-tm" + (o.running ? " run" : ""));
+  const nm = el("button", "rt-link rt-tm-name", o.label); nm.type = "button"; nm.id = o.id; nm.title = "Abrir no módulo"; nm.addEventListener("click", o.go);
+  const tm = el("span", "timer rt-tm-time", o.running || o.sec > 0 ? fmtHMS(o.sec) : "");
+  if (o.running) { tm.dataset.live = o.live; tm.dataset[o.liveAttr] = o.liveVal; }
+  const b = el("button", o.running ? "btn stop" : "btn", o.running ? "Pausar" : "▶ Iniciar"); b.type = "button"; b.id = o.id + (o.running ? "-stop" : "-start");
+  b.setAttribute("aria-label", (o.running ? "Pausar " : "Iniciar ") + o.name);
+  b.addEventListener("click", o.running ? o.pause : o.start);
+  row.append(nm, tm, b); return row;
+}
 function rtTodayNodes(R, nowMin) {
   const out = [], d = R.day;
+  const pgs = rtProgress(R.dem.prog || {}); if (pgs) out.push(pgs);
   if (R.dem.pen && R.dem.pen.length) out.push(penBox(R.dem.pen, "pen-box"));
   const ch = rtChanges(R);
   if (ch.length) { const b = el("p", "banner rt-warn", "Para caber tudo hoje: " + ch.join(", ") + "."); b.id = "rt-changes"; out.push(b); }
@@ -8051,6 +8130,18 @@ function rtTodayNodes(R, nowMin) {
   const tl = el("ol", "rt-list"); tl.id = "rt-list";
   const rows = R.blocks.map(b => ({ s: b.s, e: b.e, b })).concat(d.fixed.filter(f => f.b > nowMin).map(f => ({ s: f.a, e: f.b, f }))).sort((x, y) => x.s - y.s);
   if (d.wake > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.wake) + " · Acordar" + (R.cfg.ws ? " (" + rtDur(R.cfg.ws) + " antes, para caber tudo)" : "")));
+  // o que já foi feito hoje continua na lista, em verde (concluído com o botão pode ser desfeito)
+  const okd = rt().done[todayISO()] || [];
+  const doneCards = (R.dem.doneIt || []).map(x => ({ x, manual: false })).concat(R.dem.concl.concat(okd.includes("extra") ? [{ key: "extra", mod: "inteligencia", title: "Estudo extra" }] : []).map(x => ({ x, manual: true })));
+  doneCards.forEach(({ x, manual }) => {
+    const li = el("li", "rt-row done mod-" + x.mod); li.id = "rt-done-" + x.key;
+    const btn = el("button", "rt-main"); btn.type = "button"; btn.id = "rt-go-done-" + x.key;
+    const time = el("span", "rt-time"); time.append(el("b", null, "✓"), el("span", "rt-end", manual ? "Concluído" : "Feito"));
+    const tx = el("span", "rt-txt"); tx.appendChild(el("span", "rt-title", x.title)); if (x.sub && !manual) tx.appendChild(el("span", "rt-sub", x.sub));
+    btn.append(time, rtIcon(x.mod), tx); btn.addEventListener("click", () => x.go ? x.go() : rtGoMod(x.mod)); li.appendChild(btn);
+    if (manual) { const u = el("button", "linkbtn rt-conc", "Desfazer"); u.type = "button"; u.id = "rt-unconc-" + x.key; u.addEventListener("click", () => rtConclude(x, false)); li.appendChild(u); }
+    tl.appendChild(li);
+  });
   const studyRun = !!(intel && intel.timer) && !R.blocks.some(b => b.it.key === "estudo" || (b.it.review && b.it.running));
   rows.forEach(r => {
     const running = !!r.b && !r.b.part && (r.b.it.running || (r.b.it.extra && studyRun));
@@ -8069,14 +8160,27 @@ function rtTodayNodes(R, nowMin) {
     btn.append(time, rtIcon(it.mod));
     const tx = el("span", "rt-txt"); tx.appendChild(el("span", "rt-title", it.title + ((it.split && it.dur > r.e - r.s) || it.extra ? " · " + rtDur(r.e - r.s) : "")));
     // trabalho e estudo: cada missão / matéria vira um atalho próprio
-    let links = null, go = it.go;
+    let links = null, timers = null, go = it.go;
     if (r.b.missions) {
-      if (r.b.missions.length) { links = r.b.missions.map(m => ({ id: "rt-ms-" + suf + "-" + m.t.id, label: (m.cobrar ? "Cobrar " + (m.t.wait && m.t.wait.who ? m.t.wait.who + ": " : ": ") : "") + m.t.title + " · " + rtDur(m.min), go: () => rtGoMission(m.t.id) })); go = links[0].go; }
+      if (r.b.missions.length) {
+        const today = todayISO(), mrun = msMissionRunning();
+        timers = r.b.missions.map(m => {
+          const tid = m.t.id, id = "rt-ms-" + suf + "-" + tid, name = (m.cobrar ? "Cobrar " + (m.t.wait && m.t.wait.who ? m.t.wait.who + ": " : ": ") : "") + m.t.title;
+          return { id, name, label: name + " · " + rtDur(m.min), sec: msSec(today, tid), running: mrun === tid, live: "ms-mtime", liveAttr: "tid", liveVal: tid,
+            start: () => { msStartMission(tid); rtRefresh(id + "-stop"); }, pause: () => { msPauseMission(); rtRefresh(id + "-start"); }, go: () => rtGoMission(tid) };
+        });
+        go = timers[0].go;
+      }
       else tx.appendChild(el("span", "rt-sub", "Tempo de trabalho livre: escolha as missões do dia."));
     } else if (it.review) {
       tx.appendChild(el("span", "rt-sub", it.sub));
     } else if (it.subjects && it.subjects.length) {
-      links = (r.b.subj ? [r.b.subj] : it.subjects).map(x => ({ id: "rt-sb-" + suf + "-" + x.id, label: x.label, go: () => rtGoSubj(x.id) }));
+      const today = todayISO(), srun = intel && intel.timer ? intel.timer.sid : null;
+      timers = (r.b.subj ? [r.b.subj] : it.subjects).map(x => {
+        const id = "rt-sb-" + suf + "-" + x.id;
+        return { id, name: x.label, label: x.label, sec: subjSec(today, x.id), running: srun === x.id && (it.running || (it.extra && studyRun)), live: "subj-time", liveAttr: "sid", liveVal: x.id,
+          start: () => rtStart(it, r.b, x.id), pause: () => rtStop(it), go: () => rtGoSubj(x.id) };
+      });
       if (imCfg().teste && r.e - r.s >= 20) tx.appendChild(el("span", "rt-sub", "Últimos " + imR().test + " min: teste de memória (sem olhar o material), depois corrija."));
     } else if (it.sub) tx.appendChild(el("span", "rt-sub", it.sub));
     if (isNow && !running) tx.appendChild(el("span", "st pend rt-now", "Agora"));
@@ -8092,24 +8196,20 @@ function rtTodayNodes(R, nowMin) {
       links.forEach(l => { const b = el("button", "rt-link", l.label); b.type = "button"; b.id = l.id; b.addEventListener("click", l.go); lc.appendChild(b); });
       li.appendChild(lc);
     }
-    if (rtCanStart(it)) { const a = rtActRow(it, r.b, suf, running); if (a) li.appendChild(a); }
+    if (timers) { const lc = el("div", "rt-links rt-tms"); timers.forEach(o => lc.appendChild(rtTimerRow(o))); li.appendChild(lc); }
+    // estudo com matérias: cada matéria já tem o seu Iniciar/Pausar; o trabalho mantém o cronômetro geral embaixo
+    if (rtCanStart(it) && !(timers && it.mod === "inteligencia")) { const a = rtActRow(it, r.b, suf, running); if (a) li.appendChild(a); }
     tl.appendChild(li);
   });
   if (d.sleep > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.sleep) + " · Dormir" + (R.cfg.ss ? " (" + rtDur(R.cfg.ss) + " depois, para caber tudo)" : "")));
   if (!R.blocks.length && !R.left.length) out.push(el("p", "guide note", "Nada pendente hoje nos seus módulos. Bom trabalho."));
-  else out.push(tl);
+  if (R.blocks.length || R.left.length || doneCards.length) out.push(tl);
   if (R.left.length) {
     const s = el("section", "guide rt-left"); s.id = "rt-left";
     s.append(el("h3", null, "Não coube hoje"), el("p", "note muted", "Não há tempo livre suficiente até a hora de dormir. Libere um horário, pule algo de menor prioridade ou deixe para amanhã."));
     const ul = el("ul", "hist"); R.left.forEach(x => { const li = el("li"); li.append(el("span", null, x.it.title), el("span", null, rtDur(x.min))); ul.appendChild(li); }); s.appendChild(ul); out.push(s);
   }
   const extra = el("div", "rt-foot");
-  const conc = R.dem.concl.concat((rt().done[todayISO()] || []).includes("extra") ? [{ key: "extra", title: "Estudo extra" }] : []);
-  if (R.dem.done.length || conc.length) {
-    const p = el("p", "note muted"); p.id = "rt-done-line"; p.append("Já feito hoje: " + R.dem.done.join(" · "));
-    conc.forEach((it, i) => { if (i || R.dem.done.length) p.append(" · "); const b = el("button", "linkbtn", it.title + " (desfazer)"); b.type = "button"; b.id = "rt-unconc-" + it.key; b.addEventListener("click", () => rtConclude(it, false)); p.appendChild(b); });
-    p.append("."); extra.appendChild(p);
-  }
   const skExtra = (rt().skip[todayISO()] || []).includes("extra") ? [{ key: "extra", title: "Estudo extra" }] : [];
   if (R.dem.skipped.length || skExtra.length) {
     const p = el("p", "note muted"); p.append("Pulado hoje: ");

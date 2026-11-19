@@ -4828,7 +4828,7 @@ function msHoursSVG(rows) {
     if (r.goal) g += '<line class="goal" x1="' + (xs(i) - bw / 2 - 2) + '" x2="' + (xs(i) + bw / 2 + 2) + '" y1="' + ys(gs[i]) + '" y2="' + ys(gs[i]) + '"/>';
   });
   const step = Math.max(1, Math.ceil(n / 8));
-  rows.forEach((r, i) => { if (i % step === (n - 1) % step) g += '<text class="ax" x="' + xs(i) + '" y="' + (CH - 6) + '" text-anchor="middle">' + fmtDate(r.iso).slice(0, 5) + '</text>'; });
+  rows.forEach((r, i) => { if (i % step === (n - 1) % step) g += '<text class="ax" x="' + xs(i) + '" y="' + (CH - 6) + '" text-anchor="middle">' + capFirst(DOW_SHORT[rtDow(r.iso)]) + '</text>'; });
   rows.forEach((r, i) => { g += hitCol(xs(i), iw / n, dayHead(r.iso), r.fut ? [r.goal ? [fmtHM(r.goal), "meta mínima"] : ["", "sem meta neste dia"], ["", "dia ainda não chegou"]] : [[r.sec ? fmtHM(r.sec) : "0 min", "trabalhadas"], r.goal ? [fmtHM(r.goal), "meta mínima"] : ["", "sem meta neste dia"], r.goal ? (r.sec >= r.goal ? ["", "meta batida"] : [fmtHM(r.goal - r.sec), "faltaram"]) : null]); });
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Horas trabalhadas por dia">' + g + '</svg>';
 }

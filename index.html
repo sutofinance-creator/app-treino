@@ -357,7 +357,7 @@ details.imp[open] { gap: 10px; }
 .cmp-col.up .cmp-tot { color: #d55181; }
 .cmp-col.down .hb-bar > span { background: #3987e5; box-shadow: 0 0 8px rgba(57, 135, 229, .5); }
 .cmp-col.up .hb-bar > span { background: #d55181; box-shadow: 0 0 8px rgba(213, 81, 129, .5); }
-.cmp-col .hb { cursor: crosshair; }
+.cmp-col .hb, .ms-dh .hb { cursor: crosshair; }
 .cmp-col .hb-top { flex-wrap: wrap; }
 .cmp-col .cmp-f { margin-left: auto; color: var(--muted); }
 .cmp-col.down .cmp-f b { color: #3987e5; }
@@ -548,6 +548,7 @@ ol.steps a { color: var(--accent); }
 .chart .hit.on { fill: var(--accent); fill-opacity: .08; }
 .ch-tip { max-width: 270px; min-width: 130px; }
 .ch-tip-r { display: flex; align-items: center; gap: 6px; color: var(--ink); line-height: 1.3; }
+.ch-tip-r > b { white-space: nowrap; flex: none; }
 .ch-tip-r > span:last-child { color: var(--muted); }
 .ch-tip-r b:last-child { color: var(--ink); }
 .stk-bar > span { cursor: crosshair; }
@@ -4838,41 +4839,32 @@ function msHoursSVG(rows) {
   rows.forEach((r, i) => { g += hitCol(xs(i), iw / n, dayHead(r.iso), [[r.sec ? fmtHM(r.sec) : "0 min", "trabalhadas"], r.goal ? [fmtHM(r.goal), "meta mínima"] : ["", "sem meta neste dia"], r.goal ? (r.sec >= r.goal ? ["", "meta batida"] : [fmtHM(r.goal - r.sec), "faltaram"]) : null]); });
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Horas trabalhadas por dia">' + g + '</svg>';
 }
-// horas de uma missão em cada dia do período (barras verticais)
-function msTaskDaysSVG(rows) {
-  const hs = rows.map(r => r.sec / 3600), top = Math.max(1, Math.ceil(Math.max(...hs, 0.5) * 2) / 2);
-  const iw = CW - PL - PR, ih = CH - PT - PB, n = rows.length, bw = Math.min(16, iw / n * 0.6);
-  const xs = i => PL + iw * (i + 0.5) / n, ys = v => PT + ih * (1 - v / top), lab = v => v === 0 ? "0h" : fmtHM(Math.round(v * 3600));
-  let g = "";
-  [0, top / 2, top].forEach(v => { g += '<line class="grid" x1="' + PL + '" x2="' + (CW - PR) + '" y1="' + ys(v) + '" y2="' + ys(v) + '"/><text class="ax" x="' + (PL - 6) + '" y="' + (ys(v) + 4) + '" text-anchor="end">' + lab(v) + '</text>'; });
-  const li = hs.map(h => h > 0).lastIndexOf(true);
-  rows.forEach((r, i) => { if (hs[i] > 0) g += '<rect class="' + (i === li ? "bar last" : "bar") + '" x="' + (xs(i) - bw / 2) + '" y="' + ys(hs[i]) + '" width="' + bw + '" height="' + (ys(0) - ys(hs[i])) + '" rx="2"/>'; });
-  const step = Math.max(1, Math.ceil(n / 8));
-  rows.forEach((r, i) => { if (i % step === (n - 1) % step) g += '<text class="ax" x="' + xs(i) + '" y="' + (CH - 6) + '" text-anchor="middle">' + fmtDate(r.iso).slice(0, 5) + '</text>'; });
-  rows.forEach((r, i) => { g += hitCol(xs(i), iw / n, dayHead(r.iso), r.sec ? [[fmtHM(r.sec), "nesta missão"], r.tot ? [fmtHM(r.tot), "de trabalho no dia (" + Math.round(r.sec / r.tot * 100) + "%)"] : null] : [["", "sem tempo nesta missão"]]); });
-  return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Horas por dia na missão escolhida">' + g + '</svg>';
+// card "Horas em missões por dia": uma barra horizontal por dia com o tempo somado das missões daquele dia.
+// O tempo do Trabalho geral (sem missão) fica de fora; a dica mostra quanto foi para cada missão.
+function msMissionDay(iso) {
+  const g = msData(), ids = new Set(Object.keys(g.days[iso] || {}));
+  if (g.timer && iso === todayISO()) ids.add(g.timer.tid);
+  const list = [...ids].filter(id => id !== MS_GERAL).map(id => ({ id, sec: msSec(iso, id) })).filter(x => x.sec >= 60).sort((x, y) => y.sec - x.sec);
+  return { iso, sec: list.reduce((a, x) => a + x.sec, 0), list };
 }
-// card "Horas por missão": escolha a missão e veja quanto tempo foi para ela em cada dia do período
 function msTaskHoursCard(days) {
-  const g = msData(), sec = {};
-  days.forEach(r => { Object.keys(g.days[r.iso] || {}).forEach(id => { sec[id] = (sec[id] || 0) + g.days[r.iso][id]; }); });
-  if (g.timer && days.some(r => r.iso === todayISO())) sec[g.timer.tid] = (sec[g.timer.tid] || 0) + msRun(todayISO(), g.timer.tid);
-  const ids = Object.keys(sec).filter(id => sec[id] >= 60 && (id === MS_GERAL || msTask(id))).sort((x, y) => (x === MS_GERAL) - (y === MS_GERAL) || sec[y] - sec[x]);
-  const s = el("section", "guide"); s.id = "ms-task-hours"; s.appendChild(el("h3", null, "Horas por missão"));
-  if (!ids.length) { s.appendChild(el("p", "note muted", "Nenhuma missão com tempo cronometrado no período.")); return s; }
-  if (!ids.includes(msUI.relTid)) msUI.relTid = ids[0];
-  const nm = id => id === MS_GERAL ? "Trabalho geral (sem missão)" : msTask(id).title;
-  const f = el("div", "field"), lb = el("label", null, "Missão"), sel = el("select"); sel.className = "sel"; sel.id = "ms-rel-task"; lb.htmlFor = sel.id;
-  ids.forEach(id => { const o = el("option", null, nm(id) + " · " + fmtHM(sec[id])); o.value = id; if (id === msUI.relTid) o.selected = true; sel.appendChild(o); });
-  sel.addEventListener("change", () => { msUI.relTid = sel.value; renderMissoes(); const n = document.getElementById("ms-rel-task"); if (n) n.focus(); });
-  f.append(lb, sel); s.appendChild(f);
-  const tid = msUI.relTid, rows = days.map(r => ({ iso: r.iso, sec: msSec(r.iso, tid), tot: r.sec })), tk = tid === MS_GERAL ? null : msTask(tid);
-  const nd = rows.filter(r => r.sec > 0).length;
-  let txt = fmtHM(sec[tid]) + " no período, em " + nd + (nd === 1 ? " dia" : " dias");
-  if (tk) { const all = msTaskSec(tid); txt += " · na missão toda: " + fmtHM(all) + (tk.est ? " de " + fmtHM(tk.est * 60) + " estimadas" + (all > tk.est * 60 ? " (passou " + fmtHM(all - tk.est * 60) + ")" : "") : ""); }
-  s.appendChild(el("p", "note", txt + "."));
-  s.appendChild(el("p", "chart-t", "Horas por dia nesta missão"));
-  s.appendChild(chartBox(msTaskDaysSVG(rows)));
+  const s = el("section", "guide"); s.id = "ms-task-hours"; s.appendChild(el("h3", null, "Horas em missões por dia"));
+  const rows = days.filter(r => r.sec > 0 || (r.goal && r.iso <= todayISO())).map(r => msMissionDay(r.iso));
+  const tot = rows.reduce((a, r) => a + r.sec, 0);
+  if (!tot) { s.appendChild(el("p", "note muted", "Nenhum tempo cronometrado em missões no período.")); return s; }
+  const n = new Set(rows.flatMap(r => r.list.map(x => x.id))).size;
+  s.appendChild(el("p", "note", fmtHM(tot) + " em " + n + (n === 1 ? " missão" : " missões") + " no período. Só entra o tempo cronometrado em missões; o Trabalho geral fica de fora."));
+  const max = Math.max(...rows.map(r => r.sec), 1), box = el("div", "hbars ms-dh");
+  const nm = id => { const t = msTask(id); return t ? t.title : "Missão apagada"; };
+  rows.forEach(r => {
+    const row = el("div", "hb"), top = el("div", "hb-top");
+    top.append(el("span", "hb-l", dayHead(r.iso)), el("span", "hb-v", r.sec ? fmtHM(r.sec) + " · " + r.list.length + (r.list.length === 1 ? " missão" : " missões") : "—"));
+    const bar = el("div", "hb-bar"), f = el("span"); f.style.width = (r.sec / max * 100) + "%"; bar.appendChild(f);
+    row.append(top, bar);
+    row.dataset.tip = tipJSON(dayHead(r.iso), r.sec ? [[fmtHM(r.sec), "em missões"]].concat(r.list.map(x => [fmtHM(x.sec), nm(x.id)])) : [["", "nenhuma missão cronometrada"]]);
+    box.appendChild(row);
+  });
+  s.appendChild(tipify(box));
   return s;
 }
 // quadro "por projeto / setor / solicitante" do relatório

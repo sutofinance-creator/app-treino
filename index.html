@@ -7684,7 +7684,10 @@ function rtMissionPlan(days) {
   msData().tasks.filter(t => t.status === "aberta").forEach(t => {
     if (t.wait) { const d = t.wait.until <= today ? today : t.wait.until; if (out.byDay[d]) { out.byDay[d].push({ t, need: 15, cobrar: true }); cap[d] -= 15; } return; }
     const pl = (t.plan || []).filter(x => x >= today).sort()[0] || ((t.plan || []).some(x => x < today) ? today : null);
-    if (pl && out.byDay[pl]) put(t, pl); else if (pl) out.later.push(t); else rest.push(t);
+    if (pl && out.byDay[pl]) put(t, pl); else if (pl) out.later.push(t);
+    // recorrente (boleto todo dia 10 etc.) tem dia certo: entra no dia de executar (ou hoje, se já passou), nunca adiantada
+    else if (t.rec && t.rec.type && t.due) { const d0 = t.due < today ? today : t.due; if (out.byDay[d0]) put(t, d0); else out.later.push(t); }
+    else rest.push(t);
   });
   rest.sort((a, b) => { const da = a.due || "9999", db = b.due || "9999"; return da < db ? -1 : da > db ? 1 : (MS_PRI_RANK[a.pri] ?? 1) - (MS_PRI_RANK[b.pri] ?? 1); });
   rest.forEach(t => {

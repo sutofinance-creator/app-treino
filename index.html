@@ -669,6 +669,18 @@ ol.steps a { color: var(--accent); }
 .rt-main { display: grid; grid-template-columns: 66px 26px 1fr; gap: 10px; align-items: start; width: 100%; text-align: left; background: none; border: 0; color: var(--ink); font: inherit; padding: 10px 0 10px 12px; cursor: pointer; }
 .rt-time { font: 700 14px var(--font-display); letter-spacing: .04em; color: var(--accent); font-variant-numeric: tabular-nums; padding-top: 2px; }
 .rt-row.fixed .rt-time { color: var(--muted); }
+.rt-row.fixed.fx { padding: 0 10px 0 0; grid-template-columns: 1fr auto; grid-template-areas: "main conc" "act act"; opacity: 1; }
+.rt-row.fixed.fx .rt-main { cursor: default; }
+.rt-row.fixed.fx .rt-sub { grid-column: auto; }
+.rt-row.fixed.fx .rt-act { padding-left: 124px; padding-bottom: 10px; }
+@media (max-width: 560px) { .rt-row.fixed.fx .rt-act { padding-left: 12px; } }
+.rt-row.fixed.fx.run { border-left-color: var(--accent); }
+.pd-chain { margin: 0; padding-left: 22px; display: grid; gap: 6px; }
+.pd-wrap { overflow-x: auto; }
+.pd-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.pd-table th { text-align: left; font: 600 12px var(--font-display); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.pd-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.pd-table td:first-child { min-width: 160px; }
 .rt-ico { width: 26px; height: 26px; display: grid; place-items: center; color: var(--accent); }
 .rt-ico svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .rt-txt { display: grid; gap: 2px; min-width: 0; }
@@ -2496,8 +2508,25 @@ function addTime(startMs, endMs, sid) {
     s = e;
   }
 }
+/* ---------- Histórico de atividades ----------
+   Toda vez que um cronômetro para (estudo, Estamina, Graça, trabalho, missão ou compromisso), a sessão fica guardada:
+   { id, m: módulo, k: atividade, n: nome, a: início (ms), b: fim (ms) }. Guarda 120 dias. A Rotina usa isso para os padrões
+   (o que você faz primeiro, o que vem depois, o que faz junto) e para a duração real dos compromissos. */
+var LOG_KEY = "stek-log-v1", actlog = null;
+function loadActLog() { try { const v = JSON.parse(localStorage.getItem(LOG_KEY)); actlog = v && Array.isArray(v.s) ? v : { s: [] }; } catch (e) { actlog = { s: [] }; } }
+function saveActLog() { try { localStorage.setItem(LOG_KEY, JSON.stringify(actlog)); } catch (e) {} }
+function actLog(m, k, n, a, b) {
+  if (!actlog) loadActLog();
+  if (!(b - a >= 30000)) return; // menos de 30 s não vira sessão
+  const cut = Date.now() - 120 * 86400000;
+  actlog.s = actlog.s.filter(x => x.b >= cut);
+  actlog.s.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), m, k, n: String(n || "").slice(0, 80), a: Math.round(a), b: Math.round(b) });
+  saveActLog();
+}
+function actSessions() { if (!actlog) loadActLog(); return actlog.s; }
 function startTimer(sid) { cronAsk(); stSoundInit(); imLast = null; msHoldMission(); if (intel.timer) stopTimer(true); intel.timer = { sid, startedAt: Date.now() }; saveIntel(); }
-function stopTimer(silent) { const t = intel.timer; if (!t) return; addTime(t.startedAt, Date.now(), t.sid); intel.timer = null; if (!silent) saveIntel(); }
+function stopTimer(silent) { const t = intel.timer; if (!t) return; addTime(t.startedAt, Date.now(), t.sid);
+  { const sb = intel.subjects.find(x => x.id === t.sid); actLog("inteligencia", "sub:" + t.sid, "Estudo · " + (sb ? sb.name : "matéria"), t.startedAt, Date.now()); } intel.timer = null; if (!silent) saveIntel(); }
 
 function subjTask(sub, iso) {
   const p = planFor(sub, iso); if (!p) return null;
@@ -3095,6 +3124,7 @@ function stStart(pid) {
 function stStop(silent) {
   const t = stamina && stamina.timer; if (!t) return;
   stCommit(t, Date.now());
+  { const pr = practice(t.pid); actLog("estamina", "st:" + t.pid, (pr.kind === "foco" ? "Foco · " : "Cardio · ") + (pr.name || "prática"), t.startedAt, Date.now()); }
   stamina.timer = null; stWakeOff();
   if (!silent) saveStamina();
 }
@@ -3463,6 +3493,7 @@ function grStart(rid) {
 // finish = true conta uma vez; false só pausa (o tempo fica guardado para continuar)
 function grStop(finish, silent) {
   const g = graca, t = g && g.timer; if (!t) return;
+  { const rr = ritual(t.rid); actLog("graca", "gr:" + t.rid, (rr && rr.name) || "Ritual", t.startedAt, Date.now()); }
   const run = Math.floor(grRun(t)), rec = grRecW(t.day, t.rid);
   rec.sec += run;
   const L = grLimit(ritual(t.rid));
@@ -3794,7 +3825,9 @@ function msAddTime(a, b, tid) {
    - Pausar o Trabalho encerra o expediente: para tudo até você iniciar de novo (ou iniciar uma missão). */
 function msStop(silent) {
   const t = mis && mis.timer; if (!t) return;
-  msAddTime(t.startedAt, Date.now(), t.tid); mis.timer = null;
+  msAddTime(t.startedAt, Date.now(), t.tid);
+  { const tk = t.tid === MS_GERAL ? null : msTask(t.tid); actLog("missoes", "ms:" + t.tid, t.tid === MS_GERAL ? "Trabalho geral" : "Missão · " + ((tk && tk.title) || "missão"), t.startedAt, Date.now()); }
+  mis.timer = null;
   if (!silent) saveMs();
 }
 function msResumeWork() { if (mis && mis.work && !mis.timer) mis.timer = { tid: MS_GERAL, startedAt: Date.now() }; }
@@ -7590,7 +7623,7 @@ function xpCard() {
 // Lê o que falta em cada módulo e encaixa no seu tempo livre (horários cadastrados na aba Horários).
 // Tudo é recalculado na hora: concluiu, atrasou ou pulou algo, a agenda se refaz.
 const ROT_KEY = "stek-rotina-v1";
-const ROT_TABS = [{ id: "rot-hoje", label: "Hoje" }, { id: "rot-semana", label: "Semana" }, { id: "rot-horarios", label: "Horários" }];
+const ROT_TABS = [{ id: "rot-hoje", label: "Hoje" }, { id: "rot-semana", label: "Semana" }, { id: "rot-horarios", label: "Horários" }, { id: "rot-padroes", label: "Padrões" }];
 const ROT_DEF = { wake: { wk: "07:00", we: "08:00" }, sleep: { wk: "23:00", we: "23:30" }, work: { start: "08:00", end: "18:00" }, treino: "noite" };
 const ROT_TREINO = [["manha", "Manhã"], ["tarde", "Tarde"], ["noite", "Noite"]];
 let rotina = null;
@@ -7641,13 +7674,14 @@ function rtBase(iso) {
     return { a, b: b0 <= a ? b0 + 1440 : b0, name: f.name, id: f.id };
   }).filter(Boolean).sort((x, y) => x.a - y.a);
   const flex = mine.filter(f => ["flex", "wake", "sleep"].includes(f.kind)).map(f => {
-    const dur = Math.max(5, Math.round(Number(f.dur) || 30));
-    if (f.kind !== "flex") return { id: f.id, name: f.name, dur, anchor: f.kind };
+    const cfgDur = Math.max(5, Math.round(Number(f.dur) || 30)), lf = fxLearned(f.id), dur = lf ? lf.min : cfgDur; // aprende com o tempo que você leva de fato
+    const learned = lf && lf.min !== cfgDur ? { from: cfgDur, n: lf.n } : null;
+    if (f.kind !== "flex") return { id: f.id, name: f.name, dur, anchor: f.kind, learned };
     const ideal = hmToMin(f.start); if (ideal == null) return null;
     const sh = Number(f.shift) || 60, valid = [];
     for (let a = ideal - sh; a <= ideal + sh; a += 5) if (a >= wake && a + dur <= sleep && !fixed.some(x => a < x.b && a + dur > x.a)) valid.push(a);
     const near = valid.length ? valid.reduce((b, a) => Math.abs(a - ideal) < Math.abs(b - ideal) ? a : b) : ideal;
-    return { id: f.id, name: f.name, dur, ideal, shift: sh, pos: [...new Set([near, valid.length ? valid[0] : ideal, valid.length ? valid[valid.length - 1] : ideal])] };
+    return { id: f.id, name: f.name, dur, ideal, shift: sh, learned, pos: [...new Set([near, valid.length ? valid[0] : ideal, valid.length ? valid[valid.length - 1] : ideal])] };
   }).filter(Boolean);
   return { wake, sleep, fixed, flex, maxWake: Math.max(0, Math.min(c.extWake, wake - 300)), maxSleep: Math.max(0, Math.min(c.extSleep, 1500 - sleep)) };
 }
@@ -7658,7 +7692,7 @@ function rtDay(iso, cfg) {
   const busy = B.fixed.map(f => Object.assign({}, f));
   B.flex.forEach(f => {
     const a = f.anchor === "wake" ? wake : f.anchor === "sleep" ? sleep - f.dur : (cfg.flex && cfg.flex[f.id] != null ? cfg.flex[f.id] : f.pos[0]);
-    busy.push({ a, b: a + f.dur, name: f.name, id: f.id, flex: f.anchor || "flex", ideal: f.ideal });
+    busy.push({ a, b: a + f.dur, name: f.name, id: f.id, flex: f.anchor || "flex", ideal: f.ideal, learned: f.learned });
   });
   busy.sort((x, y) => x.a - y.a);
   let free = [[wake, sleep]]; busy.forEach(f => { free = rtCut(free, f.a, f.b); });
@@ -7974,6 +8008,42 @@ function rtGoFin() {
   const first = document.querySelector("#main section.card.tx"); if (!first) return;
   finUI.open = first.id.slice(3); renderFin(); rtFocus(first.id);
 }
+/* ---------- Cronômetro dos compromissos ----------
+   Roda junto com os outros (para a Rotina aprender o que você faz ao mesmo tempo); só a missão específica pausa, como nos outros módulos. */
+function fxRun() { return rotina && rotina.ftimer ? rotina.ftimer : null; }
+function fxStart(f) { cronAsk(); msHoldMission(); const r = ensureRotina(); if (r.ftimer) fxStop(true); r.ftimer = { fid: f.id, name: f.name || "Compromisso", startedAt: Date.now() }; saveRotina(); }
+function fxStop(silent) { const r = ensureRotina(), t = r.ftimer; if (!t) return; actLog("rotina", "fx:" + t.fid, t.name, t.startedAt, Date.now()); r.ftimer = null; if (!silent) saveRotina(); }
+// tempo de hoje num compromisso: sessões do histórico dentro do dia + o que está rodando
+function fxSecToday(fid) {
+  const [a0, b0] = dayBounds(todayISO()); let ms = 0;
+  actSessions().forEach(x => { if (x.k === "fx:" + fid) ms += Math.max(0, Math.min(x.b, b0) - Math.max(x.a, a0)); });
+  const t = fxRun(); if (t && t.fid === fid) ms += Math.max(0, Date.now() - Math.max(t.startedAt, a0));
+  return Math.floor(ms / 1000);
+}
+function fxConclude(f, on) {
+  const r = ensureRotina(), iso = todayISO(), k = "fx-" + f.id, st = new Set(r.done[iso] || []);
+  if (on) { st.add(k); if (r.ftimer && r.ftimer.fid === f.id) fxStop(true); } else st.delete(k);
+  r.done[iso] = [...st]; saveRotina(); pushLastSig = ""; rtRefresh(on ? null : "rt-fx-" + f.id + "-start");
+}
+// duração real: mediana do tempo por dia nas últimas 10 vezes (a partir de 5 dias com registro)
+let fxLearnCache = { sig: "", m: {} };
+function fxLearned(fid) {
+  const S = actSessions(), sig = S.length + ":" + (S.length ? S[S.length - 1].id : "");
+  if (fxLearnCache.sig !== sig) fxLearnCache = { sig, m: {} };
+  if (fid in fxLearnCache.m) return fxLearnCache.m[fid];
+  return fxLearnCache.m[fid] = fxLearnedCalc(fid);
+}
+function fxLearnedCalc(fid) {
+  const by = {}; actSessions().forEach(x => { if (x.k !== "fx:" + fid) return; const d = ymd(new Date(x.a)); by[d] = (by[d] || 0) + (x.b - x.a); });
+  const v = Object.keys(by).sort().slice(-10).map(d => by[d] / 60000); if (v.length < 5) return null;
+  v.sort((a, b) => a - b); const md = v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2;
+  return { min: Math.max(5, Math.round(md / 5) * 5), n: v.length };
+}
+function updateFxLive() {
+  const t = fxRun(); if (!t) return;
+  document.querySelectorAll('[data-live="fx-time"]').forEach(n => { if (n.dataset.fid === t.fid) n.textContent = fmtHMS(fxSecToday(t.fid)); });
+}
+setInterval(updateFxLive, 1000);
 function rtIcon(mod) { const s = el("span", "rt-ico"); s.innerHTML = ICONS[mod] || ""; return s; }
 
 /* ---------- Iniciar direto na rotina ----------
@@ -8085,7 +8155,90 @@ function renderRotina() {
   const main = document.getElementById("main"); main.innerHTML = "";
   if (state.rtab === "rot-semana") renderRtSemana(main);
   else if (state.rtab === "rot-horarios") renderRtHorarios(main);
+  else if (state.rtab === "rot-padroes") renderRtPadroes(main);
   else renderRtHoje(main);
+}
+/* ---------- Padrões: o que o histórico dos cronômetros mostra sobre o seu dia ---------- */
+function median(v) { if (!v.length) return null; const a = v.slice().sort((x, y) => x - y), h = a.length >> 1; return a.length % 2 ? a[h] : (a[h - 1] + a[h]) / 2; }
+function minOfDay(ms) { const d = new Date(ms); return d.getHours() * 60 + d.getMinutes(); }
+function rtPatterns() {
+  const S = actSessions().slice().sort((x, y) => x.a - y.a), name = {}, days = {};
+  S.forEach(x => { name[x.k] = x.n; const d = ymd(new Date(x.a)); (days[d] = days[d] || []).push(x); });
+  const dk = Object.keys(days).sort(), P = { days: dk.length, sessions: S.length, since: dk[0] || null, name, first: [], chain: [], acts: [], pairs: [] };
+  if (!dk.length) return P;
+  // primeira atividade de cada dia
+  const fc = {}; dk.forEach(d => { const x = days[d][0]; (fc[x.k] = fc[x.k] || []).push(minOfDay(x.a)); });
+  P.first = Object.keys(fc).map(k => ({ k, n: fc[k].length, at: median(fc[k]) })).sort((a, b) => b.n - a.n);
+  // ordem: em cada dia, as atividades na ordem em que começaram; conta quem vem depois de quem
+  const tr = {}, startAt = {};
+  dk.forEach(d => {
+    const seq = []; days[d].forEach(x => { if (!seq.includes(x.k)) { seq.push(x.k); (startAt[x.k] = startAt[x.k] || []).push(minOfDay(x.a)); } });
+    for (let i = 0; i + 1 < seq.length; i++) { tr[seq[i]] = tr[seq[i]] || {}; tr[seq[i]][seq[i + 1]] = (tr[seq[i]][seq[i + 1]] || 0) + 1; }
+  });
+  if (P.first.length) {
+    let cur = P.first[0].k; const used = new Set([cur]); P.chain.push({ k: cur, n: P.first[0].n });
+    for (let i = 0; i < 8; i++) {
+      const nx = Object.entries(tr[cur] || {}).filter(([k]) => !used.has(k)).sort((a, b) => b[1] - a[1])[0];
+      if (!nx || nx[1] < 2) break; used.add(nx[0]); P.chain.push({ k: nx[0], n: nx[1] }); cur = nx[0];
+    }
+  }
+  // cada atividade: em quantos dias, a que horas costuma começar, duração da sessão e total no dia
+  const per = {};
+  dk.forEach(d => { const tot = {}; days[d].forEach(x => { tot[x.k] = (tot[x.k] || 0) + (x.b - x.a); const p = per[x.k] = per[x.k] || { ses: [], day: [] }; p.ses.push((x.b - x.a) / 60000); }); Object.keys(tot).forEach(k => per[k].day.push(tot[k] / 60000)); });
+  P.acts = Object.keys(per).map(k => ({ k, days: per[k].day.length, at: median(startAt[k] || []), ses: median(per[k].ses), day: median(per[k].day) })).sort((a, b) => (a.at ?? 9999) - (b.at ?? 9999));
+  // ao mesmo tempo: sessões de atividades diferentes que se sobrepõem por 5 min ou mais
+  const pr = {};
+  dk.forEach(d => {
+    const L = days[d], seen = {};
+    for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) {
+      const x = L[i], y = L[j]; if (y.a >= x.b) continue; if (x.k === y.k) continue;
+      const ov = Math.min(x.b, y.b) - Math.max(x.a, y.a); if (ov < 5 * 60000) continue;
+      const key = [x.k, y.k].sort().join("|"); const q = pr[key] = pr[key] || { a: key.split("|")[0], b: key.split("|")[1], days: 0, min: 0 };
+      q.min += ov / 60000; if (!seen[key]) { seen[key] = 1; q.days++; }
+    }
+  });
+  P.pairs = Object.values(pr).sort((a, b) => b.days - a.days || b.min - a.min).slice(0, 8);
+  return P;
+}
+function renderRtPadroes(main) {
+  head2(main, "Padrões", "O que o histórico dos cronômetros mostra sobre o seu dia: o que vem primeiro, a ordem, o que você faz junto e quanto tempo leva de fato.");
+  const P = rtPatterns(), nm = k => P.name[k] || k, hm = m => m == null ? "—" : minToHM(Math.round(m / 5) * 5);
+  const info = el("section", "guide"); info.id = "pd-info";
+  info.appendChild(el("p", "note", P.days ? P.sessions + (P.sessions === 1 ? " sessão" : " sessões") + " em " + P.days + (P.days === 1 ? " dia" : " dias") + ", desde " + fmtDate(P.since) + "." : "Ainda não há registros. A partir de agora, cada cronômetro que você para (estudo, Estamina, Graça, trabalho, missões e compromissos) entra no histórico."));
+  info.appendChild(el("p", "note muted", "Os padrões ficam mais confiáveis a partir de 5 dias com cronômetro. A duração dos compromissos (ao acordar, antes de dormir e flexíveis) passa a seguir o tempo que você leva de fato depois de 5 dias registrados. Metas de estudo, trabalho e tarefas não mudam."));
+  main.appendChild(info);
+  if (!P.days) return;
+  const sec = (id, title) => { const s0 = el("section", "guide"); s0.id = id; s0.appendChild(el("h3", null, title)); main.appendChild(s0); return s0; };
+  if (P.first.length) {
+    const s1 = sec("pd-first", "Começo do dia"), f = P.first[0];
+    s1.appendChild(el("p", "note", "Primeira coisa do dia: " + nm(f.k) + " (" + f.n + " de " + P.days + (P.days === 1 ? " dia" : " dias") + "), por volta de " + hm(f.at) + "."));
+    if (P.first.length > 1) s1.appendChild(el("p", "note muted", "Outras vezes: " + P.first.slice(1, 4).map(x => nm(x.k) + " (" + x.n + ")").join(", ") + "."));
+  }
+  if (P.chain.length > 1) {
+    const s2 = sec("pd-chain", "Ordem mais comum"), ol = el("ol", "pd-chain");
+    P.chain.forEach((c, i) => { const a = P.acts.find(x => x.k === c.k); ol.appendChild(el("li", null, nm(c.k) + (a && a.at != null ? " · por volta de " + hm(a.at) : "") + (i ? " (" + c.n + (c.n === 1 ? " vez" : " vezes") + " logo depois da anterior)" : ""))); });
+    s2.appendChild(ol);
+  }
+  const s3 = sec("pd-acts", "Cada atividade"), tb = el("table", "pd-table"), th = el("tr");
+  ["Atividade", "Dias", "Começa por volta de", "Sessão típica", "Por dia"].forEach(t => th.appendChild(el("th", null, t)));
+  const thead = el("thead"); thead.appendChild(th); tb.appendChild(thead); const tbody = el("tbody");
+  P.acts.forEach(a => { const tr = el("tr"); [nm(a.k), String(a.days), hm(a.at), rtDur(Math.round(a.ses)), rtDur(Math.round(a.day))].forEach(t => tr.appendChild(el("td", null, t))); tbody.appendChild(tr); });
+  tb.appendChild(tbody); const wrap = el("div", "pd-wrap"); wrap.appendChild(tb); s3.appendChild(wrap);
+  const s4 = sec("pd-pairs", "Ao mesmo tempo");
+  if (P.pairs.length) { const ul = el("ul", "inv-rows"); P.pairs.forEach(q => { const li = el("li"); li.append(el("span", null, nm(q.a) + " + " + nm(q.b)), el("span", "muted", q.days + (q.days === 1 ? " dia" : " dias")), el("b", null, rtDur(Math.round(q.min)) + " juntos")); ul.appendChild(li); }); s4.appendChild(ul); }
+  else s4.appendChild(el("p", "note muted", "Nenhuma atividade feita junto com outra (por 5 min ou mais) até agora."));
+  const fx = (rt().fixed || []).filter(f => ["flex", "wake", "sleep"].includes(f.kind));
+  if (fx.length) {
+    const s5 = sec("pd-fx", "Compromissos: planejado × real"), ul = el("ul", "inv-rows");
+    fx.forEach(f => {
+      const by = {}; actSessions().forEach(x => { if (x.k === "fx:" + f.id) { const d = ymd(new Date(x.a)); by[d] = (by[d] || 0) + (x.b - x.a) / 60000; } });
+      const v = Object.values(by), lf = fxLearned(f.id), li = el("li");
+      li.append(el("span", null, f.name || "Compromisso"), el("span", "muted", "planejado " + rtDur(Math.round(Number(f.dur) || 30))),
+        el("b", null, v.length ? "real " + rtDur(Math.round(median(v))) + (lf ? " · a Rotina já usa" : " · " + v.length + " de 5 dias para a Rotina usar") : "sem registro ainda"));
+      ul.appendChild(li);
+    });
+    s5.appendChild(ul);
+  }
 }
 function rtSkip(key, on) {
   const r = ensureRotina(), iso = todayISO(); const s = new Set(r.skip[iso] || []);
@@ -8146,18 +8299,21 @@ function rtTodayNodes(R, nowMin) {
   if (ch.length) { const b = el("p", "banner rt-warn", "Para caber tudo hoje: " + ch.join(", ") + "."); b.id = "rt-changes"; out.push(b); }
   if (nowMin >= d.sleep) out.push(el("p", "banner", "Pelo seu horário de dormir, o dia de hoje já acabou. Veja amanhã na aba Semana da Rotina."));
   const tl = el("ol", "rt-list"); tl.id = "rt-list";
-  const rows = R.blocks.map(b => ({ s: b.s, e: b.e, b })).concat(d.fixed.filter(f => f.b > nowMin).map(f => ({ s: f.a, e: f.b, f }))).sort((x, y) => x.s - y.s);
+  const fxDone = rt().done[todayISO()] || [];
+  const rows = R.blocks.map(b => ({ s: b.s, e: b.e, b })).concat(d.fixed.filter(f => (f.b > nowMin || (fxRun() && fxRun().fid === f.id)) && !fxDone.includes("fx-" + f.id)).map(f => ({ s: f.a, e: f.b, f }))).sort((x, y) => x.s - y.s);
   if (d.wake > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.wake) + " · Acordar" + (R.cfg.ws ? " (" + rtDur(R.cfg.ws) + " antes, para caber tudo)" : "")));
   // o que já foi feito hoje continua na lista, em verde (concluído com o botão pode ser desfeito)
   const okd = rt().done[todayISO()] || [];
   const doneCards = (R.dem.doneIt || []).map(x => ({ x, manual: false })).concat(R.dem.concl.concat(okd.includes("extra") ? [{ key: "extra", mod: "inteligencia", title: "Estudo extra" }] : []).map(x => ({ x, manual: true })));
+  // compromissos concluídos hoje (com o tempo que levaram)
+  d.fixed.filter(f => okd.includes("fx-" + f.id)).forEach(f => { const sec = fxSecToday(f.id); doneCards.push({ x: { key: "fx-" + f.id, mod: "rotina", title: f.name || "Compromisso", sub: sec ? rtDur(Math.round(sec / 60)) : "", fx: f }, manual: true }); });
   doneCards.forEach(({ x, manual }) => {
     const li = el("li", "rt-row done mod-" + x.mod); li.id = "rt-done-" + x.key;
     const btn = el("button", "rt-main"); btn.type = "button"; btn.id = "rt-go-done-" + x.key;
     const time = el("span", "rt-time"); time.append(el("b", null, "✓"), el("span", "rt-end", manual ? "Concluído" : "Feito"));
-    const tx = el("span", "rt-txt"); tx.appendChild(el("span", "rt-title", x.title)); if (x.sub && !manual) tx.appendChild(el("span", "rt-sub", x.sub));
-    btn.append(time, rtIcon(x.mod), tx); btn.addEventListener("click", () => x.go ? x.go() : rtGoMod(x.mod)); li.appendChild(btn);
-    if (manual) { const u = el("button", "linkbtn rt-conc", "Desfazer"); u.type = "button"; u.id = "rt-unconc-" + x.key; u.addEventListener("click", () => rtConclude(x, false)); li.appendChild(u); }
+    const tx = el("span", "rt-txt"); tx.appendChild(el("span", "rt-title", x.title)); if (x.sub && (!manual || x.fx)) tx.appendChild(el("span", "rt-sub", x.sub));
+    btn.append(time, rtIcon(x.mod), tx); btn.addEventListener("click", () => x.go ? x.go() : x.fx ? null : rtGoMod(x.mod)); li.appendChild(btn);
+    if (manual) { const u = el("button", "linkbtn rt-conc", "Desfazer"); u.type = "button"; u.id = "rt-unconc-" + x.key; u.addEventListener("click", () => x.fx ? fxConclude(x.fx, false) : rtConclude(x, false)); li.appendChild(u); }
     tl.appendChild(li);
   });
   const studyRun = !!(intel && intel.timer) && !R.blocks.some(b => b.it.key === "estudo" || (b.it.review && b.it.running));
@@ -8170,8 +8326,21 @@ function rtTodayNodes(R, nowMin) {
     const time = el("span", "rt-time"); time.append(el("b", null, running ? "Agora" : minToHM(s0)), el("span", "rt-end", "até " + minToHM(e0)));
     time.setAttribute("aria-label", (running ? "agora" : "das " + minToHM(s0)) + " até " + minToHM(e0));
     if (r.f) {
-      const fs = r.f.flex === "flex" ? (r.f.a !== r.f.ideal ? "Remanejado: o ideal era " + minToHM(r.f.ideal) : "Horário flexível") : r.f.flex === "wake" ? "Ao acordar" : r.f.flex === "sleep" ? "Antes de dormir" : "Compromisso fixo";
-      li.append(time, el("span", "rt-title", r.f.name || "Compromisso"), el("span", "rt-sub", fs)); tl.appendChild(li); return;
+      const f = r.f, frun = !!(fxRun() && fxRun().fid === f.id), fsec = fxSecToday(f.id);
+      let fs = f.flex === "flex" ? (f.a !== f.ideal ? "Remanejado: o ideal era " + minToHM(f.ideal) : "Horário flexível") : f.flex === "wake" ? "Ao acordar" : f.flex === "sleep" ? "Antes de dormir" : "Compromisso fixo";
+      if (f.learned) fs += " · " + rtDur(f.b - f.a) + " pelo tempo que você costuma levar (era " + rtDur(f.learned.from) + ")";
+      if (frun) { li.className = "rt-row fx run"; time.firstChild.textContent = "Agora"; } else li.classList.add("fx");
+      li.id = "rt-fx-" + f.id;
+      const main = el("div", "rt-main"); const tx = el("span", "rt-txt"); tx.append(el("span", "rt-title", f.name || "Compromisso"), el("span", "rt-sub", fs));
+      main.append(time, el("span", "rt-ico"), tx); li.appendChild(main);
+      const c = el("button", "linkbtn rt-conc", "Concluir"); c.type = "button"; c.id = "rt-fx-conc-" + f.id; c.addEventListener("click", () => fxConclude(f, true)); li.appendChild(c);
+      const act = el("div", "rt-act");
+      const tm = el("span", "timer rt-tm-time", frun || fsec ? fmtHMS(fsec) : ""); if (frun) { tm.dataset.live = "fx-time"; tm.dataset.fid = f.id; }
+      const b = el("button", frun ? "btn stop" : "btn", frun ? "Pausar" : "▶ Iniciar"); b.type = "button"; b.id = "rt-fx-" + f.id + (frun ? "-stop" : "-start");
+      b.setAttribute("aria-label", (frun ? "Pausar " : "Iniciar ") + (f.name || "compromisso"));
+      b.addEventListener("click", () => { if (frun) fxStop(); else fxStart(f); rtRefresh("rt-fx-" + f.id + (frun ? "-start" : "-stop")); });
+      act.append(b, tm); li.appendChild(act);
+      tl.appendChild(li); return;
     }
     const it = r.b.it, suf = it.key + (r.b.part ? "-" + r.b.part : ""); li.id = "rt-" + suf;
     const btn = el("button", "rt-main"); btn.type = "button"; btn.id = "rt-go-" + suf;
@@ -8645,7 +8814,7 @@ setInterval(() => {
 
 /* ======================= Conta e nuvem ======================= */
 const CLOUD_KEY = "stek-cloud";
-const SYNC_KEYS = ["treino-perfil", "treino-plano-meu-v1", "treino-logs-meu-v1", "treino-settings-meu-v1", "stek-intel-v1", "stek-fin-v1", "stek-stamina-v1", "stek-graca-v1", "stek-missoes-v1", "stek-perfil-v1", "stek-rotina-v1"];
+const SYNC_KEYS = ["treino-perfil", "treino-plano-meu-v1", "treino-logs-meu-v1", "treino-settings-meu-v1", "stek-intel-v1", "stek-fin-v1", "stek-stamina-v1", "stek-graca-v1", "stek-missoes-v1", "stek-perfil-v1", "stek-rotina-v1", "stek-log-v1"];
 const DEFAULT_SERVER = "https://stek-pluggy.nataniel-akio.workers.dev";
 const _lsSet = Storage.prototype.setItem;
 let cloud = null, cloudApplying = false, cloudTimer = null, cloudBusy = false;
@@ -8782,7 +8951,7 @@ function applyRemote(items, keepLast) {
   saveCloud(); reloadAllState();
 }
 function reloadAllState() {
-  loadIntel(); loadFin(); loadStamina(); loadGraca(); loadMs(); loadPerfil(); loadRotina(); loadFPlan(); fMigrateLegacy(); fLateMigrate();
+  loadIntel(); loadFin(); loadStamina(); loadGraca(); loadMs(); loadPerfil(); loadRotina(); loadActLog(); loadFPlan(); fMigrateLegacy(); fLateMigrate();
   const p = readProfile();
   if (p) { if (p !== profileId || p === "meu") useProfile(p); state.logs = {}; loadLogs(); loadSettings(); }
   rerenderView();
@@ -8836,6 +9005,11 @@ function mergeKey(k, a, b) {
   if (a == null) return b; if (b == null || a === b) return a;
   let L, R; try { L = JSON.parse(a); R = JSON.parse(b); } catch (e) { return b; }
   if (!L || typeof L !== "object") return b; if (!R || typeof R !== "object") return a;
+  if (k === "stek-log-v1") {
+    const by = {}; (L.s || []).concat(R.s || []).forEach(x => { if (x && x.id) by[x.id] = x; });
+    const cut = Date.now() - 120 * 86400000;
+    return JSON.stringify({ s: Object.values(by).filter(x => x.b >= cut).sort((x, y) => x.a - y.a) });
+  }
   if (/^treino-logs/.test(k)) {
     const out = Object.assign({}, R);
     Object.keys(L).forEach(d => { const l = L[d]; if (!l || !l.e) return; const r = out[d] && out[d].e ? out[d] : null; out[d] = Object.assign({}, l, r || {}, { e: Object.assign({}, l.e, r ? r.e : {}) }); });

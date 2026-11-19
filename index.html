@@ -3767,7 +3767,9 @@ function msSince() {
   if (g.timer) { const d = ymd(new Date(g.timer.startedAt)); if (!first || d < first) first = d; }
   return first || todayISO();
 }
-function msGoalSec(iso) { return msWorkDay(iso) && iso >= msSince() ? Math.round(msData().goal.hours * 3600) : 0; }
+function msGoalBase(iso) { return msWorkDay(iso) && iso >= msSince() ? Math.round(msData().goal.hours * 3600) : 0; }
+// quando a Rotina passa a sobra do trabalho para o estudo atrasado, a meta de trabalho do dia diminui na mesma medida (vale para XP e penalidade)
+function msGoalSec(iso) { return Math.max(0, msGoalBase(iso) - rtDivert(iso) * 60); }
 function msRun(iso, tid) {
   const t = msData().timer; if (!t || (tid && t.tid !== tid)) return 0;
   const [a, b] = dayBounds(iso); const s = Math.max(a, t.startedAt), e = Math.min(b, Date.now());
@@ -4294,7 +4296,8 @@ function renderMsHoje(main) {
   const tiles = el("div", "tiles tiles-3");
   const list = msDayList(iso), open = list.filter(x => x.status === "aberta"), closed = list.filter(x => x.status !== "aberta");
   const estLeft = open.reduce((a, x) => a + Math.max(0, (x.est || 0) * 60 - msTaskSec(x.id)), 0);
-  tiles.append(stTile("Tempo", fmtHM(sec), goal ? "de " + fmtGoal(goal) + " (mínimo)" : "sem meta hoje", goal && sec >= goal ? "good" : "", "ms-daytime"),
+  const dvm = rtDivert(iso);
+  tiles.append(stTile("Tempo", fmtHM(sec), goal ? "de " + fmtGoal(goal) + " (mínimo" + (dvm ? "; " + rtDur(dvm) + " foram para o estudo atrasado" : "") + ")" : dvm ? "a meta de hoje foi para o estudo atrasado" : "sem meta hoje", goal && sec >= goal ? "good" : "", "ms-daytime"),
     stTile("Missões", closed.length + "/" + list.length, "encerradas no dia", list.length && !open.length ? "good" : ""),
     stTile("Estimado", estLeft ? fmtHM(estLeft) : "—", "para as abertas"));
   w.appendChild(tiles);
@@ -7697,6 +7700,38 @@ function rtMissionPlan(days) {
   return out;
 }
 
+/* Matérias atrasadas: o que o plano de estudo previa até ontem e ainda não foi feito.
+   O tempo de cada unidade vem da média do seu histórico na matéria (sem histórico, 20 min). */
+function rtStudyBehind(iso) {
+  if (!intel || !modOn("inteligencia")) return [];
+  const y = addDaysISO(iso, -1);
+  return intel.subjects.map(s => {
+    const dn = subjDoneUpTo(s); if (s.total && dn >= s.total) return null;
+    const n = Math.round(expectedUpTo(s, y) - dn); if (!(n > 0)) return null;
+    let sec = 0, cnt = 0; Object.keys(intel.days).forEach(d => { const r = getRec(d, s.id); if (r.count > 0 && r.sec > 0) { sec += r.sec; cnt += r.count; } });
+    const per = cnt ? Math.min(90, Math.max(5, sec / cnt / 60)) : 20;
+    return { id: s.id, name: s.name, n, unit: unitWord(s, n), min: n * per };
+  }).filter(Boolean);
+}
+function rtDivert(iso) { try { const d = rotina && rotina.divert && rotina.divert[iso]; return d && d.min > 0 ? d.min : 0; } catch (e) { return 0; } }
+/* A sobra da meta de trabalho vai para o estudo atrasado quando nenhuma missão está atrasada ou vence nos próximos 7 dias.
+   Decidido uma vez por dia (na primeira vez que a Rotina monta o dia) para não mudar a meta enquanto você estuda. */
+function rtDivertFreeze() {
+  const iso = todayISO(); if (rotina && rotina.divert && rotina.divert[iso] !== undefined) return;
+  if (!modOn("missoes") || !mis || !modOn("inteligencia") || !intel) return;
+  const r = ensureRotina(); r.divert = r.divert || {};
+  Object.keys(r.divert).forEach(d => { if (d < addDaysISO(iso, -60)) delete r.divert[d]; });
+  const goal = Math.round(msGoalBase(iso) / 60), open = msData().tasks.filter(t => t.status === "aberta"), wEnd = addDaysISO(iso, 6);
+  let min = 0, why = "";
+  if (!goal) why = "sem meta de trabalho";
+  else if (open.some(t => !t.wait && t.due && t.due <= wEnd)) why = "missão atrasada ou vencendo na semana";
+  else {
+    const fixedNeed = open.filter(t => t.wait ? t.wait.until <= iso : (t.plan || []).includes(iso)).reduce((a, t) => a + (t.wait ? 15 : Math.max(15, (t.est || 60) - Math.floor(msTaskSec(t.id) / 60))), 0);
+    const left = Math.max(0, goal - Math.floor(msDaySec(iso) / 60) - fixedNeed), back = rtStudyBehind(iso).reduce((a, x) => a + x.min, 0);
+    min = Math.floor(Math.min(left, back) / 5) * 5; why = back ? "" : "nenhuma matéria atrasada";
+  }
+  r.divert[iso] = { min, why }; saveRotina();
+}
 // O que cada módulo pede no dia (hoje: só o que falta)
 function rtDemand(iso, plan, sim) {
   const today = todayISO(), isT = iso === today, c = rt(), d = rtBase(iso), skip = c.skip[iso] || [];
@@ -7788,14 +7823,17 @@ function rtDemand(iso, plan, sim) {
       const before = items.length; add(it); if (items.length > before) revMin += dur;
     });
     const ph = pp("pen-intel-h"), penSub = P.some(p => /^pen-sub-/.test(p.key) && !p.done);
-    const goal = Math.round(goalSec(iso) / 60) + (ph ? 60 : 0), have = isT ? Math.floor(daySec(iso) / 60) : 0, need = Math.max(goal - have - revMin, penSub ? 30 : 0);
+    const dv = isT ? rtDivert(iso) : 0, behind = isT ? rtStudyBehind(iso) : [];
+    const goal = Math.round(goalSec(iso) / 60) + (ph ? 60 : 0) + dv, have = isT ? Math.floor(daySec(iso) / 60) : 0, need = Math.max(goal - have - revMin, penSub ? 30 : 0);
+    const bh = id => behind.find(x => x.id === id);
     const subs = intel.subjects.map(s => {
       const ps = pp("pen-sub-" + s.id); if (ps) return { id: s.id, label: s.name + " (penalidade: chegar a " + ps.need + " " + unitWord(s, ps.need) + ")" };
+      const b = bh(s.id); if (b) return { id: s.id, late: true, label: s.name + " (atrasada: " + b.n + " " + b.unit + ")" };
       const p = planFor(s, iso); if (!p || p.doneAll) return null;
       if (isT) { const st = subjTask(s, iso); if (st && st.complete) return null; }
       return { id: s.id, label: s.name + (p.qty ? " (" + p.qty + " " + unitWord(s, p.qty) + ")" : "") };
-    }).filter(Boolean);
-    if (need > 0) add({ key: "estudo", mod: "inteligencia", running: !!run.estudo && !/^rev-/.test(run.rtKey || ""), title: ph ? "Estudo (com +1h de penalidade)" : "Estudo", sub: subs.map(x => x.label).join(" · "), subjects: subs, dur: need, split: IR.work, minChunk: IR.min, gapAfter: IR.brk, longEvery: IR.every, longGap: IR.long, rank: 4, go: () => rtGoSubj(subs.length ? subs[0].id : null) });
+    }).filter(Boolean).sort((a, b) => (b.late ? 1 : 0) - (a.late ? 1 : 0)); // atrasadas primeiro
+    if (need > 0) add({ key: "estudo", mod: "inteligencia", running: !!run.estudo && !/^rev-/.test(run.rtKey || ""), title: ph || dv ? "Estudo (com " + [ph ? "+1h de penalidade" : "", dv ? rtDur(dv) + " de matérias atrasadas" : ""].filter(Boolean).join(" e ") + ")" : "Estudo", sub: subs.map(x => x.label).join(" · "), subjects: subs, dur: need, split: IR.work, minChunk: IR.min, gapAfter: IR.brk, longEvery: IR.every, longGap: IR.long, rank: 4, go: () => rtGoSubj(subs.length ? subs[0].id : null) });
     else if (have) dn({ key: "estudo", mod: "inteligencia", title: "Estudo", sub: rtDur(have) + (goal ? " de " + rtDur(goal) : "") }, "Estudo " + rtDur(have));
     if (isT) part("inteligencia", "estudo", have, goal, "min");
   }
@@ -7933,6 +7971,7 @@ function rtChanges(r) {
 }
 
 function rtToday() {
+  rtDivertFreeze();
   const iso = todayISO(), plan = rtMissionPlan(rtWeekDays()), dem = rtDemand(iso, plan);
   const from = Math.ceil(rtNow() / 5) * 5;
   return Object.assign(rtPlan(iso, dem.items, from), { dem, plan, from });
@@ -8126,6 +8165,12 @@ function rtTodayNodes(R, nowMin) {
   if (R.dem.pen && R.dem.pen.length) out.push(penBox(R.dem.pen, "pen-box"));
   const ch = rtChanges(R);
   if (ch.length) { const b = el("p", "banner rt-warn", "Para caber tudo hoje: " + ch.join(", ") + "."); b.id = "rt-changes"; out.push(b); }
+  const dvm = rtDivert(todayISO());
+  if (dvm) {
+    const bh = rtStudyBehind(todayISO());
+    const b = el("p", "banner", "Nenhuma missão está atrasada ou vence nesta semana, então " + rtDur(dvm) + " da meta de trabalho de hoje foram para as matérias atrasadas" + (bh.length ? " (" + bh.map(x => x.name + ": " + x.n + " " + x.unit).join(", ") + ")" : "") + ". A meta de trabalho de hoje ficou em " + rtDur(Math.round(msGoalSec(todayISO()) / 60)) + ".");
+    b.id = "rt-divert"; out.push(b);
+  }
   if (nowMin >= d.sleep) out.push(el("p", "banner", "Pelo seu horário de dormir, o dia de hoje já acabou. Veja amanhã na aba Semana da Rotina."));
   const tl = el("ol", "rt-list"); tl.id = "rt-list";
   const rows = R.blocks.map(b => ({ s: b.s, e: b.e, b })).concat(d.fixed.filter(f => f.b > nowMin).map(f => ({ s: f.a, e: f.b, f }))).sort((x, y) => x.s - y.s);

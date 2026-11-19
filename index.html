@@ -7673,30 +7673,20 @@ function rtWorkout(iso) {
 }
 
 // Missões da semana: planejadas primeiro; o resto por prazo (o que vence antes vai antes) e prioridade, até encher as horas de trabalho de cada dia
+/* Missões na Rotina: cada uma entra só no dia que você marcou para ela. Nada é adiantado nem espalhado pelos dias.
+   - planejada para o dia (Fazer hoje) ou com a data (prazo / executar em) no dia;
+   - atrasada (data ou dia planejado já passou e continua aberta): entra hoje;
+   - esperando resposta: entra no dia de cobrar, com 15 min. */
 function rtMissionPlan(days) {
   const out = { byDay: {}, late: [], later: [] }; days.forEach(d => { out.byDay[d] = []; });
   if (!modOn("missoes") || !mis) return out;
-  const today = days[0], last = days[days.length - 1], cap = {};
-  days.forEach(d => { cap[d] = Math.round((msGoalSec(d) - (d === today ? msDaySec(d) : 0)) / 60); if (cap[d] < 0) cap[d] = 0; });
+  const today = days[0];
   const need = t => Math.max(15, (t.est || 60) - Math.floor(msTaskSec(t.id) / 60));
-  const put = (t, d) => { const n = need(t); out.byDay[d].push({ t, need: n }); cap[d] -= n; };
-  const rest = [];
   msData().tasks.filter(t => t.status === "aberta").forEach(t => {
-    if (t.wait) { const d = t.wait.until <= today ? today : t.wait.until; if (out.byDay[d]) { out.byDay[d].push({ t, need: 15, cobrar: true }); cap[d] -= 15; } return; }
-    const pl = (t.plan || []).filter(x => x >= today).sort()[0] || ((t.plan || []).some(x => x < today) ? today : null);
-    if (pl && out.byDay[pl]) put(t, pl); else if (pl) out.later.push(t);
-    // recorrente (boleto todo dia 10 etc.) tem dia certo: entra no dia de executar (ou hoje, se já passou), nunca adiantada
-    else if (t.rec && t.rec.type && t.due) { const d0 = t.due < today ? today : t.due; if (out.byDay[d0]) put(t, d0); else out.later.push(t); }
-    else rest.push(t);
-  });
-  rest.sort((a, b) => { const da = a.due || "9999", db = b.due || "9999"; return da < db ? -1 : da > db ? 1 : (MS_PRI_RANK[a.pri] ?? 1) - (MS_PRI_RANK[b.pri] ?? 1); });
-  rest.forEach(t => {
-    const n = need(t), lim = t.due ? (t.due < today ? today : t.due) : null;
-    if (lim && lim > last) { const ok = days.filter(d => cap[d] >= n); if (ok.length) put(t, ok[0]); else out.later.push(t); return; }
-    const ok = days.filter(d => (!lim || d <= lim) && cap[d] >= n);
-    if (ok.length) { put(t, ok[0]); return; }
-    if (lim) { const ds = days.filter(d => d <= lim && msWorkDay(d)); put(t, ds.length ? ds.reduce((b, x) => cap[x] > cap[b] ? x : b, ds[0]) : today); out.late.push(t); return; }
-    out.later.push(t);
+    if (t.wait) { const d = t.wait.until <= today ? today : t.wait.until; if (out.byDay[d]) out.byDay[d].push({ t, need: 15, cobrar: true }); else out.later.push(t); return; }
+    const plan = t.plan || [], overdue = (t.due && t.due < today) || plan.some(x => x < today);
+    const d = days.find(x => plan.includes(x) || t.due === x || (x === today && overdue));
+    if (d) out.byDay[d].push({ t, need: need(t) }); else out.later.push(t);
   });
   return out;
 }
@@ -8303,7 +8293,7 @@ function renderRtSemana(main) {
     if (isT) { const go = el("button", "linkbtn", "Ver a agenda de hoje"); go.type = "button"; go.id = "rt-sem-hoje"; go.addEventListener("click", () => enterRotina("rot-hoje")); card.appendChild(go); }
     main.appendChild(card);
   });
-  if (plan.later.length) main.appendChild(el("p", "note muted", "Depois desta semana: " + plan.later.length + (plan.later.length === 1 ? " missão aberta" : " missões abertas") + " sem espaço nesta semana ou com prazo mais à frente."));
+  if (plan.later.length) main.appendChild(el("p", "note muted", "Depois desta semana: " + plan.later.length + (plan.later.length === 1 ? " missão aberta" : " missões abertas") + " com data mais à frente ou sem data."));
 }
 
 function renderRtHorarios(main) {

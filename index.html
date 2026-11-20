@@ -761,6 +761,51 @@ ol.steps a { color: var(--accent); }
 .rt-tm.run .rt-tm-name { border-color: var(--accent); color: var(--accent); }
 .rt-tm .btn { padding: 6px 12px; font-size: 13px; }
 .rt-sug-t { margin: 4px 0 0; font: 600 12px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+/* Cortana: botão redondo no canto e painel da conversa */
+.ct-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 41; width: 58px; height: 58px; border-radius: 50%; border: 1px solid var(--accent); cursor: pointer;
+  background: radial-gradient(circle at 50% 45%, rgba(166, 107, 255, .28), rgba(10, 6, 20, .96) 70%); box-shadow: 0 0 0 1px rgba(166, 107, 255, .35), 0 0 22px rgba(166, 107, 255, .35), 0 6px 18px rgba(0, 0, 0, .55); padding: 0; }
+.ct-fab:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.ct-ring { position: absolute; inset: 13px; border-radius: 50%; border: 3px solid var(--accent); box-shadow: 0 0 10px rgba(176, 124, 255, .8), inset 0 0 8px rgba(176, 124, 255, .6); }
+.ct-fab.wake .ct-ring { border-color: rgba(176, 124, 255, .75); }
+.ct-fab.listen { border-color: var(--good); }
+.ct-fab.listen .ct-ring { border-color: var(--good); box-shadow: 0 0 14px rgba(60, 240, 165, .9), inset 0 0 8px rgba(60, 240, 165, .6); }
+.ct-fab.think .ct-ring { border-top-color: transparent; border-bottom-color: transparent; }
+.ct-fab.speak .ct-ring { border-color: #d7b8ff; }
+@media (prefers-reduced-motion: no-preference) {
+  .ct-fab.wake .ct-ring { animation: ct-breath 3.2s ease-in-out infinite; }
+  .ct-fab.listen .ct-ring { animation: ct-pulse .9s ease-in-out infinite; }
+  .ct-fab.think .ct-ring { animation: ct-spin .9s linear infinite; }
+  .ct-fab.speak .ct-ring { animation: ct-pulse .55s ease-in-out infinite; }
+}
+@keyframes ct-breath { 50% { opacity: .55; } }
+@keyframes ct-pulse { 50% { transform: scale(1.14); } }
+@keyframes ct-spin { to { transform: rotate(360deg); } }
+.ct-panel { position: fixed; right: 16px; bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 40; width: min(410px, calc(100vw - 32px)); max-height: min(68vh, 560px);
+  display: flex; flex-direction: column; gap: 8px; padding: 12px; background: rgba(13, 8, 26, .97); border: 1px solid var(--line); box-shadow: var(--glow), 0 10px 30px rgba(0, 0, 0, .6); backdrop-filter: blur(6px); }
+.ct-head { display: flex; align-items: center; gap: 12px; }
+.ct-title { flex: 1; display: grid; min-width: 0; }
+.ct-name { font: 700 17px var(--font-display); letter-spacing: .14em; text-transform: uppercase; color: var(--ink); }
+.ct-st { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ct-x { font-size: 13px; }
+.ct-log { flex: 1; min-height: 60px; overflow-y: auto; display: grid; align-content: start; gap: 8px; padding-right: 4px; }
+.ct-msg { margin: 0; font-size: 15px; line-height: 1.4; }
+.ct-msg.eu { color: var(--muted); }
+.ct-msg.ct { color: var(--ink); border-left: 2px solid var(--accent); padding-left: 8px; }
+.ct-msg.info { color: var(--muted); font-size: 13px; }
+.ct-form { display: flex; gap: 6px; }
+.ct-form input { flex: 1; min-width: 0; font: 500 16px var(--font-body); color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); padding: 8px 10px; }
+.ct-form input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 10px rgba(166, 107, 255, .35); }
+.ct-form .btn { padding: 8px 10px; font-size: 13px; }
+.ct-mic.on { border-color: var(--good); color: var(--good); }
+.ct-set summary { cursor: pointer; font: 600 13px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.ct-set { display: grid; gap: 8px; }
+.ct-set[open] { padding-bottom: 2px; }
+.ct-chk { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; margin-top: 6px; cursor: pointer; }
+.ct-chk input { margin-top: 3px; accent-color: var(--accent); }
+.ct-set .field label { font-size: 12px; }
+.ct-panel.compact { max-height: none; }
+.ct-panel.compact .ct-log { max-height: 6.5em; min-height: 0; }
+body.ct-on #main { padding-bottom: 92px; }
 </style>
 </head>
 <body data-view="home">
@@ -2798,7 +2843,7 @@ function studySVG(rows) {
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Horas de estudo por dia nos últimos 14 dias">' + g + '</svg>';
 }
 
-let intelNew = null, intelAddOpen = false;
+let intelNew = null, intelAddOpen = false, intelDraft = null;
 const DOW_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 function planEditor(s) {
   const box = el("div", "plan-ed"); box.id = "plan-" + s.id;
@@ -2952,18 +2997,19 @@ function intelAddSection() {
   uf.append(ul, us); form.appendChild(uf);
   const tt = mk("new-total", "Total (opcional)", "0", "numeric");
   const bs = mk("new-base", "Já feitos antes", "0", "numeric");
+  if (intelDraft) { nm.value = intelDraft.name || ""; if (intelDraft.unit) us.value = intelDraft.unit; if (intelDraft.total) tt.value = String(intelDraft.total); if (intelDraft.base) bs.value = String(intelDraft.base); }
   const sb = el("button", "btn", "Adicionar matéria"); sb.type = "submit"; sb.id = "add-btn";
   const msg = el("p", "note muted"); msg.setAttribute("aria-live", "polite");
   form.addEventListener("submit", e => {
     e.preventDefault();
     const name = nm.value.trim(); if (!name) { flashAuto(msg, "Dê um nome para a matéria."); return; }
     intel.subjects.push({ id: "s" + Date.now().toString(36), name, unit: us.value, total: Math.round(parseNum(tt.value) || 0), base: Math.round(parseNum(bs.value) || 0), exams: [], plan: null });
-    intelNew = intel.subjects[intel.subjects.length - 1].id; intelAddOpen = false;
+    intelNew = intel.subjects[intel.subjects.length - 1].id; intelAddOpen = false; intelDraft = null;
     saveIntel(); renderIntel();
     const ne = document.getElementById("plan-" + intelNew); if (ne) ne.scrollIntoView({ block: "center" });
   });
   add.append(form, (() => { const b = el("div", "btns"); b.appendChild(sb); sb.setAttribute("form", "add-subj");
-    const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = "add-cancel"; cc.addEventListener("click", () => { intelAddOpen = false; renderIntel(); }); b.appendChild(cc); return b; })(), msg);
+    const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = "add-cancel"; cc.addEventListener("click", () => { intelAddOpen = false; intelDraft = null; renderIntel(); }); b.appendChild(cc); return b; })(), msg);
   return add;
 }
 
@@ -3799,7 +3845,7 @@ const MS_REC = [["", "Não repete"], ["util", "Todo dia útil"], ["diaria", "Tod
 let mis = null;
 const msUI = { open: null, closing: null, closeDraft: null, draft: null, week: "", proj: "", msg: "", confirm: null, q: "", newAtt: [], attOpen: null, newOpen: false, dayNewOpen: false, editing: null, waiting: null, timeEdit: null, timeDraft: null };
 // fecha o formulário de missão nova; arquivos já enviados para o rascunho saem do servidor
-function msCloseNew() { const a = msUI.newAtt; msUI.newAtt = []; msUI.newOpen = false; msDropFiles(a); }
+function msCloseNew() { const a = msUI.newAtt; msUI.newAtt = []; msUI.newOpen = false; msUI.newDraft = null; msDropFiles(a); }
 
 function loadMs() {
   try { const v = JSON.parse(localStorage.getItem(MS_KEY)); mis = v && Array.isArray(v.tasks) ? v : null; } catch (e) { mis = null; }
@@ -4617,7 +4663,7 @@ function renderMsLista(main) {
   }
   if (msUI.newOpen) {
     const add = el("section", "guide"); add.id = "ms-new"; add.appendChild(el("h3", null, "Nova missão"));
-    add.appendChild(msForm({ proj: msUI.proj }, v => { v.att = msUI.newAtt.slice(); msUI.newAtt = []; msUI.newOpen = false; const n = msNew(v); msUI.msg = "Missão criada" + (n.rec && n.rec.type ? " (recorrente, próxima execução " + fmtDate(n.due).slice(0, 5) + ")." : "."); renderMissoes(); }, "msn-", false,
+    add.appendChild(msForm(Object.assign({ proj: msUI.proj }, msUI.newDraft || {}), v => { v.att = msUI.newAtt.slice(); msUI.newAtt = []; msUI.newOpen = false; msUI.newDraft = null; const n = msNew(v); msUI.msg = "Missão criada" + (n.rec && n.rec.type ? " (recorrente, próxima execução " + fmtDate(n.due).slice(0, 5) + ")." : "."); renderMissoes(); }, "msn-", false,
       msAttachBox(() => msUI.newAtt, () => {}, "msn-", true), () => { msCloseNew(); renderMissoes(); }));
     main.appendChild(add);
   } else {
@@ -6653,6 +6699,7 @@ const HOME_TABS = [{ id: "inicio", label: "Início" }, { id: "rotina", label: "R
 const HOME_DEF = "rotina"; // aba em que o app abre (e para onde o logo leva quando já está na tela inicial)
 function renderHome() {
   state.view = "home"; document.body.dataset.view = "home";
+  ctMount();
   if (!HOME_TABS.some(t => t.id === state.htab)) state.htab = HOME_DEF;
   document.getElementById("crumb").textContent = "";
   const sel = document.getElementById("tab-" + state.htab);
@@ -8864,6 +8911,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", e => {
   const d = e.data || {};
   if (d.type === "stek-cron") { cronApplyPauses(); return; }
+  if (d.type === "stek-aviso") { if (ctS.mounted && ctCfg().avisos && document.visibilityState === "visible") ctSay("Aviso. " + (d.title || "") + ". " + (d.body || "")); return; }
   if (d.type !== "stek-go" || !d.hash) return;
   if (d.hash.startsWith("#abrir-")) cronOpen(d.hash); else rtGoTaskHash(d.hash);
 });
@@ -8943,6 +8991,7 @@ function modsSection() {
 function setModules(list, owner) {
   if (!loggedIn()) return;
   if (typeof owner === "boolean" && cloud.owner !== owner) { cloud.owner = owner; saveCloud(); }
+  setTimeout(ctMount, 0);
   if (!Array.isArray(list)) return;
   const before = JSON.stringify(allowedModules());
   cloud.modules = list.filter(x => MODULES.some(m => m.id === x)); saveCloud();
@@ -9308,6 +9357,589 @@ function renderConta() {
     }
   });
   main.appendChild(s);
+}
+
+/* ======================= Cortana: assistente de voz (só o dono do app) =======================
+   "Olá Cortana" + o pedido, ou o botão redondo no canto. O reconhecimento e a fala são do próprio navegador (pt-BR);
+   quem entende o pedido é o Claude, chamado pelo servidor (/ai, com a chave guardada na Cloudflare).
+   As ferramentas rodam aqui no app: consultar dados, abrir formulários já preenchidos, classificar lançamentos,
+   iniciar e parar cronômetros, concluir itens da Rotina e navegar. Nada é apagado e nenhuma meta é alterada. */
+const CT_KEY = "stek-cortana-v1";
+const CT_SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+const CT_WAKE = /(?:^|\s)(?:ol[aá]|oi|ei|al[oô]|hey)?[\s,]*[ck][oóu]r?tana\b[\s,.:!?-]*(.*)$/i;
+let ct = null;
+const ctS = { mounted: false, open: false, compact: false, busy: false, msgs: [], last: 0, log: [], sr: null, srOn: false, mode: "", want: "", cmdAt: 0, speaking: false, heard: "" };
+function ctCfg() {
+  if (!ct) { try { ct = JSON.parse(localStorage.getItem(CT_KEY)) || {}; } catch (e) { ct = {}; } }
+  if (ct.voz == null) ct.voz = true; if (ct.avisos == null) ct.avisos = true;
+  return ct;
+}
+function ctSave() { try { localStorage.setItem(CT_KEY, JSON.stringify(ct)); } catch (e) {} }
+
+/* ---------- botão e painel ---------- */
+function ctMount() {
+  const ok = loggedIn() && isAppOwner();
+  if (!ok) {
+    if (ctS.mounted) { ctS.want = ""; ctStopRec(); ["ct-fab", "ct-panel"].forEach(id => { const n = document.getElementById(id); if (n) n.remove(); }); document.body.classList.remove("ct-on"); ctS.mounted = false; ctS.open = false; }
+    return;
+  }
+  if (ctS.mounted) return;
+  ctS.mounted = true;
+  const fab = el("button", "ct-fab"); fab.type = "button"; fab.id = "ct-fab"; fab.title = "Cortana"; fab.setAttribute("aria-label", "Falar com a Cortana");
+  fab.appendChild(el("span", "ct-ring")); fab.firstChild.setAttribute("aria-hidden", "true");
+  fab.addEventListener("click", () => {
+    stSoundInit();
+    if (ctS.busy) { ctOpen(true); return; }
+    if (ctS.mode === "cmd") { ctS.want = ""; ctStopRec(); return; }
+    ctOpen(true); ctListen();
+  });
+  document.body.appendChild(fab); document.body.classList.add("ct-on");
+  ctState(); setTimeout(ctKick, 400);
+}
+function ctOpen(show) {
+  let p = document.getElementById("ct-panel");
+  if (!show) { if (p) p.remove(); ctS.open = false; ctState(); return; }
+  if (!ctS.open) ctS.compact = false;
+  ctS.open = true;
+  if (!p) { p = el("section", "ct-panel"); p.id = "ct-panel"; p.setAttribute("role", "dialog"); p.setAttribute("aria-label", "Cortana"); document.body.appendChild(p); }
+  ctDraw();
+}
+function ctStatusText() {
+  if (ctS.busy) return "Pensando…";
+  if (ctS.speaking) return "Falando…";
+  if (ctS.mode === "cmd") return ctS.heard ? "Ouvindo: " + ctS.heard : "Pode falar…";
+  if (ctS.mode === "wake") return "Esperando “Olá Cortana”";
+  return CT_SR ? "Toque no microfone ou escreva" : "Escreva o pedido";
+}
+function ctState() {
+  const f = document.getElementById("ct-fab");
+  if (f) {
+    f.className = "ct-fab" + (ctS.busy ? " think" : ctS.speaking ? " speak" : ctS.mode === "cmd" ? " listen" : ctS.mode === "wake" ? " wake" : "");
+    f.setAttribute("aria-label", ctS.mode === "cmd" ? "Parar de ouvir" : "Falar com a Cortana");
+  }
+  const st = document.getElementById("ct-st"); if (st) st.textContent = ctStatusText();
+  const mic = document.getElementById("ct-mic"); if (mic) { mic.classList.toggle("on", ctS.mode === "cmd"); mic.textContent = ctS.mode === "cmd" ? "Parar" : "🎤 Falar"; }
+}
+function ctLog(who, text) { if (!text) return; ctS.log.push({ who, text }); if (ctS.log.length > 40) ctS.log.shift(); ctDrawLog(); }
+function ctDrawLog() {
+  const box = document.getElementById("ct-log"); if (!box) return;
+  box.innerHTML = "";
+  const items = ctS.compact ? ctS.log.filter(x => x.who !== "eu").slice(-1) : ctS.log.slice(-30);
+  if (!items.length) box.appendChild(el("p", "ct-msg info", "Diga “Olá Cortana” e o que deseja, ou toque em Falar. Exemplos: “quais as próximas tarefas?”, “inicia o estudo de Cálculo”, “cria uma missão para sexta”, “classifica os lançamentos pendentes”."));
+  items.forEach(x => box.appendChild(el("p", "ct-msg " + x.who, (x.who === "eu" ? "Você: " : "") + x.text)));
+  box.scrollTop = box.scrollHeight;
+}
+function ctDraw() {
+  const p = document.getElementById("ct-panel"); if (!p) return;
+  const c = ctCfg();
+  p.className = "ct-panel" + (ctS.compact ? " compact" : ""); p.innerHTML = "";
+  const head = el("div", "ct-head");
+  const nm = el("div", "ct-title"); nm.append(el("span", "ct-name", "Cortana"), el("span", "ct-st", ctStatusText())); nm.lastChild.id = "ct-st";
+  const mn = el("button", "linkbtn ct-x", ctS.compact ? "Expandir" : "Recolher"); mn.type = "button"; mn.id = "ct-min";
+  mn.addEventListener("click", () => { ctS.compact = !ctS.compact; ctDraw(); });
+  const cl = el("button", "linkbtn ct-x", "Fechar"); cl.type = "button"; cl.id = "ct-close";
+  cl.addEventListener("click", () => { if (ctS.mode === "cmd") { ctS.want = ""; ctStopRec(); } ctSpeakStop(); ctOpen(false); });
+  head.append(nm, mn, cl); p.appendChild(head);
+  const log = el("div", "ct-log"); log.id = "ct-log"; log.setAttribute("aria-live", "polite"); p.appendChild(log);
+  const form = el("form", "ct-form"); form.id = "ct-form";
+  const inp = el("input"); inp.id = "ct-in"; inp.placeholder = "Escreva o pedido"; inp.autocomplete = "off"; inp.setAttribute("aria-label", "Pedido para a Cortana");
+  const mic = el("button", "btn ghost ct-mic", "🎤 Falar"); mic.type = "button"; mic.id = "ct-mic"; mic.disabled = !CT_SR;
+  mic.addEventListener("click", () => { stSoundInit(); if (ctS.mode === "cmd") { ctS.want = ""; ctStopRec(); } else ctListen(); });
+  const send = el("button", "btn", "Enviar"); send.type = "submit"; send.id = "ct-send";
+  form.addEventListener("submit", e => { e.preventDefault(); const t = inp.value.trim(); if (!t) return; inp.value = ""; ctAsk(t); });
+  form.append(inp, mic, send); p.appendChild(form);
+  if (!ctS.compact) {
+    const dt = el("details", "ct-set"); dt.id = "ct-set"; dt.appendChild(el("summary", null, "Ajustes da Cortana"));
+    const chk = (id, label, on, fn) => { const l = el("label", "ct-chk"), i = el("input"); i.type = "checkbox"; i.id = id; i.checked = !!on; i.addEventListener("change", () => fn(i.checked)); l.append(i, el("span", null, label)); dt.appendChild(l); return i; };
+    chk("ct-wake", "Ouvir “Olá Cortana” enquanto o app está aberto na tela", c.wake && !!CT_SR, v => { c.wake = v; ctSave(); if (v) { stSoundInit(); ctKick(); } else if (ctS.mode === "wake") { ctS.want = ""; ctStopRec(); } ctState(); });
+    chk("ct-voz", "Responder falando", c.voz, v => { c.voz = v; ctSave(); if (!v) ctSpeakStop(); });
+    chk("ct-avisos", "Falar os avisos da Rotina quando o app estiver aberto", c.avisos, v => { c.avisos = v; ctSave(); });
+    const vs = ctVoices();
+    if (vs.length > 1) {
+      const f = el("div", "field"), l = el("label", null, "Voz"), s = el("select", "sel"); l.htmlFor = "ct-voice"; s.id = "ct-voice";
+      const cur = ctPickVoice();
+      vs.forEach(v => { const o = el("option", null, v.name + " (" + v.lang + ")"); o.value = v.name; if (cur && cur.name === v.name) o.selected = true; s.appendChild(o); });
+      s.addEventListener("change", () => { c.voice = s.value; ctSave(); ctSay("Assim fica a minha voz."); });
+      f.append(l, s); dt.appendChild(f);
+    }
+    dt.appendChild(el("p", "note muted", CT_SR ? "O microfone só funciona com o app aberto na tela. Com “Olá Cortana” ligado, o navegador fica ouvindo e só age quando ouve o nome; em alguns celulares ele faz um bipe ao voltar a ouvir." : "Este navegador não reconhece voz. No celular, use o Chrome. Dá para escrever o pedido mesmo assim."));
+    p.appendChild(dt);
+  }
+  ctDrawLog(); ctState();
+}
+
+/* ---------- ouvir ---------- */
+function ctRec() {
+  if (!CT_SR) return null;
+  if (ctS.sr) return ctS.sr;
+  const r = new CT_SR(); r.lang = "pt-BR"; r.interimResults = true; r.continuous = true; r.maxAlternatives = 1;
+  r.onresult = e => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const res = e.results[i], txt = (res[0] && res[0].transcript || "").trim();
+      if (!res.isFinal) { if (ctS.mode === "cmd") { ctS.heard = txt; ctState(); } continue; }
+      ctOnFinal(txt);
+    }
+  };
+  r.onerror = e => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") { ctCfg().wake = false; ctSave(); ctS.want = ""; ctLog("info", "O microfone está bloqueado para o app. Libere o microfone nas permissões do navegador e tente de novo."); const w = document.getElementById("ct-wake"); if (w) w.checked = false; }
+    else if (e.error === "network") ctLog("info", "Sem internet para reconhecer a voz.");
+    else if (e.error === "audio-capture") ctLog("info", "Não encontrei um microfone neste aparelho.");
+  };
+  r.onend = () => { ctS.srOn = false; ctS.heard = ""; setTimeout(ctKick, 300); };
+  ctS.sr = r; return r;
+}
+function ctStopRec() { if (ctS.sr && ctS.srOn) { try { ctS.sr.abort(); } catch (e) {} } }
+// decide o que o microfone deve fazer agora: ouvir um pedido, esperar o "Olá Cortana" ou nada
+function ctKick() {
+  if (!ctS.mounted || ctS.srOn || ctS.speaking) { ctState(); return; }
+  let w = ctS.want;
+  if (w === "cmd" && Date.now() - ctS.cmdAt > 10000) w = ctS.want = "";
+  if (!w && ctCfg().wake && !ctS.busy && document.visibilityState === "visible") w = "wake";
+  ctS.mode = w; ctState();
+  if (!w) return;
+  const r = ctRec(); if (!r) { ctS.mode = ""; ctState(); return; }
+  try { r.start(); ctS.srOn = true; } catch (e) { ctS.srOn = false; }
+}
+function ctListen() {
+  if (!CT_SR) { ctLog("info", "Este navegador não reconhece voz. Escreva o pedido no campo abaixo."); const i = document.getElementById("ct-in"); if (i) i.focus(); return; }
+  ctSpeakStop(); ctS.want = "cmd"; ctS.cmdAt = Date.now(); ctCmdTimer();
+  if (ctS.srOn) ctStopRec(); else ctKick();
+}
+// sem pedido em 10 s, para de esperar (e volta a esperar o "Olá Cortana", se estiver ligado)
+let ctCmdT = null;
+function ctCmdTimer() {
+  clearTimeout(ctCmdT);
+  ctCmdT = setTimeout(() => {
+    if (ctS.mode !== "cmd" || ctS.busy || Date.now() - ctS.cmdAt < 9500) return;
+    ctS.want = "";
+    if (ctS.srOn && ctCfg().wake) { ctS.mode = "wake"; ctState(); } else ctStopRec();
+  }, 10200);
+}
+function ctOnFinal(txt) {
+  if (!txt) return;
+  if (ctS.mode === "cmd") { ctS.want = ""; ctStopRec(); ctAsk(txt); return; }
+  if (ctS.mode !== "wake") return;
+  const m = CT_WAKE.exec(txt); if (!m) return;
+  const rest = (m[1] || "").trim();
+  ctOpen(true);
+  if (rest.length >= 3) { ctS.want = ""; ctStopRec(); ctAsk(rest); return; }
+  // só o nome: o microfone já está aberto, então passa a ouvir o pedido sem reiniciar (não perde as primeiras palavras)
+  ctChime(); ctS.want = "cmd"; ctS.mode = "cmd"; ctS.cmdAt = Date.now(); ctS.heard = ""; ctState(); ctCmdTimer();
+}
+function ctChime() {
+  if (!stAudio) return;
+  try { [660, 880].forEach((f, k) => { const o = stAudio.createOscillator(), g = stAudio.createGain(), t0 = stAudio.currentTime + k * 0.12; o.type = "sine"; o.frequency.value = f; g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.11); o.connect(g); g.connect(stAudio.destination); o.start(t0); o.stop(t0 + 0.13); }); } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => { if (!ctS.mounted) return; if (document.visibilityState === "hidden") { ctS.want = ""; ctStopRec(); ctSpeakStop(); } else setTimeout(ctKick, 500); });
+
+/* ---------- falar ---------- */
+function ctVoices() { try { return window.speechSynthesis ? speechSynthesis.getVoices().filter(v => /^pt/i.test(v.lang)) : []; } catch (e) { return []; } }
+function ctPickVoice() {
+  const vs = ctVoices(), c = ctCfg();
+  return vs.find(v => v.name === c.voice) || vs.find(v => /pt[-_]BR/i.test(v.lang) && /francisca|thalita|luciana|google/i.test(v.name)) || vs.find(v => /pt[-_]BR/i.test(v.lang)) || vs[0] || null;
+}
+if (window.speechSynthesis) try { speechSynthesis.addEventListener("voiceschanged", () => { if (ctS.open && !ctS.compact && !document.getElementById("ct-voice")) ctDraw(); }); } catch (e) {}
+function ctPlain(t) { return String(t || "").replace(/https?:\/\/\S+/g, "").replace(/[*_#`>|]/g, "").replace(/[\u{1F300}-\u{1FAFF}☀-➿]/gu, "").replace(/\s+/g, " ").trim(); }
+function ctSpeakStop() { try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e) {} if (ctS.speaking) { ctS.speaking = false; ctState(); } }
+function ctSay(text, then) {
+  const fin = () => { if (then) then(); setTimeout(ctKick, 250); };
+  const t = ctPlain(text);
+  if (!ctCfg().voz || !window.speechSynthesis || !t) { fin(); return; }
+  ctS.want = ctS.want === "cmd" ? "" : ctS.want; ctStopRec();
+  let ended = false;
+  const done = () => { if (ended) return; ended = true; clearInterval(poll); ctS.speaking = false; ctState(); fin(); };
+  const u = new SpeechSynthesisUtterance(t); u.lang = "pt-BR"; u.rate = 1.05; const v = ctPickVoice(); if (v) u.voice = v;
+  u.onend = done; u.onerror = done;
+  ctS.speaking = true; ctState();
+  try { speechSynthesis.cancel(); setTimeout(() => { try { speechSynthesis.speak(u); } catch (e) { done(); } }, 60); } catch (e) { done(); return; }
+  // alguns aparelhos não avisam o fim da fala
+  const t0 = Date.now(); const poll = setInterval(() => { if (Date.now() - t0 > 1200 && !speechSynthesis.speaking && !speechSynthesis.pending) done(); }, 400);
+}
+
+/* ---------- conversa com a IA ---------- */
+// mantém as últimas trocas, sempre começando num pedido seu (nunca no meio de uma consulta)
+function ctTrim(msgs) {
+  let i = 0;
+  for (let k = msgs.length - 1; k >= 0; k--) { if (msgs[k].role === "user" && typeof msgs[k].content === "string") { i = k; if (msgs.length - k >= 16) break; } }
+  return msgs.slice(i);
+}
+async function ctAsk(text) {
+  text = String(text || "").trim(); if (!text || ctS.busy) return;
+  ctOpen(true); ctLog("eu", text);
+  if (Date.now() - ctS.last > 15 * 60000) ctS.msgs = [];
+  ctS.last = Date.now();
+  ctS.msgs.push({ role: "user", content: text });
+  ctS.busy = true; ctState();
+  let reply = "";
+  try {
+    for (let i = 0; i < 7; i++) {
+      const r = await cloudFetch("POST", "/ai", { system: ctSystem(), messages: ctTrim(ctS.msgs), tools: ctTools(), max_tokens: 900 });
+      const content = (r.content || []).filter(b => b.type === "text" || b.type === "tool_use");
+      ctS.msgs.push({ role: "assistant", content: content.length ? content : [{ type: "text", text: "(sem resposta)" }] });
+      const uses = content.filter(b => b.type === "tool_use"), txt = content.filter(b => b.type === "text").map(b => b.text).join(" ").trim();
+      if (!uses.length) { reply = txt; break; }
+      if (txt) ctLog("ct", txt);
+      const res = [];
+      for (const u of uses) {
+        let out; try { out = await ctRun(u.name, u.input || {}); } catch (e) { out = { erro: String(e && e.message || e) }; }
+        res.push({ type: "tool_result", tool_use_id: u.id, content: JSON.stringify(out == null ? { ok: true } : out).slice(0, 16000) });
+      }
+      ctS.msgs.push({ role: "user", content: res });
+    }
+    if (!reply) reply = "Pronto.";
+    const lm = ctS.msgs[ctS.msgs.length - 1]; if (lm && lm.role === "user") ctS.msgs.push({ role: "assistant", content: [{ type: "text", text: reply }] }); // a conversa sempre fecha com a Cortana
+  } catch (e) {
+    ctS.msgs = [];
+    reply = e.status === 503 ? "Ainda falta colocar a chave da API do Claude no servidor." : e.status === 403 ? "A Cortana é só da conta do dono." : e.status === 401 ? "Sua sessão expirou. Entre de novo na sua conta." : "Não consegui falar com o servidor: " + e.message;
+  }
+  ctS.busy = false; ctState();
+  ctLog("ct", reply);
+  ctSay(reply, () => { if (/\?\s*$/.test(reply) && CT_SR) { ctS.want = "cmd"; ctS.cmdAt = Date.now(); ctCmdTimer(); } });
+}
+function ctScreen() {
+  const lab = (arr, id) => { const t = (arr || []).find(x => x.id === id); return t ? t.label : ""; };
+  const v = state.view;
+  if (v === "home") return "Tela inicial › " + lab(HOME_TABS, state.htab);
+  if (v === "rotina") return "Rotina › " + lab(ROT_TABS, state.rtab);
+  if (v === "intel") return "Inteligência › " + lab(INTEL_TABS, state.itab);
+  if (v === "fin") return "Economia › " + lab(FIN_TABS, state.ftab);
+  if (v === "est") return "Estamina › " + lab(STAM_TABS, state.stab);
+  if (v === "graca") return "Graça › " + lab(GRACA_TABS, state.gtab);
+  if (v === "ms") return "Missões › " + lab(MS_TABS, state.mtab);
+  if (v === "forca") return "Força › " + lab(typeof TABS !== "undefined" ? TABS : [], state.tab);
+  return v === "conta" ? "Conta" : "";
+}
+function ctFormOpen() {
+  if (document.getElementById("ms-new")) return "missão";
+  if (document.getElementById("subj-new")) return "matéria";
+  if (document.getElementById("gr-new")) return "ritual";
+  if (document.getElementById("rt-fx-form") && rtFxOpen()) return "compromisso";
+  return "";
+}
+const CT_DOW = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
+function ctSystem() {
+  const now = new Date(), iso = todayISO();
+  const mods = MODULES.filter(m => m.ready && modOn(m.id)).map(m => m.name).join(", ");
+  const run = ctRunningList();
+  const tg = ctTargets().map(t => t.id + " = " + t.nome).join("\n");
+  return [
+    "Você é a Cortana, a assistente de voz do STEK, o app pessoal do Akio para rotina, estudos (Inteligência), cardio e foco (Estamina), treino (Força), finanças (Economia), rituais (Graça) e trabalho (Missões).",
+    "Fale sempre em português do Brasil, com frases curtas e naturais: a resposta é lida em voz alta. Responda em uma ou duas frases; numa lista, no máximo cinco itens, ditos em uma frase corrida. Nada de markdown, emojis, marcadores ou ids na resposta.",
+    "Use as ferramentas para consultar e para agir. Nunca invente números, tarefas ou lançamentos: consulte antes. Se não achar, diga que não achou.",
+    "Para criar algo novo (matéria, missão, compromisso ou ritual), abra o formulário certo já preenchido com o que ele disse e peça para ele conferir. Só use salvar_formulario quando ele pedir para salvar.",
+    "Para iniciar ou parar cronômetros, use os ids da lista abaixo. Iniciar uma missão pausa estudo, Estamina e Graça; o trabalho geral roda junto com eles. Para trocar de missão, basta iniciar a outra.",
+    "Para classificar lançamentos da Economia, pegue os pendentes e as categorias que ele já usa e classifique só os que tiver segurança, mantendo o padrão dele. Depois diga quantos classificou e quantos ficaram para ele.",
+    "Nunca altere metas (horas de trabalho, horas de estudo, tarefas por dia) e não apague nada. Se ele pedir algo que as ferramentas não fazem, diga em uma frase e abra a tela onde ele faz isso.",
+    "Nas ferramentas, datas no formato AAAA-MM-DD e horários HH:MM. Ao falar, diga o dia da semana e o dia do mês (\"sexta, dia 20\") e valores em reais (\"12 reais e 50 centavos\" ou \"R$ 12,50\").",
+    "Se ele só chamar ou cumprimentar, responda curto e pergunte o que ele precisa.",
+    "",
+    "Agora: " + CT_DOW[now.getDay()] + ", " + fmtDate(iso) + " (" + iso + "), " + minToHM(now.getHours() * 60 + now.getMinutes()) + ".",
+    "Tela aberta: " + (ctScreen() || "—") + (ctFormOpen() ? " · formulário aberto: " + ctFormOpen() : ""),
+    "Módulos ligados: " + (mods || "nenhum") + ".",
+    "Cronômetros rodando: " + (run.length ? run.map(x => x.nome + " (desde " + x.desde + ")").join("; ") : "nenhum") + ".",
+    "Cronômetros que dá para iniciar (id = nome):",
+    tg || "(nenhum)"
+  ].join("\n");
+}
+
+/* ---------- ferramentas ---------- */
+function ctScreens() {
+  const out = [];
+  const add = (arr, pre) => (arr || []).forEach(t => out.push([t.id, pre + " › " + t.label]));
+  add(HOME_TABS, "Tela inicial"); add(ROT_TABS, "Rotina");
+  if (modOn("inteligencia")) add(INTEL_TABS, "Inteligência");
+  if (modOn("estamina")) add(STAM_TABS, "Estamina");
+  if (modOn("forca") && profileId && typeof TABS !== "undefined") add(TABS, "Força");
+  if (modOn("financas")) add(FIN_TABS, "Economia");
+  if (modOn("graca")) add(GRACA_TABS, "Graça");
+  if (modOn("missoes")) add(MS_TABS, "Missões");
+  return out;
+}
+function ctTools() {
+  const scr = ctScreens();
+  const obj = (props, req) => ({ type: "object", properties: props || {}, required: req || [] });
+  const days = { type: "array", items: { type: "integer", minimum: 0, maximum: 6 }, description: "Dias da semana: 0 = domingo, 1 = segunda … 6 = sábado." };
+  return [
+    { name: "resumo_do_dia", description: "Pendências de hoje: o que falta em cada módulo, os itens da Rotina (com a chave para concluir), os compromissos com horário e o que já foi feito. Use para 'quais as próximas tarefas', 'o que falta hoje', 'como está meu dia'.", input_schema: obj() },
+    { name: "consultar_dados", description: "Pesquisa nos dados do app. modulo: economia (lançamentos, totais e categorias do mês), missoes (missões, prazos e horas), inteligencia (matérias, progresso e horas de estudo), forca (treinos feitos, cargas e repetições), estamina (minutos de cardio e foco), graca (rituais feitos), atividades (histórico dos cronômetros: quando começou e quanto durou cada coisa). texto filtra por palavra. de e ate limitam o período (AAAA-MM-DD); sem período: mês atual na economia e últimos 7 dias nos outros.",
+      input_schema: obj({ modulo: { type: "string", enum: ["economia", "missoes", "inteligencia", "forca", "estamina", "graca", "atividades"] }, texto: { type: "string" }, de: { type: "string" }, ate: { type: "string" } }, ["modulo"]) },
+    { name: "iniciar_cronometro", description: "Inicia um cronômetro pelo id da lista do contexto (estudo de uma matéria, prática da Estamina, ritual da Graça, trabalho geral, missão ou compromisso).", input_schema: obj({ id: { type: "string" } }, ["id"]) },
+    { name: "parar_cronometro", description: "Pausa um cronômetro pelo id. Sem id, pausa todos os que estão rodando (inclusive o trabalho geral). Pausar uma missão faz o trabalho geral voltar a contar.", input_schema: obj({ id: { type: "string" } }) },
+    { name: "concluir_item_rotina", description: "Marca como concluído hoje um item da Rotina, pela chave que vem no resumo_do_dia. Para o cronômetro dele, se estiver rodando.", input_schema: obj({ chave: { type: "string" } }, ["chave"]) },
+    { name: "abrir_tela", description: "Abre uma tela do app. Opções: " + scr.map(s => s[0] + " (" + s[1] + ")").join(", ") + ".", input_schema: obj({ tela: { type: "string", enum: scr.map(s => s[0]) } }, ["tela"]) },
+    { name: "abrir_formulario", description: "Abre o formulário de cadastro certo, já preenchido, para ele conferir. tipo materia (Inteligência), missao (Missões), compromisso (Rotina) ou ritual (Graça). Preencha só o que ele disse.",
+      input_schema: obj({ tipo: { type: "string", enum: ["materia", "missao", "compromisso", "ritual"] },
+        campos: { type: "object", description: "materia: nome, unidade (exercicios, modulos, aulas, licoes, paginas, capitulos), total, ja_feitos. missao: titulo, projeto, setor, solicitante, prioridade (alta, media, baixa), estimativa_min, prazo (AAAA-MM-DD), repetir (util, diaria, semanal, mensal), dias_semana (para semanal), dia_mes (para mensal), detalhes. compromisso: nome, tipo (fixo, flex = horário flexível, wake = ao acordar, sleep = antes de dormir), inicio (HH:MM), fim (HH:MM), duracao_min, folga_min (30, 60, 90 ou 120, no flexível), dias. ritual: nome, limite_min, vezes_por_dia, dias.",
+          properties: { nome: { type: "string" }, titulo: { type: "string" }, unidade: { type: "string" }, total: { type: "number" }, ja_feitos: { type: "number" }, projeto: { type: "string" }, setor: { type: "string" }, solicitante: { type: "string" }, prioridade: { type: "string" }, estimativa_min: { type: "number" }, prazo: { type: "string" }, repetir: { type: "string" }, dias_semana: days, dia_mes: { type: "integer" }, detalhes: { type: "string" }, tipo: { type: "string" }, inicio: { type: "string" }, fim: { type: "string" }, duracao_min: { type: "number" }, folga_min: { type: "number" }, dias: days, limite_min: { type: "number" }, vezes_por_dia: { type: "integer" } } } }, ["tipo"]) },
+    { name: "salvar_formulario", description: "Salva o formulário de cadastro aberto na tela (o que foi aberto com abrir_formulario). Só quando ele pedir para salvar.", input_schema: obj() },
+    { name: "lancamentos_pendentes", description: "Lista os lançamentos da Economia que faltam classificar, com a sugestão do app quando existe, as categorias que ele já usa e os valores válidos de cada campo.", input_schema: obj({ limite: { type: "integer" } }) },
+    { name: "classificar_lancamentos", description: "Classifica lançamentos pendentes da Economia. tipo: gasto, investimento (aporte), transferencia ou receita. Gasto precisa de item (o que foi comprado), categoria, essencialidade, frequencia e natureza. Empréstimos e rateios ficam para ele fazer no app.",
+      input_schema: obj({ itens: { type: "array", items: obj({ id: { type: "string" }, tipo: { type: "string", enum: ["gasto", "investimento", "transferencia", "receita"] }, categoria: { type: "string" }, item: { type: "string" }, essencialidade: { type: "string", enum: ["necessario", "substituivel", "superfluo", "luxo"] }, frequencia: { type: "string", enum: ["recorrente", "esporadico"] }, natureza: { type: "string", enum: ["fixo", "variavel"] } }, ["id", "tipo", "categoria"]) } }, ["itens"]) }
+  ];
+}
+async function ctRun(name, a) {
+  if (name === "resumo_do_dia") return ctResumo();
+  if (name === "consultar_dados") return ctConsulta(a);
+  if (name === "iniciar_cronometro") return ctStartTimer(a.id);
+  if (name === "parar_cronometro") return ctStopTimer(a.id);
+  if (name === "concluir_item_rotina") return ctConclude(a.chave);
+  if (name === "abrir_tela") return ctNav(a.tela);
+  if (name === "abrir_formulario") return ctForm(a.tipo, a.campos || {});
+  if (name === "salvar_formulario") return ctSaveForm();
+  if (name === "lancamentos_pendentes") return ctPend(a.limite);
+  if (name === "classificar_lancamentos") return ctClassify(a.itens || []);
+  return { erro: "Ferramenta desconhecida: " + name };
+}
+const ctHM = ms => { const d = new Date(ms); return minToHM(d.getHours() * 60 + d.getMinutes()); };
+function ctRefresh() {
+  const v = state.view;
+  if (v === "home") renderHome(); else if (v === "rotina") renderRotina(); else if (v === "intel") renderIntel(); else if (v === "fin") renderFin();
+  else if (v === "est") renderStamina(); else if (v === "graca") renderGraca(); else if (v === "ms") renderMissoes();
+  pushSync(false);
+}
+function ctShowScreen() { ctS.compact = true; ctDraw(); }
+
+// cronômetros: o que pode ser iniciado e o que está rodando
+function ctTargets() {
+  const out = [];
+  if (modOn("inteligencia") && intel) intel.subjects.forEach(s => out.push({ id: "estudo:" + s.id, nome: "Estudo · " + s.name, running: () => !!(intel.timer && intel.timer.sid === s.id),
+    start: () => { const it = rtDemand(todayISO()).items.find(x => x.mod === "inteligencia" && (x.subjects || []).some(y => y.id === s.id)); if (it) rtStart(it, null, s.id); else { rtStopOthers("inteligencia"); startTimer(s.id); } saveIntel(); },
+    stop: () => stopTimer() }));
+  if (modOn("estamina")) PRACTICES.forEach(p => out.push({ id: "estamina:" + p.id, nome: (p.kind === "foco" ? "Foco · " : "Cardio · ") + p.name, running: () => !!(stamina && stamina.timer && stamina.timer.pid === p.id),
+    start: () => { rtStopOthers("estamina"); stStart(p.id); }, stop: () => stStop() }));
+  if (modOn("graca") && graca) graca.rituals.forEach(r => out.push({ id: "graca:" + r.id, nome: "Graça · " + r.name, running: () => !!(graca.timer && graca.timer.rid === r.id),
+    start: () => { rtStopOthers("graca"); grStart(r.id); }, stop: () => grStop(false) }));
+  if (modOn("missoes")) {
+    out.push({ id: "trabalho", nome: "Trabalho geral", running: () => !!(mis && mis.timer && mis.timer.tid === MS_GERAL), start: () => msWorkStart(), stop: () => msWorkPause() });
+    const today = todayISO(), rank = t => (t.due && t.due < today) || (t.plan || []).includes(today) || t.due === today ? 0 : t.due ? 1 : 2;
+    msData().tasks.filter(t => t.status === "aberta").sort((x, y) => rank(x) - rank(y) || (x.due || "9").localeCompare(y.due || "9")).slice(0, 40)
+      .forEach(t => out.push({ id: "missao:" + t.id, nome: "Missão · " + t.title, running: () => msMissionRunning() === t.id, start: () => msStartMission(t.id), stop: () => msPauseMission() }));
+  }
+  (ensureRotina().fixed || []).forEach(f => out.push({ id: "compromisso:" + f.id, nome: "Compromisso · " + (f.name || "compromisso"), running: () => !!(fxRun() && fxRun().fid === f.id), start: () => fxStart(f), stop: () => fxStop() }));
+  return out;
+}
+function ctRunningList() {
+  const out = [];
+  if (intel && intel.timer) { const s = intel.subjects.find(x => x.id === intel.timer.sid); out.push({ id: "estudo:" + intel.timer.sid, nome: "Estudo · " + (s ? s.name : "matéria"), desde: ctHM(intel.timer.startedAt) }); }
+  if (stamina && stamina.timer) { const p = practice(stamina.timer.pid); out.push({ id: "estamina:" + stamina.timer.pid, nome: (p && p.kind === "foco" ? "Foco · " : "Cardio · ") + (p ? p.name : ""), desde: ctHM(stamina.timer.startedAt) }); }
+  if (graca && graca.timer) { const r = ritual(graca.timer.rid); out.push({ id: "graca:" + graca.timer.rid, nome: "Graça · " + (r ? r.name : "ritual"), desde: ctHM(graca.timer.startedAt) }); }
+  if (mis && mis.timer) { const g = mis.timer.tid === MS_GERAL, t = g ? null : msTask(mis.timer.tid); out.push({ id: g ? "trabalho" : "missao:" + mis.timer.tid, nome: g ? "Trabalho geral" : "Missão · " + (t ? t.title : "missão"), desde: ctHM(mis.timer.startedAt) }); }
+  const f = fxRun(); if (f) out.push({ id: "compromisso:" + f.fid, nome: "Compromisso · " + f.name, desde: ctHM(f.startedAt) });
+  return out;
+}
+function ctFind(id) {
+  const T = ctTargets(); let t = T.find(x => x.id === id);
+  if (!t && id) { const q = normTxt(String(id).replace(/^[a-z]+:/, "")); if (q) t = T.find(x => normTxt(x.nome).includes(q)); }
+  return t;
+}
+function ctStartTimer(id) {
+  const t = ctFind(id); if (!t) return { erro: "Não achei esse cronômetro. Use um id da lista." };
+  if (t.running()) return { ok: true, aviso: t.nome + " já estava rodando.", rodando: ctRunningList() };
+  t.start(); ctRefresh();
+  return { ok: true, iniciado: t.nome, rodando: ctRunningList() };
+}
+function ctStopTimer(id) {
+  if (id) {
+    const t = ctFind(id); if (!t) return { erro: "Não achei esse cronômetro." };
+    if (!t.running()) return { ok: true, aviso: t.nome + " não estava rodando.", rodando: ctRunningList() };
+    t.stop(); ctRefresh(); return { ok: true, pausado: t.nome, rodando: ctRunningList() };
+  }
+  const was = ctRunningList(); if (!was.length) return { ok: true, aviso: "Nenhum cronômetro estava rodando." };
+  if (intel && intel.timer) stopTimer();
+  if (stamina && stamina.timer) stStop();
+  if (graca && graca.timer) grStop(false);
+  if (mis && (mis.timer || mis.work)) msWorkPause();
+  if (fxRun()) fxStop();
+  ctRefresh();
+  return { ok: true, pausados: was.map(x => x.nome), rodando: ctRunningList() };
+}
+function ctConclude(key) {
+  const it = rtDemand(todayISO()).items.find(x => x.key === key);
+  if (!it) return { erro: "Não achei esse item na Rotina de hoje (pode já estar concluído). Consulte o resumo_do_dia." };
+  rtConclude(it, true); pushSync(false);
+  return { ok: true, concluido: it.title };
+}
+function ctNav(id) {
+  if (!ctScreens().some(s => s[0] === id)) return { erro: "Tela desconhecida." };
+  if (location.hash === "#" + id) window.dispatchEvent(new HashChangeEvent("hashchange")); else location.hash = "#" + id;
+  ctShowScreen(); window.scrollTo(0, 0);
+  return { ok: true, tela: ctScreen() };
+}
+function ctResumo() {
+  const iso = todayISO(), out = { modulos: [], rotina: [], compromissos: [], feitos_na_rotina: [], rodando: ctRunningList() };
+  MODULES.filter(m => m.ready && modOn(m.id)).forEach(m => {
+    const f = moduleTasks(m.id) || {};
+    out.modulos.push({ modulo: m.name, situacao: f.setup ? "não configurado" : f.free ? f.freeText : undefined,
+      tarefas: (f.tasks || []).map(t => ({ titulo: t.title, estado: t.complete ? "feito" : (t.label || "pendente"), detalhe: t.sub || undefined, opcional: t.optional || undefined })) });
+  });
+  try {
+    const D = rtDemand(iso);
+    D.items.forEach(it => out.rotina.push({ chave: it.key, titulo: it.title, modulo: it.mod, detalhe: it.sub || undefined, minutos: it.dur || undefined, rodando: it.running || undefined }));
+    out.feitos_na_rotina = (D.done || []).slice(0, 20);
+    rtDay(iso).fixed.forEach(f => out.compromissos.push({ nome: f.name, das: minToHM(f.a), ate: minToHM(f.b) }));
+  } catch (e) {}
+  return out;
+}
+function ctRange(a, def) {
+  const today = todayISO(), ok = s => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
+  let de = ok(a.de) ? a.de : def, ate = ok(a.ate) ? a.ate : today;
+  if (de > ate) [de, ate] = [ate, de];
+  const days = []; for (let d = de; d <= ate && days.length < 400; d = addDaysISO(d, 1)) days.push(d);
+  return { de, ate, days };
+}
+function ctConsulta(a) {
+  const m = a.modulo, q = normTxt(a.texto || ""), has = s => !q || normTxt(s).includes(q), today = todayISO(), wk = addDaysISO(today, -6);
+  if (m === "economia") {
+    if (!modOn("financas")) return { erro: "Economia desligada." };
+    const R = ctRange(a, today.slice(0, 8) + "01");
+    const flat = finFlat().filter(t => t.date >= R.de && t.date <= R.ate);
+    const pend = fin.tx.filter(t => t.status !== "done" && t.date >= R.de && t.date <= R.ate);
+    const rows = flat.filter(t => t.status === "done").concat(pend).filter(t => has([t.desc, t.cat, t.item, t.memo].join(" ")));
+    const tot = { gastos: 0, recebido: 0, aportes: 0 }; rows.forEach(t => { if (t.status !== "done") return; if (t.kind === "gasto") tot.gastos += t.amount; else if (t.kind === "receita") tot.recebido += t.amount; else if (t.kind === "investimento") tot.aportes += t.amount; });
+    const out = { periodo: R.de + " a " + R.ate, encontrados: rows.length, totais: { gastos: brl(tot.gastos), recebido: brl(tot.recebido), aportes: brl(tot.aportes) },
+      lancamentos: rows.sort((x, y) => y.date.localeCompare(x.date)).slice(0, q ? 40 : 15).map(t => ({ data: t.date, descricao: t.desc, valor: (t.dir === "in" ? "+" : "-") + brl(t.amount), tipo: t.status === "done" ? t.kind : "pendente", categoria: t.cat || undefined, item: t.item || undefined })) };
+    if (!q) {
+      const ks = []; for (let k = R.de.slice(0, 7); k <= R.ate.slice(0, 7) && ks.length < 13; k = addMonths(k, 1)) ks.push(k);
+      out.meses = ks.map(k => { const g = monthAgg(k); return { mes: k, recebido: brl(g.recebido), gastos: brl(g.gastos), sobra: brl(g.saldo), aportes: brl(g.aportes), pendentes: g.pending,
+        maiores_categorias: Object.keys(g.byCat).sort((x, y) => g.byCat[y] - g.byCat[x]).slice(0, 6).map(c => c + " " + brl(g.byCat[c])) }; });
+      const o = fin.invest && fin.invest.of, sk = o && o.snaps ? Object.keys(o.snaps).sort().pop() : null;
+      if (sk) out.conta_de_investimentos = { dia: sk, montante: brl((o.snaps[sk].alo || 0) + (o.snaps[sk].disp || 0)) };
+    }
+    return out;
+  }
+  if (m === "missoes") {
+    if (!modOn("missoes")) return { erro: "Missões desligado." };
+    const R = ctRange(a, wk), g = msData();
+    const list = g.tasks.filter(t => has([t.title, t.proj, t.setor, t.sol, t.notes].join(" ")) && (q || t.status === "aberta" || (t.closed && t.closed >= R.de && t.closed <= R.ate)));
+    const horas = R.days.map(d => ({ dia: d, horas: fmtHM(msDaySec(d)) })).filter(x => x.horas !== "0 min");
+    return { periodo: R.de + " a " + R.ate, horas_de_trabalho_no_periodo: fmtHM(R.days.reduce((s, d) => s + msDaySec(d), 0)), horas_por_dia: horas.slice(-31),
+      missoes: list.slice(0, 40).map(t => ({ titulo: t.title, situacao: t.status === "aberta" ? (t.wait ? "aguardando " + (t.wait.who || "terceiros") : "aberta") : t.status === "feita" ? "resolvida" : "não resolvida",
+        prazo: t.due || undefined, planejada_para: (t.plan || []).filter(d => d >= today).slice(0, 5), estimativa: t.est ? fmtHM(t.est * 60) : undefined, tempo_total: fmtHM(msTaskSec(t.id)),
+        projeto: t.proj || undefined, setor: t.setor || undefined, solicitante: t.sol || undefined, prioridade: t.pri || undefined, encerrada_em: t.closed || undefined, qualidade: t.quality || undefined })) };
+  }
+  if (m === "inteligencia") {
+    if (!modOn("inteligencia") || !intel) return { erro: "Inteligência não configurada." };
+    const R = ctRange(a, wk);
+    return { periodo: R.de + " a " + R.ate, estudo_por_dia: R.days.map(d => ({ dia: d, horas: fmtHM(intel.subjects.reduce((s, x) => s + subjSec(d, x.id), 0)) })).filter(x => x.horas !== "0 min"),
+      materias: intel.subjects.filter(s => has(s.name)).map(s => ({ materia: s.name, unidade: s.unit, feitos: subjDoneUpTo(s), total: s.total || undefined,
+        estudo_no_periodo: fmtHM(R.days.reduce((t, d) => t + subjSec(d, s.id), 0)), feitos_no_periodo: R.days.reduce((t, d) => t + (getRec(d, s.id).count || 0), 0) })) };
+  }
+  if (m === "forca") {
+    if (!modOn("forca") || !profileId) return { erro: "Força não configurada." };
+    const R = ctRange(a, addDaysISO(today, -13)), names = {}; PLAN.forEach(w => w.ex.forEach(x => { names[x.id] = x.name; }));
+    const dias = R.days.filter(d => state.logs[d] && Object.keys(state.logs[d].e || {}).length).map(d => {
+      const e = state.logs[d].e, w = dayWorkoutDone(d);
+      return { dia: d, treino: w ? w.name : "Treino", exercicios: Object.keys(e).filter(k => exerciseDone(e[k]) && has(names[k] || k)).map(k => ({ exercicio: names[k] || k, kg: e[k].kg, series: e[k].sets, reps: e[k].reps })) };
+    }).filter(x => x.exercicios.length);
+    return { periodo: R.de + " a " + R.ate, treinos: dias.slice(-20) };
+  }
+  if (m === "estamina") {
+    if (!modOn("estamina")) return { erro: "Estamina desligada." };
+    const R = ctRange(a, wk), rows = [];
+    R.days.forEach(d => PRACTICES.forEach(p => { const s = stRec(d, p.id).sec || 0; if (s >= 60 && has(p.name)) rows.push({ dia: d, pratica: p.name, tipo: p.kind, minutos: Math.round(s / 60) }); }));
+    return { periodo: R.de + " a " + R.ate, sessoes: rows.slice(-60), total_cardio_min: rows.filter(x => x.tipo === "cardio").reduce((s, x) => s + x.minutos, 0), total_foco_min: rows.filter(x => x.tipo === "foco").reduce((s, x) => s + x.minutos, 0) };
+  }
+  if (m === "graca") {
+    if (!modOn("graca") || !graca) return { erro: "Graça não configurada." };
+    const R = ctRange(a, wk), rows = [];
+    R.days.forEach(d => graca.rituals.forEach(r => { const x = grRec(d, r.id); if ((x.count || x.sec) && has(r.name)) rows.push({ dia: d, ritual: r.name, vezes: x.count || 0, minutos: Math.round((x.sec || 0) / 60) }); }));
+    return { periodo: R.de + " a " + R.ate, registros: rows.slice(-60) };
+  }
+  if (m === "atividades") {
+    const R = ctRange(a, wk), lo = new Date(R.de + "T00:00:00").getTime(), hi = new Date(R.ate + "T23:59:59").getTime();
+    const S = actSessions().filter(x => x.a >= lo && x.a <= hi && has(x.n)).sort((x, y) => x.a - y.a), tot = {};
+    S.forEach(x => { tot[x.n] = (tot[x.n] || 0) + (x.b - x.a); });
+    return { periodo: R.de + " a " + R.ate, total_por_atividade: Object.keys(tot).sort((x, y) => tot[y] - tot[x]).slice(0, 20).map(n => n + ": " + fmtHM(Math.round(tot[n] / 1000))),
+      sessoes: S.slice(-60).map(x => ({ dia: ymd(new Date(x.a)), das: ctHM(x.a), ate: ctHM(x.b), atividade: x.n })) };
+  }
+  return { erro: "Módulo desconhecido." };
+}
+function ctFocus(id) { setTimeout(() => { const n = document.getElementById(id); if (n) { n.scrollIntoView({ block: "center" }); try { n.focus({ preventScroll: true }); } catch (e) {} } }, 60); }
+function ctForm(tipo, c) {
+  const num = v => (v == null || v === "" || isNaN(Number(v))) ? null : Math.round(Number(v));
+  const hm = v => /^\d{1,2}:\d{2}$/.test(v || "") ? String(v).padStart(5, "0") : "";
+  const dset = v => Array.isArray(v) ? [...new Set(v.map(Number).filter(n => n >= 0 && n <= 6))] : null;
+  if (tipo === "materia") {
+    if (!modOn("inteligencia")) return { erro: "Inteligência desligada." };
+    if (!intel) return { erro: "A Inteligência ainda não foi configurada. Abra o módulo para começar." };
+    intelDraft = { name: c.nome || c.titulo || "", unit: UNIT_OPTS.some(u => u[0] === c.unidade) ? c.unidade : "", total: num(c.total), base: num(c.ja_feitos) };
+    intelAddOpen = true;
+    if (state.view === "intel" && state.itab === "materias") renderIntel(); else enterIntel("materias");
+    ctFocus("new-name"); ctShowScreen();
+    return { ok: true, aberto: "Nova matéria", aviso: "Peça para ele conferir e dizer salvar." };
+  }
+  if (tipo === "missao") {
+    if (!modOn("missoes")) return { erro: "Missões desligado." };
+    const rep = ["util", "diaria", "semanal", "mensal"].includes(c.repetir) ? c.repetir : "";
+    const ds = dset(c.dias_semana);
+    msUI.newDraft = { title: c.titulo || c.nome || "", proj: c.projeto || msUI.proj || "", setor: c.setor || "", sol: c.solicitante || "", pri: ["alta", "media", "baixa"].includes(c.prioridade) ? c.prioridade : "media",
+      est: num(c.estimativa_min), due: /^\d{4}-\d{2}-\d{2}$/.test(c.prazo || "") ? c.prazo : "", notes: c.detalhes || "",
+      rec: rep ? { type: rep, days: ds && ds.length ? ds : [1], mday: Math.min(31, Math.max(1, num(c.dia_mes) || 1)) } : null };
+    msUI.newOpen = true;
+    if (state.view === "ms" && state.mtab === "ms-lista") renderMissoes(); else enterMissoes("ms-lista");
+    ctFocus("msn-title"); ctShowScreen();
+    return { ok: true, aberto: "Nova missão", aviso: "Peça para ele conferir e dizer salvar." };
+  }
+  if (tipo === "compromisso") {
+    const kind = ["fixo", "flex", "wake", "sleep"].includes(c.tipo) ? c.tipo : (c.fim ? "fixo" : c.inicio && c.duracao_min ? "flex" : "fixo");
+    const ds = dset(c.dias);
+    rtUI.fx = Object.assign(rtFxBlank(ds && ds.length ? ds : undefined), { kind, name: c.nome || c.titulo || "", start: hm(c.inicio), end: hm(c.fim), dur: num(c.duracao_min) ? String(num(c.duracao_min)) : "", shift: [30, 60, 90, 120].includes(num(c.folga_min)) ? num(c.folga_min) : 60 });
+    rtUI.fxOpen = true;
+    if (state.view === "rotina" && state.rtab === "rot-horarios") renderRotina(); else enterRotina("rot-horarios");
+    ctFocus("rt-fx-name"); ctShowScreen();
+    return { ok: true, aberto: "Novo compromisso", aviso: "Peça para ele conferir e dizer salvar." };
+  }
+  if (tipo === "ritual") {
+    if (!modOn("graca")) return { erro: "Graça desligada." };
+    const ds = dset(c.dias);
+    grUI.draft = { name: c.nome || c.titulo || "", limit: num(c.limite_min) != null ? num(c.limite_min) : undefined, times: Math.max(1, num(c.vezes_por_dia) || 1), days: ds && ds.length ? ds : undefined };
+    grUI.newOpen = true;
+    if (state.view === "graca" && state.gtab === "gr-rituais") renderGraca(); else enterGraca("gr-rituais");
+    ctFocus("grn-name"); ctShowScreen();
+    return { ok: true, aberto: "Novo ritual", aviso: "Peça para ele conferir e dizer salvar." };
+  }
+  return { erro: "Tipo de formulário desconhecido." };
+}
+function ctSaveForm() {
+  const forms = [["ms-new", "msn-save", "Missão"], ["subj-new", "add-btn", "Matéria"], ["gr-new", "grn-save", "Ritual"], ["rt-fx-form", "rt-fx-add", "Compromisso"]];
+  const f = forms.find(([box, btn]) => document.getElementById(box) && document.getElementById(btn) && (box !== "rt-fx-form" || rtFxOpen()));
+  if (!f) return { erro: "Não há formulário de cadastro aberto." };
+  document.getElementById(f[1]).click();
+  const still = document.getElementById(f[0]), stillOpen = still && (f[0] !== "rt-fx-form" || rtFxOpen());
+  if (stillOpen) { const m = [...still.querySelectorAll(".note.flash")].map(n => n.textContent).filter(Boolean).join(" "); return { ok: false, aviso: m || "O formulário não foi salvo: falta algum campo." }; }
+  pushSync(false);
+  return { ok: true, salvo: f[2] };
+}
+function ctPend(lim) {
+  if (!modOn("financas")) return { erro: "Economia desligada." };
+  const P = fin.tx.filter(t => t.status !== "done").sort((x, y) => y.date.localeCompare(x.date));
+  const cats = {}; finFlat().filter(t => t.status === "done" && t.cat).forEach(t => { const k = t.kind + "|" + t.cat; const c = cats[k] = cats[k] || { categoria: t.cat, tipo: t.kind, vezes: 0, ess: {} }; c.vezes++; if (t.ess) c.ess[t.ess] = (c.ess[t.ess] || 0) + 1; });
+  return {
+    total_pendentes: P.length,
+    lancamentos: P.slice(0, Math.min(60, Math.max(1, Number(lim) || 30))).map(t => { const s = suggestFor(t); return { id: t.id, data: t.date, descricao: t.desc, detalhe: t.memo || undefined, valor: brl(t.amount), direcao: t.dir === "in" ? "entrada" : "saída", meio: t.method || undefined,
+      sugestao_do_app: s ? { tipo: s.kind, categoria: s.cat, item: s.item || undefined, essencialidade: s.ess || undefined, frequencia: s.freq || undefined, natureza: s.nat || undefined } : undefined,
+      precisa_valor_em_reais: t.fxPending ? true : undefined }; }),
+    categorias_usadas: Object.values(cats).sort((x, y) => y.vezes - x.vezes).slice(0, 80).map(c => ({ categoria: c.categoria, tipo: c.tipo, vezes: c.vezes, essencialidade_comum: Object.keys(c.ess).sort((x, y) => c.ess[y] - c.ess[x])[0] })),
+    valores: { tipo_saida: ["gasto", "investimento", "transferencia"], tipo_entrada: ["receita", "transferencia"], essencialidade: ESS.map(x => x[0]), frequencia: FREQ.map(x => x[0]), natureza: NAT.map(x => x[0]) }
+  };
+}
+function ctClassify(itens) {
+  let n = 0; const pulados = [];
+  itens.forEach(x => {
+    const t = fin.tx.find(y => y.id === x.id);
+    if (!t) { pulados.push({ id: x.id, motivo: "não achei o lançamento" }); return; }
+    if (t.status === "done") { pulados.push({ id: x.id, motivo: "já estava classificado" }); return; }
+    if (t.fxPending) { pulados.push({ id: x.id, motivo: "compra em moeda estrangeira: falta o valor em reais" }); return; }
+    const okKind = t.dir === "in" ? ["receita", "transferencia"] : ["gasto", "investimento", "transferencia"];
+    if (!okKind.includes(x.tipo)) { pulados.push({ id: x.id, motivo: "tipo " + x.tipo + " não vale para " + (t.dir === "in" ? "entrada" : "saída") }); return; }
+    const d = { dir: t.dir, kind: x.tipo, cat: String(x.categoria || "").trim(), item: String(x.item || "").trim(), ess: x.essencialidade || null, freq: x.frequencia || null, nat: x.natureza || null };
+    if (!isComplete(d)) { pulados.push({ id: x.id, motivo: x.tipo === "gasto" ? "gasto precisa de item, categoria, essencialidade, frequência e natureza" : "falta a categoria" }); return; }
+    const fields = { kind: d.kind, cat: d.cat, item: d.item, split: undefined };
+    if (d.kind === "gasto") Object.assign(fields, { ess: d.ess, freq: d.freq, nat: d.nat }); else Object.assign(fields, { ess: null, freq: null, nat: null });
+    Object.assign(t, fields, { status: "done" }); learnRule(t); n++;
+  });
+  if (n) { saveFin(); if (state.view === "fin") renderFin(); pushSync(false); }
+  return { classificados: n, pulados, ainda_pendentes: fin.tx.filter(t => t.status !== "done").length };
 }
 
 document.getElementById("home-btn").addEventListener("click", goHome);

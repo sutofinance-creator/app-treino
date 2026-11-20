@@ -1,4 +1,4 @@
-const CACHE = "stek-v138";
+const CACHE = "stek-v139";
 const CORE = ["./", "index.html", "manifest.json", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "icon-maskable.png", "logo-s.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE.map(u => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting())); });
 const CRON_CACHE = "stek-cron"; // pausas tocadas na notificação do cronômetro, aplicadas quando o app abre
@@ -45,7 +45,8 @@ self.addEventListener("push", e => {
   e.waitUntil(self.registration.showNotification(d.title || "STEK", {
     body: d.body || "", tag: d.tag || "stek", renotify: true,
     icon: ICON, badge: ICON, data: { url: d.url || "./" }
-  }));
+  }).then(() => self.clients.matchAll({ type: "window", includeUncontrolled: true }))
+    .then(list => list.forEach(c => c.postMessage({ type: "stek-aviso", title: d.title || "", body: d.body || "" })))); // a Cortana fala o aviso se o app estiver aberto
 });
 self.addEventListener("notificationclick", e => {
   const d = e.notification.data || {};

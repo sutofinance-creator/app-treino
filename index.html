@@ -5804,7 +5804,7 @@ function renderPendentes(main) {
   main.appendChild(imp);
 
   if (!pend.length) return;
-  const sug = pend.filter(t => { const r = suggestFor(t); return r && !r.split && isComplete(Object.assign({}, t, pickAll(r), { split: undefined })); });
+  const sug = sugPendList(pend);
   if (sug.length) main.appendChild(sugSection(sug));
   const list = el("div", "txlist");
   pend.forEach(t => list.appendChild(txRow(t, true)));
@@ -5813,24 +5813,36 @@ function renderPendentes(main) {
 /* Sugestões prontas: dá para ver a classificação de cada uma, editar as que estiverem erradas
    (a edição fica guardada na lista) e deixar algumas de fora. Aceitar classifica tudo de uma vez:
    as editadas do jeito que você deixou, as outras como sugerido. */
+// o que entra na revisão "Sugestões prontas": mesma origem de algo já classificado, ou proposta da Cortana
+function sugPendList(pend) {
+  return (pend || fin.tx.filter(t => t.status !== "done")).filter(t => {
+    if (finUI.sugDraft[t.id]) return true;
+    const r = suggestFor(t); return r && !r.split && isComplete(Object.assign({}, t, pickAll(r), { split: undefined }));
+  });
+}
+// Aceitar: classifica tudo o que está na revisão (menos o que ficou de fora). Usado pelo botão e pela Cortana depois do seu ok.
+function sugAccept(except) {
+  const skip = finUI.sugSkip, drafts = finUI.sugDraft, take = sugPendList().filter(t => !skip[t.id] && !(except || []).includes(t.id));
+  // as editadas por último: a correção é o que fica aprendido para as próximas sugestões
+  take.slice().sort((x, y) => (drafts[x.id] ? 1 : 0) - (drafts[y.id] ? 1 : 0)).forEach(t => {
+    const dr = drafts[t.id];
+    if (dr && dr.amount != null) { t.amount = dr.amount; t.fxManual = true; delete t.fxPending; }
+    Object.assign(t, sugFields(t), { status: "done" }); learnRule(t); delete drafts[t.id];
+  });
+  finUI.msg = ""; finUI.sugEdit = null; saveFin();
+  return take.length;
+}
 function sugFields(t) { const dr = finUI.sugDraft[t.id]; return dr ? dr.fields : Object.assign(pickAll(suggestFor(t)), { split: undefined }); }
 function sugSection(sug) {
   const skip = finUI.sugSkip, drafts = finUI.sugDraft, take = sug.filter(t => !skip[t.id]), out = sug.length - take.length, ned = take.filter(t => drafts[t.id]).length;
   const s = el("section", "guide sug-box"); s.id = "sug-box";
-  s.append(el("h3", null, "Sugestões prontas"), el("p", "note", sug.length + " lançamento(s) têm a mesma origem de algo que você já classificou. Revise a classificação sugerida, edite as que não estiverem certas e aceite tudo de uma vez." + (ned ? " " + ned + " editado(s) entram do jeito que você deixou." : "") + (out ? " " + out + " deixado(s) de fora continuam pendentes." : "")));
+  const nct = sug.filter(t => drafts[t.id] && drafts[t.id].ct).length, nrule = sug.length - nct, ned2 = ned - take.filter(t => drafts[t.id] && drafts[t.id].ct).length;
+  s.append(el("h3", null, "Sugestões prontas"), el("p", "note", (nct ? "A Cortana propôs a classificação de " + nct + " lançamento(s)" + (nrule ? " e " + nrule + " têm a mesma origem de algo que você já classificou" : "") + ". Nada foi salvo ainda: revise, edite o que estiver errado e aceite tudo de uma vez (ou diga “ok” para a Cortana)." : sug.length + " lançamento(s) têm a mesma origem de algo que você já classificou. Revise a classificação sugerida, edite as que não estiverem certas e aceite tudo de uma vez.") + (ned2 > 0 ? " " + ned2 + " editado(s) entram do jeito que você deixou." : "") + (out ? " " + out + " deixado(s) de fora continuam pendentes." : "")));
   const bb = el("div", "btns");
   const tg = el("button", "btn ghost", finUI.sugOpen ? "Ocultar sugestões" : "Revisar sugestões"); tg.type = "button"; tg.id = "sug-toggle"; tg.setAttribute("aria-expanded", String(!!finUI.sugOpen));
   tg.addEventListener("click", () => { finUI.sugOpen = !finUI.sugOpen; finUI.sugEdit = null; renderFin(); });
   const b = el("button", "btn", take.length ? "Aceitar " + take.length + " sugestão(ões)" : "Nenhuma para aceitar"); b.type = "button"; b.id = "accept-all"; b.disabled = !take.length;
-  b.addEventListener("click", () => {
-    // as editadas por último: a correção é o que fica aprendido para as próximas sugestões
-    take.slice().sort((x, y) => (drafts[x.id] ? 1 : 0) - (drafts[y.id] ? 1 : 0)).forEach(t => {
-      const dr = drafts[t.id];
-      if (dr && dr.amount != null) { t.amount = dr.amount; t.fxManual = true; delete t.fxPending; }
-      Object.assign(t, sugFields(t), { status: "done" }); learnRule(t); delete drafts[t.id];
-    });
-    finUI.msg = ""; finUI.sugEdit = null; saveFin(); renderFin();
-  });
+  b.addEventListener("click", () => { sugAccept(); renderFin(); });
   bb.append(tg, b); s.appendChild(bb);
   if (!finUI.sugOpen) return s;
   const list = el("div", "sug-list");
@@ -5844,7 +5856,7 @@ function sugSection(sug) {
     row.appendChild(top);
     if (!editing) {
       const line = el("p", "sug-cls");
-      if (edited) line.append(el("span", "mini sug-ed", "Editado"), " ");
+      if (edited) line.append(el("span", "mini sug-ed", drafts[t.id].ct ? "Cortana" : "Editado"), " ");
       if (r.split) line.append(el("b", null, "Rateio"), " · " + r.split.map(p => (p.item || p.cat) + " " + brl(p.amount)).join(" + "));
       else line.append(el("b", null, LABEL[r.kind] || r.kind), " · " + (r.kind === "receita" ? "Origem: " : "Categoria: ") + r.cat + (r.kind === "gasto" && r.item ? " · Item: " + r.item : ""));
       row.appendChild(line);
@@ -5856,7 +5868,7 @@ function sugSection(sug) {
     const sk = el("button", "linkbtn", off ? "Incluir de novo" : "Deixar de fora"); sk.type = "button"; sk.id = "sug-sk-" + t.id;
     sk.addEventListener("click", () => { if (off) delete skip[t.id]; else skip[t.id] = true; renderFin(); });
     act.append(ed);
-    if (edited && !editing) { const un = el("button", "linkbtn", "Voltar à sugestão"); un.type = "button"; un.id = "sug-un-" + t.id; un.addEventListener("click", () => { delete drafts[t.id]; renderFin(); }); act.appendChild(un); }
+    if (edited && !editing && !drafts[t.id].ct && suggestFor(t)) { const un = el("button", "linkbtn", "Voltar à sugestão"); un.type = "button"; un.id = "sug-un-" + t.id; un.addEventListener("click", () => { delete drafts[t.id]; renderFin(); }); act.appendChild(un); }
     act.appendChild(sk); row.appendChild(act);
     if (editing) {
       row.appendChild(el("p", "note muted", "Ajuste o que estiver errado e toque em Guardar edição. O lançamento continua na lista e é classificado assim quando você tocar em Aceitar."));
@@ -9628,7 +9640,7 @@ function ctSystem() {
     "Use as ferramentas para consultar e para agir. Nunca invente números, tarefas ou lançamentos: consulte antes. Se não achar, diga que não achou.",
     "Para criar algo novo (matéria, missão, compromisso ou ritual), abra o formulário certo já preenchido com o que ele disse e peça para ele conferir. Só use salvar_formulario quando ele pedir para salvar.",
     "Para iniciar ou parar cronômetros, use os ids da lista abaixo. Iniciar uma missão pausa estudo, Estamina e Graça; o trabalho geral roda junto com eles. Para trocar de missão, basta iniciar a outra.",
-    "Para classificar lançamentos da Economia, pegue os pendentes e as categorias que ele já usa e classifique só os que tiver segurança, mantendo o padrão dele. Depois diga quantos classificou e quantos ficaram para ele.",
+    "Na Economia você nunca classifica sozinha. Quando ele pedir para classificar, pegue os pendentes e as categorias que ele já usa, proponha com propor_classificacoes (seguindo o padrão dele) e diga as classificações: até cinco, conta por conta em frases curtas (\"Uber, 9,92: transporte, necessário\"); mais que isso, um resumo e que a lista está na tela. Peça o ok. Se ele corrigir alguma, proponha de novo só aquela. Só chame confirmar_classificacoes depois do ok dele.",
     "Nunca altere metas (horas de trabalho, horas de estudo, tarefas por dia) e não apague nada. Se ele pedir algo que as ferramentas não fazem, diga em uma frase e abra a tela onde ele faz isso.",
     "Nas ferramentas, datas no formato AAAA-MM-DD e horários HH:MM. Ao falar, diga o dia da semana e o dia do mês (\"sexta, dia 20\") e valores em reais (\"12 reais e 50 centavos\" ou \"R$ 12,50\").",
     "Se ele só chamar ou cumprimentar, responda curto e pergunte o que ele precisa.",
@@ -9673,8 +9685,9 @@ function ctTools() {
           properties: { nome: { type: "string" }, titulo: { type: "string" }, unidade: { type: "string" }, total: { type: "number" }, ja_feitos: { type: "number" }, projeto: { type: "string" }, setor: { type: "string" }, solicitante: { type: "string" }, prioridade: { type: "string" }, estimativa_min: { type: "number" }, prazo: { type: "string" }, repetir: { type: "string" }, dias_semana: days, dia_mes: { type: "integer" }, detalhes: { type: "string" }, tipo: { type: "string" }, inicio: { type: "string" }, fim: { type: "string" }, duracao_min: { type: "number" }, folga_min: { type: "number" }, dias: days, limite_min: { type: "number" }, vezes_por_dia: { type: "integer" } } } }, ["tipo"]) },
     { name: "salvar_formulario", description: "Salva o formulário de cadastro aberto na tela (o que foi aberto com abrir_formulario). Só quando ele pedir para salvar.", input_schema: obj() },
     { name: "lancamentos_pendentes", description: "Lista os lançamentos da Economia que faltam classificar, com a sugestão do app quando existe, as categorias que ele já usa e os valores válidos de cada campo.", input_schema: obj({ limite: { type: "integer" } }) },
-    { name: "classificar_lancamentos", description: "Classifica lançamentos pendentes da Economia. tipo: gasto, investimento (aporte), transferencia ou receita. Gasto precisa de item (o que foi comprado), categoria, essencialidade, frequencia e natureza. Empréstimos e rateios ficam para ele fazer no app.",
-      input_schema: obj({ itens: { type: "array", items: obj({ id: { type: "string" }, tipo: { type: "string", enum: ["gasto", "investimento", "transferencia", "receita"] }, categoria: { type: "string" }, item: { type: "string" }, essencialidade: { type: "string", enum: ["necessario", "substituivel", "superfluo", "luxo"] }, frequencia: { type: "string", enum: ["recorrente", "esporadico"] }, natureza: { type: "string", enum: ["fixo", "variavel"] } }, ["id", "tipo", "categoria"]) } }, ["itens"]) }
+    { name: "propor_classificacoes", description: "Propõe a classificação de lançamentos pendentes da Economia e abre a tela de revisão (Sugestões prontas). NÃO salva nada. Também serve para corrigir uma proposta: mande de novo só o lançamento corrigido. tipo: gasto, investimento (aporte), transferencia ou receita. Gasto precisa de item (o que foi comprado), categoria, essencialidade, frequencia e natureza. Empréstimos e rateios ficam para ele fazer no app.",
+      input_schema: obj({ itens: { type: "array", items: obj({ id: { type: "string" }, tipo: { type: "string", enum: ["gasto", "investimento", "transferencia", "receita"] }, categoria: { type: "string" }, item: { type: "string" }, essencialidade: { type: "string", enum: ["necessario", "substituivel", "superfluo", "luxo"] }, frequencia: { type: "string", enum: ["recorrente", "esporadico"] }, natureza: { type: "string", enum: ["fixo", "variavel"] } }, ["id", "tipo", "categoria"]) } }, ["itens"]) },
+    { name: "confirmar_classificacoes", description: "Salva as classificações que estão na revisão, como o botão Aceitar. Só depois que ele disser ok (\"pode salvar\", \"tá certo\", \"aceita\"). excluir: ids que ele pediu para deixar de fora.", input_schema: obj({ excluir: { type: "array", items: { type: "string" } } }) }
   ];
 }
 async function ctRun(name, a) {
@@ -9687,7 +9700,8 @@ async function ctRun(name, a) {
   if (name === "abrir_formulario") return ctForm(a.tipo, a.campos || {});
   if (name === "salvar_formulario") return ctSaveForm();
   if (name === "lancamentos_pendentes") return ctPend(a.limite);
-  if (name === "classificar_lancamentos") return ctClassify(a.itens || []);
+  if (name === "propor_classificacoes") return ctPropose(a.itens || []);
+  if (name === "confirmar_classificacoes") return ctConfirm(a.excluir);
   return { erro: "Ferramenta desconhecida: " + name };
 }
 const ctHM = ms => { const d = new Date(ms); return minToHM(d.getHours() * 60 + d.getMinutes()); };
@@ -9923,23 +9937,35 @@ function ctPend(lim) {
     valores: { tipo_saida: ["gasto", "investimento", "transferencia"], tipo_entrada: ["receita", "transferencia"], essencialidade: ESS.map(x => x[0]), frequencia: FREQ.map(x => x[0]), natureza: NAT.map(x => x[0]) }
   };
 }
-function ctClassify(itens) {
-  let n = 0; const pulados = [];
+function ctPropose(itens) {
+  if (!modOn("financas")) return { erro: "Economia desligada." };
+  let n = 0; const puladas = [];
   itens.forEach(x => {
     const t = fin.tx.find(y => y.id === x.id);
-    if (!t) { pulados.push({ id: x.id, motivo: "não achei o lançamento" }); return; }
-    if (t.status === "done") { pulados.push({ id: x.id, motivo: "já estava classificado" }); return; }
-    if (t.fxPending) { pulados.push({ id: x.id, motivo: "compra em moeda estrangeira: falta o valor em reais" }); return; }
+    if (!t) { puladas.push({ id: x.id, motivo: "não achei o lançamento" }); return; }
+    if (t.status === "done") { puladas.push({ id: x.id, motivo: "já estava classificado" }); return; }
+    if (t.fxPending) { puladas.push({ id: x.id, motivo: "compra em moeda estrangeira: falta o valor em reais" }); return; }
     const okKind = t.dir === "in" ? ["receita", "transferencia"] : ["gasto", "investimento", "transferencia"];
-    if (!okKind.includes(x.tipo)) { pulados.push({ id: x.id, motivo: "tipo " + x.tipo + " não vale para " + (t.dir === "in" ? "entrada" : "saída") }); return; }
+    if (!okKind.includes(x.tipo)) { puladas.push({ id: x.id, motivo: "tipo " + x.tipo + " não vale para " + (t.dir === "in" ? "entrada" : "saída") }); return; }
     const d = { dir: t.dir, kind: x.tipo, cat: String(x.categoria || "").trim(), item: String(x.item || "").trim(), ess: x.essencialidade || null, freq: x.frequencia || null, nat: x.natureza || null };
-    if (!isComplete(d)) { pulados.push({ id: x.id, motivo: x.tipo === "gasto" ? "gasto precisa de item, categoria, essencialidade, frequência e natureza" : "falta a categoria" }); return; }
+    if (!isComplete(d)) { puladas.push({ id: x.id, motivo: x.tipo === "gasto" ? "gasto precisa de item, categoria, essencialidade, frequência e natureza" : "falta a categoria" }); return; }
     const fields = { kind: d.kind, cat: d.cat, item: d.item, split: undefined };
     if (d.kind === "gasto") Object.assign(fields, { ess: d.ess, freq: d.freq, nat: d.nat }); else Object.assign(fields, { ess: null, freq: null, nat: null });
-    Object.assign(t, fields, { status: "done" }); learnRule(t); n++;
+    finUI.sugDraft[t.id] = { fields, amount: null, ct: true }; delete finUI.sugSkip[t.id]; n++;
   });
-  if (n) { saveFin(); if (state.view === "fin") renderFin(); pushSync(false); }
-  return { classificados: n, pulados, ainda_pendentes: fin.tx.filter(t => t.status !== "done").length };
+  finUI.sugOpen = true; finUI.sugEdit = null;
+  if (state.view === "fin" && state.ftab === "fin-pendentes") renderFin(); else enterFin("fin-pendentes");
+  ctFocus("sug-box"); ctShowScreen();
+  const rev = sugPendList().filter(t => !finUI.sugSkip[t.id]);
+  return { propostas: n, puladas, na_revisao: rev.length, nada_foi_salvo: true,
+    revisao: rev.slice(0, 40).map(t => { const f = sugFields(t); return { id: t.id, descricao: t.desc, valor: brl(t.amount), tipo: f.kind, categoria: f.cat, item: f.item || undefined, essencialidade: f.ess || undefined, frequencia: f.freq || undefined, natureza: f.nat || undefined }; }) };
+}
+function ctConfirm(excluir) {
+  if (!modOn("financas")) return { erro: "Economia desligada." };
+  if (!sugPendList().filter(t => !finUI.sugSkip[t.id]).length) return { erro: "Não há classificações em revisão." };
+  const n = sugAccept(Array.isArray(excluir) ? excluir : []);
+  if (state.view === "fin") renderFin(); pushSync(false);
+  return { classificados: n, ainda_pendentes: fin.tx.filter(t => t.status !== "done").length };
 }
 
 document.getElementById("home-btn").addEventListener("click", goHome);

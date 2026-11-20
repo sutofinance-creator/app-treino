@@ -777,6 +777,12 @@ ol.steps a { color: var(--accent); }
   .ct-fab.think .ct-ring { animation: ct-spin .9s linear infinite; }
   .ct-fab.speak .ct-ring { animation: ct-pulse .55s ease-in-out infinite; }
 }
+@media (prefers-reduced-motion: no-preference) {
+  .ct-fab.speak.words .ct-ring { animation: none; }
+  .ct-fab.speak.words.beat .ct-ring { animation: ct-beat .22s ease-out; }
+  .ct-fab.speak { box-shadow: 0 0 0 1px rgba(215, 184, 255, .5), 0 0 30px rgba(176, 124, 255, .55), 0 6px 18px rgba(0, 0, 0, .55); }
+}
+@keyframes ct-beat { 0% { transform: scale(1.22); box-shadow: 0 0 22px rgba(215, 184, 255, 1), inset 0 0 10px rgba(215, 184, 255, .8); } 100% { transform: scale(1); } }
 @keyframes ct-breath { 50% { opacity: .55; } }
 @keyframes ct-pulse { 50% { transform: scale(1.14); } }
 @keyframes ct-spin { to { transform: rotate(360deg); } }
@@ -9383,7 +9389,7 @@ let ct = null;
 const ctS = { gesture: 0, blocked: false, mounted: false, open: false, compact: false, busy: false, msgs: [], last: 0, log: [], sr: null, srOn: false, mode: "", want: "", cmdAt: 0, speaking: false, heard: "" };
 function ctCfg() {
   if (!ct) { try { ct = JSON.parse(localStorage.getItem(CT_KEY)) || {}; } catch (e) { ct = {}; } }
-  if (ct.voz == null) ct.voz = true; if (ct.avisos == null) ct.avisos = true;
+  if (ct.voz == null) ct.voz = true; if (ct.avisos == null) ct.avisos = true; if (ct.som == null) ct.som = true;
   return ct;
 }
 function ctSave() { try { localStorage.setItem(CT_KEY, JSON.stringify(ct)); } catch (e) {} }
@@ -9426,7 +9432,8 @@ function ctStatusText() {
 function ctState() {
   const f = document.getElementById("ct-fab");
   if (f) {
-    f.className = "ct-fab" + (ctS.busy ? " think" : ctS.speaking ? " speak" : ctS.mode === "cmd" ? " listen" : ctS.mode === "wake" ? " wake" : "");
+    const keep = ctS.speaking && f.classList.contains("words") ? " words" : "";
+    f.className = "ct-fab" + (ctS.busy ? " think" : ctS.speaking ? " speak" + keep : ctS.mode === "cmd" ? " listen" : ctS.mode === "wake" ? " wake" : "");
     f.setAttribute("aria-label", ctS.mode === "cmd" ? "Parar de ouvir" : "Falar com a Cortana");
   }
   const st = document.getElementById("ct-st"); if (st) st.textContent = ctStatusText();
@@ -9466,6 +9473,7 @@ function ctDraw() {
     chk("ct-wake", "Ouvir “Olá Cortana” enquanto o app está aberto na tela", c.wake && !!CT_SR, v => { c.wake = v; ctSave(); if (v) { stSoundInit(); ctKick(); } else if (ctS.mode === "wake") { ctS.want = ""; ctStopRec(); } ctState(); });
     chk("ct-voz", "Responder falando", c.voz, v => { c.voz = v; ctSave(); if (!v) ctSpeakStop(); });
     chk("ct-avisos", "Falar os avisos da Rotina quando o app estiver aberto", c.avisos, v => { c.avisos = v; ctSave(); });
+    chk("ct-som", "Som digital antes de cada resposta", c.som, v => { c.som = v; ctSave(); if (v) { stSoundInit(); ctBlip(); } });
     const vs = ctVoices();
     if (vs.length > 1) {
       const f = el("div", "field"), l = el("label", null, "Voz"), s = el("select", "sel"); l.htmlFor = "ct-voice"; s.id = "ct-voice";
@@ -9562,6 +9570,24 @@ function ctPickVoice() {
 }
 if (window.speechSynthesis) try { speechSynthesis.addEventListener("voiceschanged", () => { if (ctS.open && !ctS.compact && !document.getElementById("ct-voice")) ctDraw(); }); } catch (e) {}
 function ctPlain(t) { return String(t || "").replace(/https?:\/\/\S+/g, "").replace(/[*_#`>|]/g, "").replace(/[\u{1F300}-\u{1FAFF}☀-➿]/gu, "").replace(/\s+/g, " ").trim(); }
+// som curto de "sistema" antes da fala (três notas rápidas, bem baixas)
+function ctBlip() {
+  if (!stAudio) return false;
+  try {
+    const t = stAudio.currentTime;
+    [[1175, 0], [1568, 0.055], [2093, 0.11]].forEach(([f, d]) => {
+      const o = stAudio.createOscillator(), g = stAudio.createGain(); o.type = "triangle"; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.12, t + d + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.09);
+      o.connect(g); g.connect(stAudio.destination); o.start(t + d); o.stop(t + d + 0.1);
+    });
+    return true;
+  } catch (e) { return false; }
+}
+// o anel do botão pulsa a cada palavra falada (quando a voz do aparelho avisa as palavras; senão, pulsa num ritmo fixo)
+function ctBeat() {
+  const f = document.getElementById("ct-fab"); if (!f) return;
+  f.classList.add("words"); f.classList.remove("beat"); void f.offsetWidth; f.classList.add("beat");
+}
 function ctSpeakStop() { try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e) {} if (ctS.speaking) { ctS.speaking = false; ctState(); } }
 function ctSay(text, then) {
   const fin = () => { if (then) then(); setTimeout(ctKick, 250); };
@@ -9570,10 +9596,13 @@ function ctSay(text, then) {
   ctS.want = ctS.want === "cmd" ? "" : ctS.want; ctStopRec();
   let ended = false;
   const done = () => { if (ended) return; ended = true; clearInterval(poll); ctS.speaking = false; ctState(); fin(); };
-  const u = new SpeechSynthesisUtterance(t); u.lang = "pt-BR"; u.rate = 1.05; const v = ctPickVoice(); if (v) u.voice = v;
+  // voz um pouco mais aguda e rápida: mais viva, no clima de IA da série
+  const u = new SpeechSynthesisUtterance(t); u.lang = "pt-BR"; u.rate = 1.08; u.pitch = 1.1; const v = ctPickVoice(); if (v) u.voice = v;
   u.onend = done; u.onerror = done;
+  u.onboundary = e => { if (e.name && e.name !== "word") return; ctBeat(); };
   ctS.speaking = true; ctState();
-  try { speechSynthesis.cancel(); setTimeout(() => { try { speechSynthesis.speak(u); } catch (e) { done(); } }, 60); } catch (e) { done(); return; }
+  const go = () => { try { speechSynthesis.speak(u); } catch (e) { done(); } };
+  try { speechSynthesis.cancel(); if (ctCfg().som && ctBlip()) setTimeout(go, 230); else setTimeout(go, 60); } catch (e) { done(); return; }
   // alguns aparelhos não avisam o fim da fala
   const t0 = Date.now(); const poll = setInterval(() => { if (Date.now() - t0 > 1200 && !speechSynthesis.speaking && !speechSynthesis.pending) done(); }, 400);
 }
@@ -9646,6 +9675,7 @@ function ctSystem() {
   const tg = ctTargets().map(t => t.id + " = " + t.nome).join("\n");
   return [
     "Você é a Cortana, a assistente de voz do STEK, o app pessoal do Akio para rotina, estudos (Inteligência), cardio e foco (Estamina), treino (Força), finanças (Economia), rituais (Graça) e trabalho (Missões).",
+    "Personalidade: viva, rápida e esperta, com confiança e, de vez em quando, um humor seco e leve (uma tirada curta, nunca no lugar da informação). Fale como uma parceira de missão: direta, sem formalidade, sem bajulação. Pode chamá-lo de Akio às vezes.",
     "Fale sempre em português do Brasil, com frases curtas e naturais: a resposta é lida em voz alta. Responda em uma ou duas frases; numa lista, no máximo cinco itens, ditos em uma frase corrida. Nada de markdown, emojis, marcadores ou ids na resposta.",
     "Use as ferramentas para consultar e para agir. Nunca invente números, tarefas ou lançamentos: consulte antes. Se não achar, diga que não achou.",
     "Para criar algo novo (matéria, missão, compromisso ou ritual), abra o formulário certo já preenchido com o que ele disse e peça para ele conferir. Só use salvar_formulario quando ele pedir para salvar.",

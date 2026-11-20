@@ -9380,7 +9380,7 @@ const CT_KEY = "stek-cortana-v1";
 const CT_SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
 const CT_WAKE = /(?:^|\s)(?:ol[aá]|oi|ei|al[oô]|hey)?[\s,]*[ck][oóu]r?tana\b[\s,.:!?-]*(.*)$/i;
 let ct = null;
-const ctS = { mounted: false, open: false, compact: false, busy: false, msgs: [], last: 0, log: [], sr: null, srOn: false, mode: "", want: "", cmdAt: 0, speaking: false, heard: "" };
+const ctS = { gesture: 0, blocked: false, mounted: false, open: false, compact: false, busy: false, msgs: [], last: 0, log: [], sr: null, srOn: false, mode: "", want: "", cmdAt: 0, speaking: false, heard: "" };
 function ctCfg() {
   if (!ct) { try { ct = JSON.parse(localStorage.getItem(CT_KEY)) || {}; } catch (e) { ct = {}; } }
   if (ct.voz == null) ct.voz = true; if (ct.avisos == null) ct.avisos = true;
@@ -9400,7 +9400,7 @@ function ctMount() {
   const fab = el("button", "ct-fab"); fab.type = "button"; fab.id = "ct-fab"; fab.title = "Cortana"; fab.setAttribute("aria-label", "Falar com a Cortana");
   fab.appendChild(el("span", "ct-ring")); fab.firstChild.setAttribute("aria-hidden", "true");
   fab.addEventListener("click", () => {
-    stSoundInit();
+    stSoundInit(); ctS.gesture = Date.now(); ctS.blocked = false;
     if (ctS.busy) { ctOpen(true); return; }
     if (ctS.mode === "cmd") { ctS.want = ""; ctStopRec(); return; }
     ctOpen(true); ctListen();
@@ -9456,7 +9456,7 @@ function ctDraw() {
   const form = el("form", "ct-form"); form.id = "ct-form";
   const inp = el("input"); inp.id = "ct-in"; inp.placeholder = "Escreva o pedido"; inp.autocomplete = "off"; inp.setAttribute("aria-label", "Pedido para a Cortana");
   const mic = el("button", "btn ghost ct-mic", "🎤 Falar"); mic.type = "button"; mic.id = "ct-mic"; mic.disabled = !CT_SR;
-  mic.addEventListener("click", () => { stSoundInit(); if (ctS.mode === "cmd") { ctS.want = ""; ctStopRec(); } else ctListen(); });
+  mic.addEventListener("click", () => { stSoundInit(); ctS.gesture = Date.now(); ctS.blocked = false; if (ctS.mode === "cmd") { ctS.want = ""; ctStopRec(); } else ctListen(); });
   const send = el("button", "btn", "Enviar"); send.type = "submit"; send.id = "ct-send";
   form.addEventListener("submit", e => { e.preventDefault(); const t = inp.value.trim(); if (!t) return; inp.value = ""; ctAsk(t); });
   form.append(inp, mic, send); p.appendChild(form);
@@ -9493,7 +9493,8 @@ function ctRec() {
     }
   };
   r.onerror = e => {
-    if (e.error === "not-allowed" || e.error === "service-not-allowed") { ctCfg().wake = false; ctSave(); ctS.want = ""; ctLog("info", "O microfone está bloqueado para o app. Libere o microfone nas permissões do navegador e tente de novo."); const w = document.getElementById("ct-wake"); if (w) w.checked = false; }
+    // sem o microfone: não mexe no ajuste salvo; só para de tentar até você tocar em Falar
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") { ctS.want = ""; ctS.blocked = true; ctOpen(true); ctLog("info", Date.now() - ctS.gesture > 4000 ? "O navegador só libera o microfone depois de um toque: toque em Falar (ou no botão redondo)." : "O microfone está bloqueado para o app. Libere o microfone nas permissões do navegador e tente de novo."); }
     else if (e.error === "network") ctLog("info", "Sem internet para reconhecer a voz.");
     else if (e.error === "audio-capture") ctLog("info", "Não encontrei um microfone neste aparelho.");
   };
@@ -9504,6 +9505,7 @@ function ctStopRec() { if (ctS.sr && ctS.srOn) { try { ctS.sr.abort(); } catch (
 // decide o que o microfone deve fazer agora: ouvir um pedido, esperar o "Olá Cortana" ou nada
 function ctKick() {
   if (!ctS.mounted || ctS.srOn || ctS.speaking) { ctState(); return; }
+  if (ctS.blocked) { ctS.mode = ""; ctState(); return; }
   let w = ctS.want;
   if (w === "cmd" && Date.now() - ctS.cmdAt > 10000) w = ctS.want = "";
   if (!w && ctCfg().wake && !ctS.busy && document.visibilityState === "visible") w = "wake";
@@ -9526,6 +9528,14 @@ function ctCmdTimer() {
     ctS.want = "";
     if (ctS.srOn && ctCfg().wake) { ctS.mode = "wake"; ctState(); } else ctStopRec();
   }, 10200);
+}
+function ctOpenListening() {
+  ctMount(); if (!ctS.mounted) return;
+  ctOpen(true); setTimeout(ctListen, 300);
+}
+function ctCurHash() {
+  const v = state.view;
+  return v === "rotina" ? state.rtab : v === "intel" ? state.itab : v === "fin" ? state.ftab : v === "est" ? state.stab : v === "graca" ? state.gtab : v === "ms" ? state.mtab : v === "forca" ? state.tab : v === "conta" ? "conta" : (state.htab || HOME_DEF);
 }
 function ctOnFinal(txt) {
   if (!txt) return;
@@ -9973,6 +9983,7 @@ document.getElementById("acct-btn").addEventListener("click", () => enterConta()
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && loggedIn()) cloudPull(); });
 window.addEventListener("hashchange", () => {
   const h = location.hash.replace("#", "");
+  if (h === "cortana") { history.replaceState(null, "", "#" + (ctCurHash() || HOME_DEF)); ctOpenListening(); return; }
   if (h.startsWith("tarefa-")) { rtGoTaskHash(h); return; }
   if (h.startsWith("abrir-")) { cronOpen(h); return; }
   if (h === "inicio" || h === "" || HOME_TABS.some(t => t.id === h)) { const t = h || HOME_DEF; if (state.view !== "home" || state.htab !== t) { state.htab = t; renderHome(); } return; }
@@ -10004,6 +10015,7 @@ history.replaceState(null, "", "#" + state.htab);
 renderHome();
 if (startHash.startsWith("#tarefa-")) rtGoTaskHash(startHash);
 else if (startHash.startsWith("#abrir-")) cronOpen(startHash);
+else if (startHash === "#cortana") ctOpenListening(); // atalho "Falar com a Cortana" no ícone do app
 cronBusy = true; cronApplyPauses().then(cronHide);
 updateAcct();
 cloudStartup().then(() => { fLateMigrate(); fSerial(fPublish); });

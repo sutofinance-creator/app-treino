@@ -821,7 +821,7 @@ function saveLogs() {
 function defaultTab() {
   const h = location.hash.replace("#", "");
   if (TABS.some(t => t.id === h)) return h;
-  return prof().dayTab[new Date().getDay()] || "guia";
+  const w = dayWorkout(todayISO(), strengthDay(todayISO())); return w ? w.id : "guia";
 }
 
 function setStatus(text, cls) { const el = document.getElementById("status"); el.textContent = text; el.className = cls || ""; }
@@ -3079,6 +3079,29 @@ function strengthDay(iso) {
   const w = prof().dayTab[new Date(y, m - 1, d).getDay()];
   const p = w && PLAN.find(x => x.id === w);
   return !!(p && !p.optional);
+}
+/* Treino do dia.
+   - Dia com exercícios anotados: vale o treino que você fez (o que tem mais exercícios anotados naquele dia).
+   - Sem anotação: o treino do dia da semana no plano. Se ele já foi feito nesta semana (ex.: adiantou o Superior B
+     para quarta), vale o próximo treino fixo que ainda falta na semana; se todos já foram feitos, não há treino pendente.
+   - planned = dia marcado como treino no calendário, mesmo sem treino do plano naquele dia da semana. */
+function dayWorkoutDone(iso) {
+  const e = (state.logs[iso] && state.logs[iso].e) || {}; if (!Object.keys(e).length) return null;
+  const mapped = PLAN.find(p => p.id === prof().dayTab[rtDow(iso)]);
+  let best = null, bn = 0;
+  PLAN.forEach(w => { const n = w.ex.filter(x => exerciseDone(e[x.id])).length; if (n > bn || (n === bn && n > 0 && w === mapped)) { best = w; bn = n; } });
+  return best;
+}
+function dayWorkout(iso, planned) {
+  if (!profileId || !PLAN.length) return null;
+  const did = dayWorkoutDone(iso); if (did) return did;
+  const mapped = PLAN.find(p => p.id === prof().dayTab[rtDow(iso)]);
+  if (!mapped && !planned) return null;
+  const before = new Set();
+  for (let d = weekStart(iso); d < iso; d = addDaysISO(d, 1)) { const w = dayWorkoutDone(d); if (w) before.add(w.id); }
+  if (mapped && !before.has(mapped.id)) return mapped;
+  const i = mapped ? PLAN.indexOf(mapped) : -1, cyc = PLAN.slice(i + 1).concat(PLAN.slice(0, i + 1));
+  return cyc.find(w => !w.optional && !before.has(w.id)) || null; // todos os fixos da semana feitos: nada obrigatório hoje
 }
 // dia com musculação: os dias fixos do plano, o treino opcional (ex.: sábado) e qualquer dia com treino registrado na Força
 function stTrainDay(iso) {
@@ -6595,9 +6618,8 @@ function exerciseDone(r) { return !!(r && (r.kg != null || r.sets != null || r.r
 
 function forcaTasks() {
   if (!profileId) return { setup: true, setupLabel: "Escolha seu plano", setupText: "Escolha seu plano de treino para ver as tarefas de cada dia.", tasks: [] };
-  const tabId = prof().dayTab[new Date().getDay()];
-  const w = tabId && PLAN.find(p => p.id === tabId);
-  if (!w) return { free: true, freeText: "Hoje é dia livre no seu plano. Nada pendente.", tasks: [] };
+  const w = dayWorkout(todayISO(), strengthDay(todayISO()));
+  if (!w) return { free: true, freeText: prof().dayTab[new Date().getDay()] ? "Você já fez todos os treinos da semana. Nada pendente hoje." : "Hoje é dia livre no seu plano. Nada pendente.", tasks: [] };
   const rec = (state.logs[todayISO()] && state.logs[todayISO()].e) || {};
   const done = w.ex.filter(x => exerciseDone(rec[x.id])).length, total = w.ex.length, complete = done === total;
   return { tasks: [{ id: "task-" + w.id, title: w.name, optional: !!w.optional, complete, pct: done / total,
@@ -6718,7 +6740,8 @@ function enterForca(tab) {
   document.getElementById("crumb").textContent = "/ Força";
   if (!profileId) { renderChooser(); window.scrollTo(0, 0); return; }
   state.date = todayISO();
-  state.tab = (tab && TABS.some(t => t.id === tab)) ? tab : (prof().dayTab[new Date().getDay()] || "guia");
+  const dw = dayWorkout(todayISO(), strengthDay(todayISO()));
+  state.tab = (tab && TABS.some(t => t.id === tab)) ? tab : (dw ? dw.id : "guia");
   history.replaceState(null, "", "#" + state.tab);
   renderTabs(); renderMain(); window.scrollTo(0, 0);
 }
@@ -7727,7 +7750,8 @@ function rtDay(iso, cfg) {
 function rtTreinoWin(d) { const p = rt().treino; return p === "manha" ? [d.wake, 720] : p === "tarde" ? [720, 1080] : [1080, d.sleep]; }
 function rtWorkout(iso) {
   if (!modOn("forca") || !profileId || !strengthDay(iso)) return null;
-  const w = PLAN.find(p => p.id === prof().dayTab[rtDow(iso)]);
+  const w = dayWorkout(iso, true);
+  if (!w && PLAN.length) return null; // todos os treinos fixos da semana já feitos
   const sets = w ? w.ex.reduce((s, x) => s + (parseInt(x.sets, 10) || 3), 0) : 0;
   return { w, name: w ? w.name : "Treino extra", dur: w ? Math.max(30, Math.round((sets * 2.5 + 10) / 5) * 5) : 60 };
 }

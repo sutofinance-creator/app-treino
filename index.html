@@ -6618,7 +6618,10 @@ function exerciseDone(r) { return !!(r && (r.kg != null || r.sets != null || r.r
 
 function forcaTasks() {
   if (!profileId) return { setup: true, setupLabel: "Escolha seu plano", setupText: "Escolha seu plano de treino para ver as tarefas de cada dia.", tasks: [] };
-  const w = dayWorkout(todayISO(), strengthDay(todayISO()));
+  const today = todayISO(), sd = strengthDay(today);
+  // mês com dias escolhidos no calendário: dia desmarcado e sem nada anotado não tem treino pendente
+  if (!sd && settings.days && settings.days[today.slice(0, 7)] && !dayWorkoutDone(today)) return { free: true, freeText: "Hoje não está marcado como dia de treino no calendário. Nada pendente.", tasks: [] };
+  const w = dayWorkout(today, sd);
   if (!w) return { free: true, freeText: prof().dayTab[new Date().getDay()] ? "Você já fez todos os treinos da semana. Nada pendente hoje." : "Hoje é dia livre no seu plano. Nada pendente.", tasks: [] };
   const rec = (state.logs[todayISO()] && state.logs[todayISO()].e) || {};
   const done = w.ex.filter(x => exerciseDone(rec[x.id])).length, total = w.ex.length, complete = done === total;

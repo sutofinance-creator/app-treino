@@ -761,6 +761,8 @@ ol.steps a { color: var(--accent); }
 .rt-tm.run .rt-tm-name { border-color: var(--accent); color: var(--accent); }
 .rt-tm .btn { padding: 6px 12px; font-size: 13px; }
 .rt-sug-t { margin: 4px 0 0; font: 600 12px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.rt-row.fx.past { border-color: rgba(255, 196, 77, .35); opacity: .78; }
+.rt-row.fx.past .rt-sub { color: var(--warn); }
 /* Cortana: botão redondo no canto e painel da conversa */
 .ct-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 41; width: 58px; height: 58px; border-radius: 50%; border: 1px solid var(--accent); cursor: pointer;
   background: radial-gradient(circle at 50% 45%, rgba(166, 107, 255, .28), rgba(10, 6, 20, .96) 70%); box-shadow: 0 0 0 1px rgba(166, 107, 255, .35), 0 0 22px rgba(166, 107, 255, .35), 0 6px 18px rgba(0, 0, 0, .55); padding: 0; }
@@ -8428,7 +8430,8 @@ function rtTodayNodes(R, nowMin) {
   if (nowMin >= d.sleep) out.push(el("p", "banner", "Pelo seu horário de dormir, o dia de hoje já acabou. Veja amanhã na aba Semana da Rotina."));
   const tl = el("ol", "rt-list"); tl.id = "rt-list";
   const fxDone = rt().done[todayISO()] || [];
-  const rows = R.blocks.map(b => ({ s: b.s, e: b.e, b })).concat(d.fixed.filter(f => (f.b > nowMin || (fxRun() && fxRun().fid === f.id)) && !fxDone.includes("fx-" + f.id)).map(f => ({ s: f.a, e: f.b, f }))).sort((x, y) => x.s - y.s);
+  // compromissos ficam na lista até serem concluídos; os que já passaram do horário aparecem marcados como "passou"
+  const rows = R.blocks.map(b => ({ s: b.s, e: b.e, b })).concat(d.fixed.filter(f => !fxDone.includes("fx-" + f.id)).map(f => ({ s: f.a, e: f.b, f, past: f.b <= nowMin && !(fxRun() && fxRun().fid === f.id) }))).sort((x, y) => x.s - y.s);
   if (d.wake > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.wake) + " · Acordar" + (R.cfg.ws ? " (" + rtDur(R.cfg.ws) + " antes, para caber tudo)" : "")));
   // o que já foi feito hoje continua na lista, em verde (concluído com o botão pode ser desfeito)
   const okd = rt().done[todayISO()] || [];
@@ -8457,7 +8460,8 @@ function rtTodayNodes(R, nowMin) {
       const f = r.f, frun = !!(fxRun() && fxRun().fid === f.id), fsec = fxSecToday(f.id);
       let fs = f.flex === "flex" ? (f.a !== f.ideal ? "Remanejado: o ideal era " + minToHM(f.ideal) : "Horário flexível") : f.flex === "wake" ? "Ao acordar" : f.flex === "sleep" ? "Antes de dormir" : "Compromisso fixo";
       if (f.learned) fs += " · " + rtDur(f.b - f.a) + " pelo tempo que você costuma levar (era " + rtDur(f.learned.from) + ")";
-      if (frun) { li.className = "rt-row fx run"; time.firstChild.textContent = "Agora"; } else li.classList.add("fx");
+      if (r.past) fs += " · passou do horário";
+      if (frun) { li.className = "rt-row fx run"; time.firstChild.textContent = "Agora"; } else { li.classList.add("fx"); if (r.past) li.classList.add("past"); }
       li.id = "rt-fx-" + f.id;
       const main = el("div", "rt-main"); const tx = el("span", "rt-txt"); tx.append(el("span", "rt-title", f.name || "Compromisso"), el("span", "rt-sub", fs));
       main.append(time, el("span", "rt-ico"), tx); li.appendChild(main);

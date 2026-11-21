@@ -6404,7 +6404,9 @@ function cumSVG(a, p, k) {
   const kp = addMonths(k, -1);
   for (let d = 1; d <= dim; d++) {
     if (d > A.length && d > B.length) continue;
-    g += hitCol(xs(d), iw / (dim - 1), "Dia " + d, [d <= A.length ? [brl(A[d - 1]), monthShort(k) + " até o dia", "var(--accent)"] : null, d <= A.length ? [brl(a.daily[d] || 0), "gasto neste dia"] : null, d <= B.length ? [brl(B[d - 1]), monthShort(kp) + " até o dia", "var(--muted)"] : null]);
+    // "nov/26" na dica parecia "até o dia 26": diz o mês por extenso e o dia de verdade
+    const mName = key => MONTHS[Number(key.slice(5, 7)) - 1];
+    g += hitCol(xs(d), iw / (dim - 1), "Dia " + d, [d <= A.length ? [brl(A[d - 1]), "em " + mName(k) + " até o dia " + d, "var(--accent)"] : null, d <= A.length ? [brl(a.daily[d] || 0), "gasto no dia " + d] : null, d <= B.length ? [brl(B[d - 1]), "em " + mName(kp) + " até o dia " + d, "var(--muted)"] : null]);
   }
   return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" role="img" aria-label="Gasto acumulado no mês">' + g + '</svg>';
 }

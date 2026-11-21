@@ -783,6 +783,15 @@ ol.steps a { color: var(--accent); }
 .rt-cyc-in input { flex: 1; min-width: 0; }
 .rt-cyc-u { padding: 0 12px; min-height: 0; flex: 0 0 auto; }
 .rt-cyc-sum { color: var(--accent); }
+.rt-seq { list-style: none; margin: 6px 0 8px; padding: 0; display: grid; gap: 8px; }
+.rt-seq-it { border: 1px solid var(--line); border-left: 3px solid var(--accent); background: var(--surface-2); padding: 8px 10px; display: grid; gap: 6px; }
+.rt-seq-it.brk { border-left-color: var(--good); }
+.rt-seq-hd { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.rt-seq-lb { font: 600 13px var(--font-display); color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.rt-seq-it input { width: 100%; font: 600 17px var(--font-body); font-variant-numeric: tabular-nums; color: var(--ink); background: var(--surface); border: 1px solid var(--line); padding: 7px 10px; }
+.rt-seq-it input:focus { border-color: var(--accent); box-shadow: 0 0 12px rgba(166, 107, 255, .4); outline: none; }
+.rt-seq-it .rt-cyc-in input { max-width: 140px; }
+.rt-seq-add { margin-bottom: 8px; }
 .rt-cyc-sum.warn { color: var(--warn); }
 /* Cortana: botão redondo no canto e painel da conversa */
 .ct-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 41; width: 58px; height: 58px; border-radius: 50%; border: 1px solid var(--accent); cursor: pointer;
@@ -3093,6 +3102,21 @@ function cycleTimes(startedAt, c, from, until, max) {
   }
   return out;
 }
+/* Sequência de etapas com tempos diferentes (ex.: exercício 7 min, intervalo 2 min, outro exercício 3 min).
+   seq = [{ n: nome opcional, s: segundos, b: true se é intervalo }] */
+function seqName(x, ai) { return x.n || "Etapa " + ai; }
+function seqPhase(startedAt, seq, now) {
+  const e = Math.max(0, ((now || Date.now()) - startedAt) / 1000), n = seq.filter(x => !x.b).length; let t = 0, ai = 0;
+  for (let i = 0; i < seq.length; i++) {
+    const x = seq[i]; if (!x.b) ai++;
+    if (e < t + x.s) { const nx = seq[i + 1] || null; return { seq: true, k: i, inBrk: !!x.b, left: Math.ceil(t + x.s - e), at: startedAt + (t + x.s) * 1000, ai, n, name: x.b ? "" : seqName(x, ai), len: x.s, next: nx, nextName: nx && !nx.b ? seqName(nx, ai + 1) : "", last: !nx }; }
+    t += x.s;
+  }
+  return { seq: true, done: true, inBrk: false, k: seq.length, left: 0, at: startedAt + t * 1000, n };
+}
+function seqTotal(seq) { return seq.reduce((a, x) => a + x.s, 0); }
+// fase do cronômetro do compromisso: ciclo repetido ou sequência
+function fxPhase(t, c, now) { return c.seq ? seqPhase(t.startedAt, c.seq, now) : cyclePhase(t.startedAt, c, now); }
 // 30 s, 1 min 30 s, 10 min
 function fmtSecs(sec) { sec = Math.round(sec); const m = Math.floor(sec / 60), r = sec % 60; return !m ? r + " s" : r ? m + " min " + r + " s" : m + " min"; }
 // som da troca: descendo = hora do intervalo; subindo = hora de voltar; "fim" = série completa
@@ -3110,7 +3134,14 @@ function cycBeep(brk) {
     });
   } catch (e) {}
 }
+function seqText(p) {
+  if (p.done) return "Sequência completa.";
+  const nx = !p.next ? "" : p.next.b ? " · depois: intervalo de " + fmtSecs(p.next.s) : " · depois: " + p.nextName + " (" + fmtSecs(p.next.s) + ")";
+  if (p.inBrk) return "Intervalo de " + fmtSecs(p.len) + " · volte em " + fmtMS(p.left) + (p.next ? (p.next.b ? "" : " · próximo: " + p.nextName + " (" + fmtSecs(p.next.s) + ")") : "") + ".";
+  return p.name + " (" + p.ai + " de " + p.n + ") · faltam " + fmtMS(p.left) + (p.last ? " · é a última" : nx) + ".";
+}
 function cycText(p) {
+  if (p.seq) return seqText(p);
   const of = p.n ? " de " + p.n : "";
   if (p.done) return "Série completa: " + p.n + of + ".";
   if (p.inBrk) return "Intervalo de " + fmtSecs(p.brk * 60) + " · volte em " + fmtMS(p.left) + (p.n ? " (próxima: " + (p.k + 2) + of + ")" : "") + ".";
@@ -7943,7 +7974,21 @@ const ROT_PRESETS = [
   { label: "Jantar", kind: "flex", name: "Jantar", start: "19:30", dur: 45, shift: 60 },
   { label: "Cuidados noturnos", kind: "sleep", name: "Cuidados noturnos", dur: 30 }
 ];
-const rtFxBlank = days => ({ kind: "fixo", name: "", start: "", end: "", dur: "", shift: 60, work: "", wu: "m", brk: "", bu: "m", reps: "", days: days || [1, 2, 3, 4, 5] });
+const rtFxBlank = days => ({ kind: "fixo", name: "", start: "", end: "", dur: "", shift: 60, work: "", wu: "m", brk: "", bu: "m", reps: "", cm: "rep", seq: [], days: days || [1, 2, 3, 4, 5] });
+// sequência do formulário -> [{ n, s, b }]; erro em texto
+function rtSeqParse(fx) {
+  const rows = (fx.seq || []).filter(x => String(x.v || "").trim() !== "" || (x.n || "").trim());
+  if (!rows.length) return { none: true };
+  const out = [];
+  for (let i = 0; i < rows.length; i++) {
+    const x = rows[i], s = Math.round(Number(String(x.v || "").trim().replace(",", ".")) * (x.u === "s" ? 1 : 60)), lb = x.b ? "intervalo" : "atividade";
+    if (!(s >= 5 && s <= 240 * 60)) return { err: "Etapa " + (i + 1) + " (" + lb + "): tempo de 5 segundos a 240 minutos." };
+    out.push(x.b ? { s, b: true } : Object.assign({ s }, (x.n || "").trim() ? { n: x.n.trim().slice(0, 40) } : {}));
+  }
+  if (out[0].b) return { err: "A sequência começa com uma atividade, não com intervalo." };
+  if (out[out.length - 1].b) return { err: "A sequência termina com uma atividade, não com intervalo." };
+  return { seq: out };
+}
 // segundos salvos -> campo + unidade (min quando é minuto exato)
 function rtCycField(sec) { return !sec ? { v: "", u: "m" } : sec % 60 === 0 ? { v: String(sec / 60), u: "m" } : { v: String(sec), u: "s" }; }
 // campos do formulário -> { ws, bs, reps } em segundos; erro em texto
@@ -8368,6 +8413,7 @@ function fxRun() { return rotina && rotina.ftimer ? rotina.ftimer : null; }
 function fxStart(f) { cronAsk(); stSoundInit(); fxLast = null; msHoldMission(); const r = ensureRotina(); if (r.ftimer) fxStop(true); r.ftimer = { fid: f.id, name: f.name || "Compromisso", startedAt: Date.now() }; saveRotina(); pushLastSig = ""; if (fxShort(fxCycOf(f))) fxWake(true); }
 // ciclo de atividade e intervalo do compromisso (definido em Rotina › Horários); vale a configuração atual
 function fxCycOf(f) {
+  if (f && Array.isArray(f.seq) && f.seq.length) return { seq: f.seq };
   const ws = f && (f.ws || (f.work > 0 ? f.work * 60 : 0)), bs = f && (f.bs || (f.brk > 0 ? f.brk * 60 : 0));
   return ws > 0 && bs > 0 ? { work: ws / 60, brk: bs / 60, reps: f.reps > 0 ? f.reps : 0 } : null;
 }
@@ -8375,7 +8421,7 @@ function fxCycle(t) { return fxCycOf((ensureRotina().fixed || []).find(x => x.id
 let fxLast = null;
 function fxStop(silent, at) { const r = ensureRotina(), t = r.ftimer; if (!t) return; actLog("rotina", "fx:" + t.fid, t.name, t.startedAt, Math.max(t.startedAt, Math.min(Date.now(), at || Date.now()))); r.ftimer = null; fxWake(false); if (!silent) saveRotina(); }
 // ciclos curtos (menos de 2 min): a tela fica acesa para o som tocar na hora
-function fxShort(c) { return !!c && (c.work < 2 || c.brk < 2); }
+function fxShort(c) { return !!c && (c.seq ? c.seq.some(x => x.s < 120) : c.work < 2 || c.brk < 2); }
 function fxWake(on) { if (on) stWakeOn(); else if (!(stamina && stamina.timer) && !(graca && graca.timer)) stWakeOff(); }
 document.addEventListener("visibilitychange", () => { const t = fxRun(); if (document.visibilityState === "visible" && t && fxShort(fxCycle(t))) fxWake(true); });
 // tempo de hoje num compromisso: sessões do histórico dentro do dia + o que está rodando
@@ -8408,11 +8454,11 @@ function updateFxLive() {
   const t = fxRun(); if (!t) { fxLast = null; return; }
   document.querySelectorAll('[data-live="fx-time"]').forEach(n => { if (n.dataset.fid === t.fid) n.textContent = fmtHMS(fxSecToday(t.fid)); });
   const c = fxCycle(t); if (!c) return;
-  const p = cyclePhase(t.startedAt, c), tag = p.done ? "d" : (p.inBrk ? "b" : "w") + p.k;
+  const p = fxPhase(t, c), tag = p.done ? "d" : (p.inBrk ? "b" : "w") + p.k;
   if (p.done) {
     // série completa: som de fim (se acabou agora) e o cronômetro para sozinho na hora certa
     if (Date.now() - p.at < 15000) cycBeep("fim");
-    fxLast = null; fxStop(false, p.at); setStatus("Série completa: " + t.name + " (" + p.n + " de " + p.n + "). Toque em Concluir se terminou.", "ok");
+    fxLast = null; fxStop(false, p.at); setStatus((p.seq ? "Sequência completa: " + t.name : "Série completa: " + t.name + " (" + p.n + " de " + p.n + ")") + ". Toque em Concluir se terminou.", "ok");
     if (state.view === "rotina") renderRotina(); else if (state.view === "home") renderHome();
     return;
   }
@@ -8759,7 +8805,7 @@ function rtTodayNodes(R, nowMin) {
       b.addEventListener("click", () => { if (frun) fxStop(); else fxStart(f); rtRefresh("rt-fx-" + f.id + (frun ? "-start" : "-stop")); });
       act.append(b, tm); li.appendChild(act);
       const fc = frun ? fxCycle(fxRun()) : null;
-      if (fc) { const p = cyclePhase(fxRun().startedAt, fc), cy = el("span", "rt-cyc" + (p.inBrk ? " brk" : ""), cycText(p)); cy.dataset.live = "fx-cyc"; cy.dataset.fid = f.id; cy.setAttribute("aria-live", "polite"); tx.appendChild(cy); }
+      if (fc) { const p = fxPhase(fxRun(), fc), cy = el("span", "rt-cyc" + (p.inBrk ? " brk" : ""), cycText(p)); cy.dataset.live = "fx-cyc"; cy.dataset.fid = f.id; cy.setAttribute("aria-live", "polite"); tx.appendChild(cy); }
       tl.appendChild(li); return;
     }
     const it = r.b.it, suf = it.key + (r.b.part ? "-" + r.b.part : ""); li.id = "rt-" + suf;
@@ -8923,7 +8969,7 @@ function renderRtHorarios(main) {
     rtUI.fx = rtFxBlank(); rtUI.fxOpen = true; renderRotina();
     const n = document.getElementById("rt-fx-name"); if (n) { n.scrollIntoView({ block: "center" }); n.focus(); }
   }), el("p", "note muted", "Horário fixo: aulas, expediente, reuniões. Flexível: refeições, que a rotina pode adiantar ou atrasar dentro da janela que você der. Ao acordar e antes de dormir: cuidados que andam junto com o sono."));
-  const desc = f => { const c = fxCycOf(f); return c ? desc0(f) + " · " + (c.reps ? c.reps + "× " : "ciclo ") + fmtSecs(c.work * 60) + " + " + fmtSecs(c.brk * 60) + " de intervalo" : desc0(f); };
+  const desc = f => { const c = fxCycOf(f); return !c ? desc0(f) : c.seq ? desc0(f) + " · " + c.seq.map(x => x.b ? "intervalo " + fmtSecs(x.s) : (x.n ? x.n + " " : "") + fmtSecs(x.s)).join(" → ") : desc0(f) + " · " + (c.reps ? c.reps + "× " : "ciclo ") + fmtSecs(c.work * 60) + " + " + fmtSecs(c.brk * 60) + " de intervalo"; };
   const desc0 = f => {
     const ds = (f.days || []).slice().sort(), key = ds.join("");
     const dias = key === "0123456" ? "todos os dias" : key === "12345" ? "seg a sex" : key === "06" ? "fim de semana" : ds.map(x => DOW_SHORT[x]).join(", ");
@@ -8941,7 +8987,7 @@ function renderRtHorarios(main) {
       const acts = el("span", "rt-fx-acts");
       const ed = el("button", "linkbtn", "Editar"); ed.type = "button"; ed.id = "rt-fx-ed-" + f.id;
       ed.addEventListener("click", () => {
-        rtUI.fx = { kind: f.kind || "fixo", name: f.name, start: f.start || "", end: f.end || "", dur: f.dur ? String(f.dur) : "", shift: f.shift || 60, work: rtCycField(f.ws || f.work * 60 || 0).v, wu: rtCycField(f.ws || f.work * 60 || 0).u, brk: rtCycField(f.bs || f.brk * 60 || 0).v, bu: rtCycField(f.bs || f.brk * 60 || 0).u, reps: f.reps ? String(f.reps) : "", days: (f.days || []).slice(), editId: f.id }; renderRotina();
+        rtUI.fx = { kind: f.kind || "fixo", name: f.name, start: f.start || "", end: f.end || "", dur: f.dur ? String(f.dur) : "", shift: f.shift || 60, work: rtCycField(f.ws || f.work * 60 || 0).v, wu: rtCycField(f.ws || f.work * 60 || 0).u, brk: rtCycField(f.bs || f.brk * 60 || 0).v, bu: rtCycField(f.bs || f.brk * 60 || 0).u, reps: f.reps ? String(f.reps) : "", cm: f.seq && f.seq.length ? "seq" : "rep", seq: (f.seq || []).map(x => { const c = rtCycField(x.s); return { b: !!x.b, n: x.n || "", v: c.v, u: c.u }; }), days: (f.days || []).slice(), editId: f.id }; renderRotina();
         const n = document.getElementById("rt-fx-name"); if (n) { n.scrollIntoView({ block: "center" }); n.focus(); }
       });
       const rm = el("button", "linkbtn", "Remover"); rm.type = "button"; rm.id = "rt-fx-rm-" + f.id;
@@ -8977,6 +9023,15 @@ function renderRtHorarios(main) {
   // resumo da série: quantas repetições, quantos intervalos, tempo total e se cabe na duração do compromisso
   const fxMin = () => { if (fx.kind === "fixo") { const a = hmToMin(fx.start), b = hmToMin(fx.end); return a != null && b != null && a !== b ? (b - a + 1440) % 1440 : 0; } return Math.round(Number(String(fx.dur || "").replace(",", "."))) || 0; };
   const drawSum = () => {
+    if (fx.cm === "seq") {
+      const q = rtSeqParse(fx), d = fxMin(); sum.classList.remove("warn");
+      if (q.none) { sum.textContent = "Adicione as etapas: atividade, intervalo, outra atividade…"; return; }
+      if (q.err) { sum.textContent = q.err; return; }
+      let ai = 0; const tot = seqTotal(q.seq);
+      sum.textContent = q.seq.map(x => x.b ? "intervalo de " + fmtSecs(x.s) : seqName(x, ++ai) + " " + fmtSecs(x.s)).join(" → ") + ". Total: " + fmtSecs(tot) + "." + (d && tot > d * 60 ? " Passa da duração do compromisso (" + fmtSecs(d * 60) + ")." : "");
+      if (d && tot > d * 60) sum.classList.add("warn");
+      return;
+    }
     const c = rtCycParse(fx); sum.classList.remove("warn");
     if (c.none) { sum.textContent = "Em branco: sem intervalos."; return; }
     if (c.err) { sum.textContent = c.err; return; }
@@ -8993,8 +9048,32 @@ function renderRtHorarios(main) {
       b.addEventListener("click", () => { fx[uk] = u; wr.querySelectorAll(".rt-cyc-u").forEach(x => x.setAttribute("aria-pressed", String(x === b))); drawSum(); }); wr.appendChild(b); });
     f.append(l, wr); g4.appendChild(f);
   };
-  cf("rt-fx-work", "Atividade", "work", "wu", "Ex.: 30"); cf("rt-fx-brk", "Intervalo", "brk", "bu", "Ex.: 30"); cf("rt-fx-reps", "Repetições", "reps", null, "Ex.: 15");
-  cy.append(g4, sum, el("p", "note muted", "O app toca um som na hora do intervalo, outro na hora de voltar e um de fim quando a última repetição termina (aí o cronômetro para sozinho). Repetições em branco: repete até você pausar. Com ciclos menores que 2 min, a tela fica acesa enquanto o cronômetro roda, para o som tocar na hora."));
+  const modeBar = chipGroup("Como montar", [["rep", "Mesmo tempo repetido"], ["seq", "Etapas com tempos diferentes"]], fx.cm || "rep", v => { fx.cm = v; if (v === "seq" && !(fx.seq || []).length) fx.seq = [{ b: false, n: "", v: "", u: "m" }]; renderRotina(); const n = document.getElementById("rt-fx-cyc-sum"); if (n) n.scrollIntoView({ block: "center" }); }, "rt-fx-cm");
+  cy.appendChild(modeBar);
+  if ((fx.cm || "rep") === "rep") {
+    cf("rt-fx-work", "Atividade", "work", "wu", "Ex.: 30"); cf("rt-fx-brk", "Intervalo", "brk", "bu", "Ex.: 30"); cf("rt-fx-reps", "Repetições", "reps", null, "Ex.: 15");
+    cy.append(g4, sum, el("p", "note muted", "O app toca um som na hora do intervalo, outro na hora de voltar e um de fim quando a última repetição termina (aí o cronômetro para sozinho). Repetições em branco: repete até você pausar. Com ciclos menores que 2 min, a tela fica acesa enquanto o cronômetro roda, para o som tocar na hora."));
+  } else {
+    // etapas em ordem: cada uma com tempo próprio; atividade pode ter nome
+    const ol = el("ol", "rt-seq"); let ai = 0;
+    fx.seq.forEach((x, i) => {
+      if (!x.b) ai++;
+      const li = el("li", "rt-seq-it" + (x.b ? " brk" : "")), hd = el("div", "rt-seq-hd");
+      hd.appendChild(el("span", "rt-seq-lb", (i + 1) + " · " + (x.b ? "Intervalo" : "Atividade")));
+      const rm = el("button", "linkbtn", "Remover"); rm.type = "button"; rm.id = "rt-seq-rm-" + i; rm.addEventListener("click", () => { fx.seq.splice(i, 1); renderRotina(); const n = document.getElementById("rt-fx-cyc-sum"); if (n) n.scrollIntoView({ block: "center" }); });
+      hd.appendChild(rm); li.appendChild(hd);
+      const wr = el("div", "rt-cyc-in");
+      if (!x.b) { const ni = el("input"); ni.id = "rt-seq-n-" + i; ni.placeholder = "Nome (opcional), ex.: " + (ai === 1 ? "Prancha" : "Ponte"); ni.setAttribute("aria-label", "Nome da etapa " + (i + 1)); ni.value = x.n || ""; ni.className = "rt-seq-name"; ni.addEventListener("input", () => { x.n = ni.value; drawSum(); }); li.appendChild(ni); }
+      const ti = el("input"); ti.id = "rt-seq-v-" + i; ti.inputMode = "decimal"; ti.placeholder = "Tempo"; ti.setAttribute("aria-label", "Tempo da etapa " + (i + 1)); ti.value = x.v || ""; ti.addEventListener("input", () => { x.v = ti.value; drawSum(); }); wr.appendChild(ti);
+      [["s", "seg"], ["m", "min"]].forEach(([u, t]) => { const b = el("button", "gchip rt-cyc-u", t); b.type = "button"; b.id = "rt-seq-u-" + i + "-" + u; b.setAttribute("aria-pressed", String((x.u || "m") === u));
+        b.addEventListener("click", () => { x.u = u; wr.querySelectorAll(".rt-cyc-u").forEach(y => y.setAttribute("aria-pressed", String(y === b))); drawSum(); }); wr.appendChild(b); });
+      li.appendChild(wr); ol.appendChild(li);
+    });
+    const ab = el("div", "btns rt-seq-add");
+    [["a", "+ Atividade", false], ["i", "+ Intervalo", true]].forEach(([k, t, b]) => { const bt = el("button", "btn ghost", t); bt.type = "button"; bt.id = "rt-seq-add-" + k;
+      bt.addEventListener("click", () => { fx.seq.push({ b, n: "", v: "", u: "m" }); renderRotina(); const n = document.getElementById("rt-seq-v-" + (fx.seq.length - 1)); if (n) { n.scrollIntoView({ block: "center" }); n.focus(); } }); ab.appendChild(bt); });
+    cy.append(ol, ab, sum, el("p", "note muted", "O app toca um som quando começa cada intervalo, outro quando começa cada atividade e um de fim quando a última termina (aí o cronômetro para sozinho). Com alguma etapa menor que 2 min, a tela fica acesa enquanto o cronômetro roda, para o som tocar na hora."));
+  }
   fb.appendChild(cy); drawSum();
   ["rt-fx-start", "rt-fx-end", "rt-fx-dur"].forEach(id => { const n = g3.querySelector("#" + id); if (n) n.addEventListener("input", drawSum); });
   const fm = el("p", "note"); fm.id = "rt-fx-msg";
@@ -9006,9 +9085,9 @@ function renderRtHorarios(main) {
     if (fx.kind === "flex" && a == null) { flash(fm, "Preencha o horário ideal.", "err"); return; }
     if (fx.kind !== "fixo" && !(dur >= 5 && dur <= 240)) { flash(fm, "A duração precisa ficar entre 5 e 240 minutos.", "err"); return; }
     if (!fx.days.length) { flash(fm, "Escolha pelo menos um dia.", "err"); return; }
-    const cyc = rtCycParse(fx);
-    if (cyc.err) { flash(fm, "No cronômetro com intervalos: " + cyc.err.charAt(0).toLowerCase() + cyc.err.slice(1), "err"); return; }
-    const val = { name: fx.name.trim(), kind: fx.kind === "fixo" ? undefined : fx.kind, days: fx.days.slice(), work: undefined, brk: undefined, ws: cyc.none ? undefined : cyc.ws, bs: cyc.none ? undefined : cyc.bs, reps: cyc.none || !cyc.reps ? undefined : cyc.reps };
+    const isSeq = fx.cm === "seq", cyc = isSeq ? { none: true } : rtCycParse(fx), sq = isSeq ? rtSeqParse(fx) : { none: true };
+    if (cyc.err || sq.err) { const er = cyc.err || sq.err; flash(fm, "No cronômetro com intervalos: " + er.charAt(0).toLowerCase() + er.slice(1), "err"); return; }
+    const val = { name: fx.name.trim(), kind: fx.kind === "fixo" ? undefined : fx.kind, days: fx.days.slice(), work: undefined, brk: undefined, ws: cyc.none ? undefined : cyc.ws, bs: cyc.none ? undefined : cyc.bs, reps: cyc.none || !cyc.reps ? undefined : cyc.reps, seq: sq.none ? undefined : sq.seq };
     if (fx.kind === "fixo") Object.assign(val, { start: fx.start, end: fx.end, dur: undefined, shift: undefined });
     else if (fx.kind === "flex") Object.assign(val, { start: fx.start, end: undefined, dur, shift: Number(fx.shift) || 60 });
     else Object.assign(val, { start: undefined, end: undefined, dur, shift: undefined });
@@ -9106,7 +9185,21 @@ function cyclePushItems(now) {
     body: x.fim ? c.reps + " de " + c.reps + ". Toque para concluir." : x.brk ? "Intervalo de " + fmtSecs(x.len * 60) + ". Volte às " + hmOf(x.back) + "." : "Fim do intervalo, hora de voltar" + (c.reps ? " (" + (x.k + 1) + " de " + c.reps + ")" : "") + "." + (x.next && (!c.reps || x.k < c.reps - 1) ? " Próximo intervalo às " + hmOf(x.next) + "." : ""),
     url: "./#abrir-" + tab }));
   if (intel && intel.timer) { const x = intel.subjects.find(v => v.id === intel.timer.sid); add("inteligencia", "Estudo · " + (x ? x.name : "matéria"), intel.timer, imR(), "estudo"); }
-  const f = fxRun(), fc = f && fxCycle(f); if (fc && !fxShort(fc)) add("rotina", f.name || "Compromisso", f, fc, "rot-hoje");
+  const f = fxRun(), fc = f && fxCycle(f);
+  if (fc && !fxShort(fc) && !fc.seq) add("rotina", f.name || "Compromisso", f, fc, "rot-hoje");
+  if (fc && !fxShort(fc) && fc.seq) {
+    // sequência: um aviso no começo de cada etapa e um no fim
+    const name = f.name || "Compromisso"; let t = f.startedAt, ai = 1;
+    fc.seq.forEach((x, i) => {
+      const st = t; t += x.s * 1000; if (i === 0) return;
+      if (!x.b) ai++;
+      const nx = fc.seq[i + 1];
+      if (st > now && st <= until) out.push({ tag: "ciclo-rotina-" + f.startedAt + "-" + i, at: st, url: "./#abrir-rot-hoje",
+        title: (x.b ? "⏸ Intervalo: " : "▶ " + seqName(x, ai) + ": ") + name,
+        body: x.b ? "Intervalo de " + fmtSecs(x.s) + ". Volte às " + hmOf(t) + (nx && !nx.b ? " para " + seqName(nx, ai + 1) + "." : ".") : "Etapa " + ai + " de " + fc.seq.filter(y => !y.b).length + " · " + fmtSecs(x.s) + ", até " + hmOf(t) + "." });
+    });
+    if (t > now && t <= until) out.push({ tag: "ciclo-rotina-" + f.startedAt + "-fim", at: t, url: "./#abrir-rot-hoje", title: "✓ Sequência completa: " + name, body: "Toque para concluir." });
+  }
   return out;
 }
 async function pushSync(force) {
@@ -9177,7 +9270,7 @@ function cronItems() {
     add("inteligencia", "Estudo · " + (x ? x.name : "matéria"), t, end, "estudo", { noPush: true, endWord: ph.inBrk ? "volta às" : "pausa às" });
   }
   // compromisso: com ciclo, mostra a próxima troca (intervalo ou volta)
-  { const t = fxRun(); if (t) { const c = fxCycle(t), ph = c && !fxShort(c) ? cyclePhase(t.startedAt, c) : null; add("rotina", "Compromisso · " + (t.name || "compromisso"), t, ph && !ph.done ? ph.at : 0, "rot-hoje", { noPush: true, endWord: ph ? (ph.inBrk ? "volta às" : ph.last ? "termina às" : "intervalo às") : "" }); } }
+  { const t = fxRun(); if (t) { const c = fxCycle(t), ph = c && !fxShort(c) ? fxPhase(t, c) : null; add("rotina", "Compromisso · " + (t.name || "compromisso"), t, ph && !ph.done ? ph.at : 0, "rot-hoje", { noPush: true, endWord: ph ? (ph.inBrk ? "volta às" : ph.last ? "termina às" : ph.seq && ph.next && !ph.next.b ? "próxima etapa às" : "intervalo às") : "" }); } }
   if (stamina && stamina.timer) { const t = stamina.timer, p = practice(t.pid), c = stCap(t); add("estamina", (p.kind === "cardio" ? "Cardio · " : "Foco · ") + p.name, t, isFinite(c) ? t.startedAt + c * 1000 : 0, "est-hoje", { endWord: "sessão completa às", cont: true }); }
   if (graca && graca.timer) { const t = graca.timer, r = ritual(t.rid), c = grCap(t); add("graca", r ? r.name : "Ritual", t, isFinite(c) ? t.startedAt + c * 1000 : 0, "gr-hoje", { endWord: "tempo completo às", cont: true }); }
   if (mis && mis.timer) { const t = mis.timer, x = t.tid !== MS_GERAL ? msTask(t.tid) : null; add("missoes", x ? "Missão · " + x.title : "Trabalho geral", t, 0, "ms-hoje"); }

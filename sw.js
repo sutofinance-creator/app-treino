@@ -1,4 +1,4 @@
-const CACHE = "stek-v151";
+const CACHE = "stek-v152";
 const CORE = ["./", "index.html", "manifest.json", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "icon-maskable.png", "logo-s.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE.map(u => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting())); });
 const CRON_CACHE = "stek-cron"; // pausas tocadas na notificação do cronômetro, aplicadas quando o app abre
@@ -39,6 +39,21 @@ self.addEventListener("push", e => {
           data: { url: d.url || "./", cron: m[1], start: Number(m[2]), title }, actions: [{ action: "pausar", title: "Pausar" }] });
       }
       return self.registration.showNotification(d.title || "STEK", { body: d.body || "", tag, renotify: true, icon: ICON, badge: ICON, data: { url: d.url || "./" } });
+    }));
+    return;
+  }
+  // intervalo e volta dos cronômetros com ciclo: um aviso substitui o anterior; com o app aberto na tela, sem som (o app já toca o dele)
+  const cy = /^ciclo-([a-z]+)-(\d+)-/.exec(d.tag || "");
+  if (cy) {
+    e.waitUntil(cronPausas().then(ps => {
+      // pausado pela notificação: nada de intervalo ou volta; só reafirma o aviso de pausado
+      const p = ps.find(x => x.mod === cy[1] && String(x.start) === cy[2]);
+      if (p) return cronPausada("stek-cron-" + cy[1], p.title || "Cronômetro", p.at, d.url || "./");
+      return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
+      const open = list.some(c => c.visibilityState === "visible");
+      return self.registration.showNotification(d.title || "STEK", { body: d.body || "", tag: "stek-ciclo-" + cy[1], renotify: true, silent: open,
+        vibrate: [400, 150, 400], icon: ICON, badge: ICON, data: { url: d.url || "./" } });
+      });
     }));
     return;
   }

@@ -776,6 +776,9 @@ ol.steps a { color: var(--accent); }
 .meta-ok { color: var(--good); }
 .rt-cyc { display: block; margin: 6px 0 0; font-size: 14px; color: var(--accent); font-variant-numeric: tabular-nums; }
 .rt-cyc.brk { color: var(--good); }
+.timer.cd { color: var(--accent); }
+.timer.cd.brk { color: var(--good); }
+.timer-sm { font-variant-numeric: tabular-nums; font-weight: 700; }
 .rt-fx-cyc { margin-top: 4px; }
 .inputs.three { grid-template-columns: 1fr 1fr 1fr; }
 @media (max-width: 560px) { .inputs.three { grid-template-columns: 1fr; } }
@@ -2762,8 +2765,8 @@ function buildSubjCard(s, n, iso) {
   // cronômetro
   const running = intel.timer && intel.timer.sid === s.id;
   const trow = el("div", "timer-row" + (running ? " running" : ""));
-  const tdisp = el("span", "timer", fmtHMS(subjSec(iso, s.id))); tdisp.id = "tmr-" + s.id;
-  if (running) tdisp.dataset.live = "subj-time";
+  const tdisp = el("span", "timer" + (running ? " cd" + (imPhase().inBrk ? " brk" : "") : ""), running ? imTimerText(s.id, iso) : fmtHMS(subjSec(iso, s.id))); tdisp.id = "tmr-" + s.id;
+  if (running) { tdisp.dataset.live = "subj-time"; tdisp.title = "Tempo que falta no bloco (ou na pausa)"; }
   tdisp.dataset.sid = s.id;
   const tbtns = el("div", "timer-btns");
   if (iso === today) {
@@ -2776,7 +2779,12 @@ function buildSubjCard(s, n, iso) {
   tbtns.append(adj(-300, "−5 min"), adj(300, "+5 min"));
   trow.append(tdisp, tbtns);
   card.appendChild(trow);
-  if (running) { const lv = el("p", "ex-note im-live"); lv.id = "im-live"; lv.textContent = imLiveText(); card.append(lv, el("p", "ex-note", "Cronômetro rodando. Ele continua contando mesmo se você fechar o app.")); }
+  if (running) {
+    const lv = el("p", "ex-note im-live"); lv.id = "im-live"; lv.textContent = imLiveText() + sndHint();
+    const tot = el("p", "ex-note"), tv = el("span", "timer-sm", fmtHMS(subjSec(iso, s.id))); tv.dataset.live = "subj-tot"; tv.dataset.sid = s.id;
+    tot.append("Timer do método rodando (continua mesmo se você fechar o app). Hoje nesta matéria: ", tv, ".");
+    card.append(lv, tot);
+  }
 
   // plano do dia
   const p = planFor(s, iso), r = getRec(iso, s.id);
@@ -3119,9 +3127,15 @@ function seqTotal(seq) { return seq.reduce((a, x) => a + x.s, 0); }
 function fxPhase(t, c, now) { return c.seq ? seqPhase(t.startedAt, c.seq, now) : cyclePhase(t.startedAt, c, now); }
 // 30 s, 1 min 30 s, 10 min
 function fmtSecs(sec) { sec = Math.round(sec); const m = Math.floor(sec / 60), r = sec % 60; return !m ? r + " s" : r ? m + " min " + r + " s" : m + " min"; }
+// O navegador só deixa tocar som depois de um toque na tela. Ao reabrir o app com um cronômetro ligado, o primeiro toque
+// (em qualquer lugar) já libera o som; enquanto não liberar, o aviso do ciclo pede esse toque.
+function sndReady() { return !!stAudio && stAudio.state === "running"; }
+function sndHint() { return sndReady() ? "" : " Toque na tela para liberar o som."; }
+document.addEventListener("pointerdown", () => { if (!sndReady() && ((intel && intel.timer) || fxRun() || (stamina && stamina.timer) || (graca && graca.timer))) stSoundInit(); }, true);
 // som da troca: descendo = hora do intervalo; subindo = hora de voltar; "fim" = série completa
 function cycBeep(brk) {
   const fim = brk === "fim";
+  try { if (stAudio && stAudio.state !== "running") stAudio.resume(); } catch (e) {}
   try { if (navigator.vibrate) navigator.vibrate(fim ? [600, 150, 600, 150, 600] : brk ? [400, 150, 400] : [150, 80, 150, 80, 150]); } catch (e) {}
   if (!stAudio) return;
   try {
@@ -3155,6 +3169,12 @@ function imPhase() {
   const c = imCfg(), R = IM_RITMO[c.ritmo], p = cyclePhase(t.startedAt, R);
   return Object.assign(p, { test: !p.inBrk && c.teste && p.left <= R.test * 60, R });
 }
+// mostrador do cronômetro do estudo: com a matéria rodando, conta para trás o bloco (ou a pausa) do método
+function imTimerText(sid, iso) {
+  const t = intel && intel.timer;
+  if (t && t.sid === sid && (!iso || iso === todayISO())) { const p = imPhase(); return (p.inBrk ? "Pausa " : "") + fmtMS(p.left); }
+  return fmtHMS(subjSec(iso || todayISO(), sid));
+}
 function imLiveText() {
   const p = imPhase(); if (!p) return "";
   if (p.inBrk) return "Pausa de " + p.brk + " min (" + p.R.name + "): descanse e volte ao estudo em " + fmtMS(p.left) + ".";
@@ -3168,11 +3188,12 @@ function updateLive() {
     const tag = (ph.inBrk ? "b" : "w") + ph.k + (ph.test ? "t" : "");
     if (imLast != null && imLast !== tag) { if (ph.test && !ph.inBrk && imLast === "w" + ph.k) stBeep(660, 300, 1); else cycBeep(ph.inBrk); }
     imLast = tag;
-    document.querySelectorAll('#im-live, [data-live="im-phase"]').forEach(n => { n.textContent = imLiveText(); });
+    document.querySelectorAll('#im-live, [data-live="im-phase"]').forEach(n => { n.textContent = imLiveText() + sndHint(); });
   }
   const today = todayISO();
   const sec = daySec(today), goal = goalSec(today);
-  document.querySelectorAll('[data-live="subj-time"]').forEach(n => { n.textContent = fmtHMS(subjSec(today, n.dataset.sid)); });
+  document.querySelectorAll('[data-live="subj-time"]').forEach(n => { n.textContent = imTimerText(n.dataset.sid, today); n.classList.toggle("cd", true); n.classList.toggle("brk", !!(ph && ph.inBrk)); });
+  document.querySelectorAll('[data-live="subj-tot"]').forEach(n => { n.textContent = fmtHMS(subjSec(today, n.dataset.sid)); });
   document.querySelectorAll('[data-live="day-time"]').forEach(n => { n.textContent = fmtHM(sec); });
   document.querySelectorAll('[data-live="day-left"]').forEach(n => { n.textContent = sec >= goal ? "—" : fmtHM(goal - sec); });
   document.querySelectorAll('[data-live="day-bar"]').forEach(n => { n.style.width = Math.min(100, sec / goal * 100) + "%"; });
@@ -8419,6 +8440,7 @@ function fxCycOf(f) {
 }
 function fxCycle(t) { return fxCycOf((ensureRotina().fixed || []).find(x => x.id === t.fid)); }
 let fxLast = null;
+function fxTimerText(p) { return p.done ? "00:00" : (p.inBrk ? "Intervalo " : "") + fmtMS(p.left); }
 function fxStop(silent, at) { const r = ensureRotina(), t = r.ftimer; if (!t) return; actLog("rotina", "fx:" + t.fid, t.name, t.startedAt, Math.max(t.startedAt, Math.min(Date.now(), at || Date.now()))); r.ftimer = null; fxWake(false); if (!silent) saveRotina(); }
 // ciclos curtos (menos de 2 min): a tela fica acesa para o som tocar na hora
 function fxShort(c) { return !!c && (c.seq ? c.seq.some(x => x.s < 120) : c.work < 2 || c.brk < 2); }
@@ -8452,9 +8474,10 @@ function fxLearnedCalc(fid) {
 }
 function updateFxLive() {
   const t = fxRun(); if (!t) { fxLast = null; return; }
-  document.querySelectorAll('[data-live="fx-time"]').forEach(n => { if (n.dataset.fid === t.fid) n.textContent = fmtHMS(fxSecToday(t.fid)); });
-  const c = fxCycle(t); if (!c) return;
+  const c = fxCycle(t);
+  if (!c) { document.querySelectorAll('[data-live="fx-time"]').forEach(n => { if (n.dataset.fid === t.fid) n.textContent = fmtHMS(fxSecToday(t.fid)); }); return; }
   const p = fxPhase(t, c), tag = p.done ? "d" : (p.inBrk ? "b" : "w") + p.k;
+  document.querySelectorAll('[data-live="fx-time"]').forEach(n => { if (n.dataset.fid === t.fid) { n.textContent = fxTimerText(p); n.classList.add("cd"); n.classList.toggle("brk", p.inBrk); } });
   if (p.done) {
     // série completa: som de fim (se acabou agora) e o cronômetro para sozinho na hora certa
     if (Date.now() - p.at < 15000) cycBeep("fim");
@@ -8464,7 +8487,7 @@ function updateFxLive() {
   }
   if (fxLast != null && fxLast !== tag) cycBeep(p.inBrk);
   fxLast = tag;
-  document.querySelectorAll('[data-live="fx-cyc"]').forEach(n => { if (n.dataset.fid === t.fid) { n.textContent = cycText(p); n.classList.toggle("brk", p.inBrk); } });
+  document.querySelectorAll('[data-live="fx-cyc"]').forEach(n => { if (n.dataset.fid === t.fid) { n.textContent = cycText(p) + sndHint(); n.classList.toggle("brk", p.inBrk); } });
 }
 setInterval(updateFxLive, 1000);
 function rtIcon(mod) { const s = el("span", "rt-ico"); s.innerHTML = ICONS[mod] || ""; return s; }
@@ -8717,7 +8740,8 @@ function rtGoMod(mod) {
 function rtTimerRow(o) {
   const row = el("div", "rt-tm" + (o.running ? " run" : ""));
   const nm = el("button", "rt-link rt-tm-name", o.label); nm.type = "button"; nm.id = o.id; nm.title = "Abrir no módulo"; nm.addEventListener("click", o.go);
-  const tm = el("span", "timer rt-tm-time", o.running || o.sec > 0 ? fmtHMS(o.sec) : "");
+  const study = o.running && o.live === "subj-time" && intel && intel.timer;
+  const tm = el("span", "timer rt-tm-time" + (study ? " cd" + (imPhase().inBrk ? " brk" : "") : ""), study ? imTimerText(o.liveVal) : o.running || o.sec > 0 ? fmtHMS(o.sec) : "");
   if (o.running) { tm.dataset.live = o.live; tm.dataset[o.liveAttr] = o.liveVal; }
   const b = el("button", o.running ? "btn stop" : "btn", o.running ? "Pausar" : "▶ Iniciar"); b.type = "button"; b.id = o.id + (o.running ? "-stop" : "-start");
   b.setAttribute("aria-label", (o.running ? "Pausar " : "Iniciar ") + o.name);
@@ -8799,13 +8823,14 @@ function rtTodayNodes(R, nowMin) {
       main.append(time, el("span", "rt-ico"), tx); li.appendChild(main);
       const c = el("button", "linkbtn rt-conc", "Concluir"); c.type = "button"; c.id = "rt-fx-conc-" + f.id; c.addEventListener("click", () => fxConclude(f, true)); li.appendChild(c);
       const act = el("div", "rt-act");
-      const tm = el("span", "timer rt-tm-time", frun || fsec ? fmtHMS(fsec) : ""); if (frun) { tm.dataset.live = "fx-time"; tm.dataset.fid = f.id; }
+      const fcy = frun ? fxCycle(fxRun()) : null, fph = fcy ? fxPhase(fxRun(), fcy) : null;
+      const tm = el("span", "timer rt-tm-time" + (fph ? " cd" + (fph.inBrk ? " brk" : "") : ""), fph ? fxTimerText(fph) : frun || fsec ? fmtHMS(fsec) : ""); if (frun) { tm.dataset.live = "fx-time"; tm.dataset.fid = f.id; }
       const b = el("button", frun ? "btn stop" : "btn", frun ? "Pausar" : "▶ Iniciar"); b.type = "button"; b.id = "rt-fx-" + f.id + (frun ? "-stop" : "-start");
       b.setAttribute("aria-label", (frun ? "Pausar " : "Iniciar ") + (f.name || "compromisso"));
       b.addEventListener("click", () => { if (frun) fxStop(); else fxStart(f); rtRefresh("rt-fx-" + f.id + (frun ? "-start" : "-stop")); });
       act.append(b, tm); li.appendChild(act);
       const fc = frun ? fxCycle(fxRun()) : null;
-      if (fc) { const p = fxPhase(fxRun(), fc), cy = el("span", "rt-cyc" + (p.inBrk ? " brk" : ""), cycText(p)); cy.dataset.live = "fx-cyc"; cy.dataset.fid = f.id; cy.setAttribute("aria-live", "polite"); tx.appendChild(cy); }
+      if (fc) { const p = fxPhase(fxRun(), fc), cy = el("span", "rt-cyc" + (p.inBrk ? " brk" : ""), cycText(p) + sndHint()); cy.dataset.live = "fx-cyc"; cy.dataset.fid = f.id; cy.setAttribute("aria-live", "polite"); tx.appendChild(cy); }
       tl.appendChild(li); return;
     }
     const it = r.b.it, suf = it.key + (r.b.part ? "-" + r.b.part : ""); li.id = "rt-" + suf;
@@ -8852,7 +8877,7 @@ function rtTodayNodes(R, nowMin) {
     let tbox = null;
     if (timers) { tbox = el("div", "rt-links rt-tms"); timers.forEach(o => tbox.appendChild(rtTimerRow(o))); li.appendChild(tbox); }
     // método de estudo no bloco que está rodando: quanto falta para a pausa e para voltar
-    if (tbox && running && it.mod === "inteligencia" && intel && intel.timer) { const cy = el("p", "rt-cyc" + (imPhase().inBrk ? " brk" : ""), imLiveText()); cy.dataset.live = "im-phase"; cy.setAttribute("aria-live", "polite"); tbox.appendChild(cy); }
+    if (tbox && running && it.mod === "inteligencia" && intel && intel.timer) { const cy = el("p", "rt-cyc" + (imPhase().inBrk ? " brk" : ""), imLiveText() + sndHint()); cy.dataset.live = "im-phase"; cy.setAttribute("aria-live", "polite"); tbox.appendChild(cy); }
     // no trabalho dá para estudar junto: o cronômetro da matéria roda com o do trabalho geral
     if (it.key === "trabalho") {
       const sug = rtStudySuggest();

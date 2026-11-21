@@ -768,6 +768,12 @@ ol.steps a { color: var(--accent); }
 .rt-free-d { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
 .rt-free-d.up { color: var(--good); }
 .rt-free-d.down { color: var(--warn); }
+.meta-h { display: flex; align-items: center; gap: 10px; }
+.meta-h h3 { margin: 0; }
+.meta-in { display: flex; align-items: center; gap: 8px; }
+.meta-in input { max-width: 120px; }
+.meta-u { color: var(--muted); font-size: 14px; }
+.meta-ok { color: var(--good); }
 /* Cortana: botão redondo no canto e painel da conversa */
 .ct-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 41; width: 58px; height: 58px; border-radius: 50%; border: 1px solid var(--accent); cursor: pointer;
   background: radial-gradient(circle at 50% 45%, rgba(166, 107, 255, .28), rgba(10, 6, 20, .96) 70%); box-shadow: 0 0 0 1px rgba(166, 107, 255, .35), 0 0 22px rgba(166, 107, 255, .35), 0 6px 18px rgba(0, 0, 0, .55); padding: 0; }
@@ -2495,7 +2501,28 @@ function createIntel() {
 }
 function unitWord(sub, n) { const u = UNITS[sub.unit] || UNITS.exercicios; return n === 1 ? u[0] : u[1]; }
 function isWeekend(iso) { const [y, m, d] = iso.split("-").map(Number); const w = new Date(y, m - 1, d).getDay(); return w === 0 || w === 6; }
-function goalSec(iso) { return Math.round((isWeekend(iso) ? intel.goals.weekend : intel.goals.week) * 3600); }
+/* Metas com data: mudar uma meta vale a partir de hoje; os dias anteriores continuam com a meta da época
+   (XP, penalidades, Rotina e relatórios). O histórico fica em goalLog: [{ d: "AAAA-MM-DD", v: {...}, t }], em ordem de data. */
+function goalAt(log, iso, cur) {
+  if (!Array.isArray(log) || !log.length) return cur;
+  let g = null; for (const e of log) { if (e.d <= iso) g = e; else break; }
+  return Object.assign({}, cur, (g || log[0]).v);
+}
+function goalLogPush(owner, cur, patch) {
+  const iso = todayISO(), log = owner.goalLog = Array.isArray(owner.goalLog) ? owner.goalLog : [];
+  if (!log.length) log.push({ d: "0000-00-00", v: Object.assign({}, cur), t: Date.now() });
+  const v = Object.assign({}, cur, patch), last = log[log.length - 1];
+  if (last.d === iso) Object.assign(last, { v, t: Date.now() }); else log.push({ d: iso, v, t: Date.now() });
+  return v;
+}
+// dois aparelhos mexeram nas metas: junta os históricos (no mesmo dia, vale a mudança mais recente)
+function mergeGoalLog(a, b) {
+  const by = {}; (a || []).concat(b || []).forEach(e => { if (e && e.d && (!by[e.d] || (e.t || 0) > (by[e.d].t || 0))) by[e.d] = e; });
+  return Object.keys(by).sort().map(d => by[d]);
+}
+function intelGoalsAt(iso) { return goalAt(intel && intel.goalLog, iso, (intel && intel.goals) || { week: 2, weekend: 4 }); }
+function goalSec(iso) { const g = intelGoalsAt(iso); return Math.round((isWeekend(iso) ? g.weekend : g.week) * 3600); }
+function setIntelGoals(patch) { if (!intel) return; intel.goals = goalLogPush(intel, { week: intel.goals.week, weekend: intel.goals.weekend }, patch); saveIntel(); }
 function getRec(day, sid) { return (intel.days[day] && intel.days[day][sid]) || { sec: 0, count: 0, theory: false }; }
 function dayRec(day, sid) { intel.days[day] = intel.days[day] || {}; return intel.days[day][sid] = intel.days[day][sid] || { sec: 0, count: 0, theory: false }; }
 function dayBounds(iso) { const [y, m, d] = iso.split("-").map(Number); const s = new Date(y, m - 1, d).getTime(); return [s, new Date(y, m - 1, d + 1).getTime()]; }
@@ -3097,6 +3124,8 @@ function loadStamina() {
   settleStamina();
 }
 function stam() { return stamina || { goals: { weekMin: 150, focusMin: 10 }, days: {}, timer: null, age: null }; }
+function stGoalsAt(iso) { const s = stam(); return goalAt(s.goalLog, iso, { weekMin: s.goals.weekMin, focusMin: s.goals.focusMin }); }
+function setStGoals(patch) { const st = ensureStamina(); if (st.timer && patch.focusMin != null && patch.focusMin !== st.goals.focusMin) stStop(true); st.goals = Object.assign({}, st.goals, goalLogPush(st, { weekMin: st.goals.weekMin, focusMin: st.goals.focusMin }, patch)); saveStamina(); }
 function ensureStamina() { if (!stamina) stamina = { version: 1, goals: { weekMin: 150, focusMin: 10 }, days: {}, timer: null, age: null }; return stamina; }
 function saveStamina() {
   try { localStorage.setItem(STAM_KEY, JSON.stringify(stamina)); setStatus("Salvo no celular", "ok"); }
@@ -3127,8 +3156,8 @@ function weekRaw(iso) { return weekDays(weekStart(iso)).reduce((a, d) => a + stK
 function weekDays(start) { const [y, m, d] = start.split("-").map(Number); return Array.from({ length: 7 }, (_, i) => ymd(new Date(y, m - 1, d + i))); }
 function weekEq(iso, onlyBefore) { return weekDays(weekStart(iso)).filter(d => !onlyBefore || d < iso).reduce((a, d) => a + stEqMin(d), 0); }
 function focusStreak(iso) {
-  const goal = stam().goals.focusMin * 60, [y, m, d] = iso.split("-").map(Number); let n = 0;
-  for (let i = 0; i < 400; i++) { const day = ymd(new Date(y, m - 1, d - i)); if (stKindSec(day, "foco") >= goal) n++; else if (i === 0) continue; else break; }
+  const [y, m, d] = iso.split("-").map(Number); let n = 0;
+  for (let i = 0; i < 400; i++) { const day = ymd(new Date(y, m - 1, d - i)); if (stKindSec(day, "foco") >= stGoalsAt(day).focusMin * 60) n++; else if (i === 0) continue; else break; }
   return n;
 }
 function strengthDay(iso) {
@@ -3173,7 +3202,7 @@ function stTrainDay(iso) {
 }
 // sel: prática escolhida na tela. Escolher Pós-treino (ou registrar tempo nele) num dia de treino faz 15 min fecharem o cardio.
 function cardioPlan(iso, sel) {
-  const sd = strengthDay(iso), goal = stam().goals.weekMin;
+  const sd = strengthDay(iso), goal = stGoalsAt(iso).weekMin;
   const POS_WHY = "Dia de musculação: 15 min de cardio depois do treino já completam o cardio do dia.";
   if (sd) return { pid: "pos", target: 15, optional: true, why: POS_WHY };
   if (stSec(iso, "pos") > 0 || (sel === "pos" && stTrainDay(iso))) return { pid: "pos", target: 15, optional: false, why: POS_WHY };
@@ -3482,7 +3511,7 @@ function renderStPraticas(main) {
   [["weekMin", "Cardio por semana (min)", 30, 1500], ["focusMin", "Foco por dia (min)", 1, 90]].forEach(([k, t, lo, hi]) => {
     const fd = el("div", "field"); const l = el("label", null, t); l.htmlFor = "st-goal-" + k;
     const i = el("input"); i.id = "st-goal-" + k; i.inputMode = "numeric"; i.value = String(s.goals[k]);
-    i.addEventListener("change", () => { const v = Math.round(parseNum(i.value) || 0); if (v >= lo && v <= hi) { const st = ensureStamina(); if (st.timer && k === "focusMin") stStop(true); st.goals[k] = v; saveStamina(); } i.value = String(stam().goals[k]); });
+    i.addEventListener("change", () => { const v = Math.round(parseNum(i.value) || 0); if (v >= lo && v <= hi) setStGoals({ [k]: v }); i.value = String(stam().goals[k]); });
     fd.append(l, i); grow.appendChild(fd);
   });
   gs.appendChild(grow);
@@ -3875,7 +3904,9 @@ function saveMs() {
 }
 function msTask(id) { return msData().tasks.find(t => t.id === id); }
 function msDow(iso) { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d).getDay(); }
-function msWorkDay(iso) { return msData().goal.days.includes(msDow(iso)); }
+function msGoalAt(iso) { const g = msData(); return goalAt(g.goalLog, iso, { hours: g.goal.hours, days: g.goal.days }); }
+function msWorkDay(iso) { return msGoalAt(iso).days.includes(msDow(iso)); }
+function setMsGoal(patch) { const g = ensureMs(), v = goalLogPush(g, { hours: g.goal.hours, days: g.goal.days.slice() }, patch); g.goal.hours = v.hours; g.goal.days = v.days.slice(); saveMs(); }
 // a meta de horas só vale a partir do primeiro dia em que você usou o módulo
 function msSince() {
   const g = msData(); let first = null;
@@ -3884,7 +3915,7 @@ function msSince() {
   if (g.timer) { const d = ymd(new Date(g.timer.startedAt)); if (!first || d < first) first = d; }
   return first || todayISO();
 }
-function msGoalSec(iso) { return msWorkDay(iso) && iso >= msSince() ? Math.round(msData().goal.hours * 3600) : 0; }
+function msGoalSec(iso) { return msWorkDay(iso) && iso >= msSince() ? Math.round(msGoalAt(iso).hours * 3600) : 0; }
 function msRun(iso, tid) {
   const t = msData().timer; if (!t || (tid && t.tid !== tid)) return 0;
   const [a, b] = dayBounds(iso); const s = Math.max(a, t.startedAt), e = Math.min(b, Date.now());
@@ -5057,11 +5088,11 @@ function renderMsRelatorio(main) {
   const s6 = el("section", "guide"); s6.appendChild(el("h3", null, "Meta de trabalho"));
   const gr = el("div", "inputs two"); const f = el("div", "field"); const l = el("label", null, "Mínimo por dia (horas)"); l.htmlFor = "ms-goal-h";
   const i = el("input"); i.id = "ms-goal-h"; i.inputMode = "decimal"; i.value = fmtNum(g.goal.hours);
-  i.addEventListener("change", () => { const v = parseNum(i.value); if (v && v > 0 && v <= 16) { ensureMs().goal.hours = v; saveMs(); renderMissoes(); } else i.value = fmtNum(msData().goal.hours); });
+  i.addEventListener("change", () => { const v = parseNum(i.value); if (v && v > 0 && v <= 16) { setMsGoal({ hours: v }); renderMissoes(); } else i.value = fmtNum(msData().goal.hours); });
   f.append(l, i); gr.appendChild(f); s6.appendChild(gr);
   s6.appendChild(el("span", "field-l", "Dias de trabalho"));
   const dch = el("div", "chips");
-  [1, 2, 3, 4, 5, 6, 0].forEach(w => { const on = g.goal.days.includes(w); const c = el("button", "gchip", DOW_SHORT[w]); c.type = "button"; c.id = "ms-wd-" + w; c.setAttribute("aria-pressed", String(on)); c.addEventListener("click", () => { const gg = ensureMs(); const nd = on ? gg.goal.days.filter(x => x !== w) : gg.goal.days.concat(w); if (nd.length) { gg.goal.days = nd; saveMs(); renderMissoes(); } }); dch.appendChild(c); });
+  [1, 2, 3, 4, 5, 6, 0].forEach(w => { const on = g.goal.days.includes(w); const c = el("button", "gchip", DOW_SHORT[w]); c.type = "button"; c.id = "ms-wd-" + w; c.setAttribute("aria-pressed", String(on)); c.addEventListener("click", () => { const gg = ensureMs(); const nd = on ? gg.goal.days.filter(x => x !== w) : gg.goal.days.concat(w); if (nd.length) { setMsGoal({ days: nd }); renderMissoes(); } }); dch.appendChild(c); });
   s6.appendChild(dch);
   main.appendChild(modEvoCard("missoes", "Horas de trabalho por dia", dates => { const v = areaHours("missoes", dates); return { hours: true, fmt: fmtHours, ref: null, series: v ? [{ id: "missoes", name: "Missões", color: "#b07cff", vals: v }] : [], empty: "Cronometre o trabalho nas Missões para ver a evolução.", note: "Tempo de trabalho cronometrado em cada dia (geral + missões), contando o cronômetro que estiver rodando." }; }, renderMissoes));
   main.appendChild(s6);
@@ -6750,7 +6781,7 @@ function moduleStatus(m) {
 }
 
 // Tela inicial em três abas: Início (módulos), Rotina (de hoje) e Atributos (nível e hexágono)
-const HOME_TABS = [{ id: "inicio", label: "Início" }, { id: "rotina", label: "Rotina" }, { id: "atributos", label: "Atributos" }];
+const HOME_TABS = [{ id: "inicio", label: "Início" }, { id: "rotina", label: "Rotina" }, { id: "atributos", label: "Atributos" }, { id: "metas", label: "Metas" }];
 const HOME_DEF = "rotina"; // aba em que o app abre (e para onde o logo leva quando já está na tela inicial)
 function renderHome() {
   state.view = "home"; document.body.dataset.view = "home";
@@ -6767,6 +6798,7 @@ function renderHome() {
     return;
   }
   if (state.htab === "rotina") { main.appendChild(rtHomeSection()); return; }
+  if (state.htab === "metas") { renderMetas(main); return; }
   const now = new Date();
   const head = el("div", "wk-head");
   head.append(el("h2", null, "Início"), el("p", null, WEEKDAYS[now.getDay()].replace(/^./, c => c.toUpperCase()) + ", " + now.getDate() + " de " + MONTHS[now.getMonth()] + ". Toque num módulo para entrar ou na seta para ver as pendências."));
@@ -6782,6 +6814,61 @@ function renderHome() {
   main.appendChild(grid);
 }
 
+/* Metas: todos os mínimos do dia num lugar só. Mudar vale a partir de hoje (os dias anteriores seguem com a meta da época). */
+function renderMetas(main) {
+  head2(main, "Metas", "Os mínimos de cada dia. Mudar uma meta vale a partir de hoje: os dias anteriores continuam com a meta que valia na época, no XP, nas penalidades e nos relatórios.");
+  const saved = (box, txt) => { let m = box.querySelector(".meta-ok"); if (!m) { m = el("p", "note meta-ok"); m.setAttribute("role", "status"); box.appendChild(m); } m.textContent = txt; };
+  const num = (box, id, label, val, unit, lo, hi, step, set) => {
+    const f = el("div", "field"), l = el("label", null, label), w = el("div", "meta-in"), i = el("input"); l.htmlFor = id;
+    i.id = id; i.inputMode = "decimal"; i.value = fmtNum(val); i.setAttribute("aria-describedby", id + "-u");
+    const u = el("span", "meta-u", unit); u.id = id + "-u"; w.append(i, u);
+    i.addEventListener("change", () => {
+      const v = Math.round((parseNum(i.value) || 0) / step) * step;
+      if (i.value.trim() === "" || isNaN(v) || v < lo || v > hi) { saved(box, "Use um valor entre " + fmtNum(lo) + " e " + fmtNum(hi) + " " + unit + "."); i.value = fmtNum(val); return; }
+      if (v === val) { i.value = fmtNum(val); return; }
+      set(v); val = v; i.value = fmtNum(v); saved(box, "Salvo. Vale a partir de hoje.");
+    });
+    f.append(l, w); return f;
+  };
+  const sec = (mod, title, txt) => { const s = el("section", "guide meta-sec"); s.id = "meta-" + mod; const h = el("div", "meta-h"); h.append(rtIcon(mod), el("h3", null, title)); s.appendChild(h); if (txt) s.appendChild(el("p", "note muted", txt)); return s; };
+  const link = (box, id, label, go) => { const b = el("button", "btn ghost", label); b.type = "button"; b.id = id; b.addEventListener("click", go); const bb = el("div", "btns"); bb.appendChild(b); box.appendChild(bb); };
+  if (modOn("inteligencia")) {
+    const s = sec("inteligencia", "Estudo", "Horas de estudo por dia. Em dia sem meta, a Rotina não marca estudo.");
+    if (!intel) { s.appendChild(el("p", "note", "A Inteligência ainda não foi configurada.")); link(s, "meta-int-go", "Configurar a Inteligência", () => enterIntel("estudo")); }
+    else { const g = el("div", "inputs two"); g.append(num(s, "meta-int-wk", "Dia útil", intel.goals.week, "h", 0, 14, 0.25, v => setIntelGoals({ week: v })), num(s, "meta-int-we", "Fim de semana", intel.goals.weekend, "h", 0, 14, 0.25, v => setIntelGoals({ weekend: v }))); s.appendChild(g); }
+    main.appendChild(s);
+  }
+  if (modOn("missoes")) {
+    const s = sec("missoes", "Trabalho", "Horas de trabalho nos dias marcados.");
+    const g = msData(), r = el("div", "inputs two");
+    r.appendChild(num(s, "meta-ms-h", "Mínimo por dia", g.goal.hours, "h", 0.5, 16, 0.25, v => setMsGoal({ hours: v }))); s.appendChild(r);
+    s.appendChild(el("span", "field-l", "Dias de trabalho"));
+    const ch = el("div", "chips");
+    [1, 2, 3, 4, 5, 6, 0].forEach(w => {
+      const on = g.goal.days.includes(w), c = el("button", "gchip", DOW_SHORT[w]); c.type = "button"; c.id = "meta-ms-d-" + w; c.setAttribute("aria-pressed", String(on));
+      c.addEventListener("click", () => { const nd = on ? msData().goal.days.filter(x => x !== w) : msData().goal.days.concat(w); if (!nd.length) { saved(s, "Deixe pelo menos um dia de trabalho."); return; } setMsGoal({ days: nd }); renderHome(); const n = document.getElementById(c.id); if (n) n.focus(); });
+      ch.appendChild(c);
+    });
+    s.appendChild(ch); main.appendChild(s);
+  }
+  if (modOn("estamina")) {
+    const s = sec("estamina", "Cardio e foco", "O cardio é uma meta da semana: a Rotina divide pelos dias. O foco é por dia.");
+    const g = stam().goals, r = el("div", "inputs two");
+    r.append(num(s, "meta-st-week", "Cardio por semana", g.weekMin, "min", 30, 1500, 5, v => setStGoals({ weekMin: v })), num(s, "meta-st-foco", "Foco por dia", g.focusMin, "min", 1, 90, 1, v => setStGoals({ focusMin: v })));
+    s.appendChild(r); main.appendChild(s);
+  }
+  if (modOn("forca")) {
+    const s = sec("forca", "Treino", "Os dias de treino são os que estão marcados no calendário da Força. O mínimo do dia é fazer metade dos exercícios do treino.");
+    link(s, "meta-fx-go", "Abrir o calendário de treinos", () => enterForca("progresso")); main.appendChild(s);
+  }
+  if (modOn("graca")) {
+    const s = sec("graca", "Rituais", "Cada ritual tem quantas vezes por dia, em quais dias e o tempo de cada vez.");
+    link(s, "meta-gr-go", "Abrir os rituais", () => enterGraca("gr-rituais")); main.appendChild(s);
+  }
+  if (modOn("financas")) main.appendChild(sec("financas", "Economia", "O mínimo do dia é não ter lançamento pendente há mais de 7 dias."));
+  const sr = sec("rotina", "Horários", "Acordar, dormir, expediente e compromissos ficam na Rotina.");
+  link(sr, "meta-rt-go", "Abrir os horários", () => enterRotina("rot-horarios")); main.appendChild(sr);
+}
 function buildModule(m) {
   const card = el("section", "guide module" + (m.ready ? "" : " soon")); card.id = "mod-" + m.id;
   const head = el("div", "mod-head");
@@ -7607,7 +7694,7 @@ function xpMod(id, iso) {
     return { min: have >= goal && !subMiss.length, hoursOk: have >= goal, subMiss, p, txt: "Estudo " + H(have) + " de " + H(goal) + (tasks.length ? " · tarefas " + done + " de " + tasks.length : "") + (subMiss.length ? " · abaixo do mínimo: " + subMiss.map(x => x.name).join(", ") : "") };
   }
   if (id === "estamina") {
-    const cp = cardioPlan(iso), cm = Math.floor(stKindSec(iso, "cardio") / 60), fm = Math.floor(stKindSec(iso, "foco") / 60), fg = stam().goals.focusMin;
+    const cp = cardioPlan(iso), cm = Math.floor(stKindSec(iso, "cardio") / 60), fm = Math.floor(stKindSec(iso, "foco") / 60), fg = stGoalsAt(iso).focusMin;
     const c = cp.optional || cm >= cp.target, f = fm >= fg;
     return { min: c || f, p: c && f ? 1 : 0, txt: "Cardio " + (cp.optional && cm < cp.target ? "opcional" : cm + " de " + cp.target + " min") + " · foco " + fm + " de " + fg + " min" };
   }
@@ -7975,7 +8062,7 @@ function rtDemand(iso, plan, sim) {
       const base = cp.optional ? 0 : cp.target, left = 20 - Math.max(0, have - base);
       if (left > 0) add({ key: "pen-cardio", mod: "estamina", pid: cp.pid, running: !!run.cardio && have >= base, title: "Penalidade: +20 min de cardio", sub: pc.txt, dur: Math.max(10, left), win: tw, afterForca: !!wo, rank: 2.5, pen: true, go: () => { enterStamina("est-hoje"); rtFocus("st-cardio"); } });
     } else if (pDone("pen-cardio")) penDone("pen-cardio", "estamina", "Penalidade: +20 min de cardio");
-    const fg = Math.round(stam().goals.focusMin), fh = isT ? Math.floor(stKindSec(iso, "foco") / 60) : 0;
+    const fg = Math.round(stGoalsAt(iso).focusMin), fh = isT ? Math.floor(stKindSec(iso, "foco") / 60) : 0;
     if (fg - fh > 0) add({ key: "foco", mod: "estamina", running: !!run.foco, title: "Foco: meditação ou respiração", sub: "Logo antes de estudar.", dur: fg - fh, beforeStudy: true, rank: 5, go: () => { enterStamina("est-hoje"); rtFocus("st-foco"); } });
     else if (fh) dn({ key: "foco", mod: "estamina", title: "Foco: meditação ou respiração", sub: fh + " min" }, "Foco");
     if (isT) part("estamina", "foco", fh, fg, "min");
@@ -9260,6 +9347,7 @@ function mergeKey(k, a, b) {
       out.days[d] = day;
     });
     out.timer = R.timer || L.timer || null;
+    if (L.goalLog || R.goalLog) { out.goalLog = mergeGoalLog(L.goalLog, R.goalLog); out.goals = Object.assign({}, out.goals, out.goalLog[out.goalLog.length - 1].v); }
     return JSON.stringify(out);
   }
   if (k === "stek-perfil-v1" || k === "stek-rotina-v1" || k === "treino-plano-meu-v1") return (L.upd || 0) > (R.upd || 0) ? a : b;
@@ -9271,6 +9359,7 @@ function mergeKey(k, a, b) {
     const out = Object.assign({}, L, R, { goal: Object.assign({}, L.goal, R.goal), tasks: Object.values(byId), days: Object.assign({}, R.days), kb: Object.values(kb) });
     Object.keys(L.days || {}).forEach(d => { const day = Object.assign({}, out.days[d]); Object.keys(L.days[d] || {}).forEach(id => { day[id] = Math.max(day[id] || 0, L.days[d][id] || 0); }); out.days[d] = day; });
     out.timer = R.timer || L.timer || null;
+    if (L.goalLog || R.goalLog) { out.goalLog = mergeGoalLog(L.goalLog, R.goalLog); const v = out.goalLog[out.goalLog.length - 1].v; out.goal = Object.assign({}, out.goal, { hours: v.hours, days: v.days }); }
     return JSON.stringify(out);
   }
   if (k === "stek-graca-v1") {
@@ -9286,6 +9375,7 @@ function mergeKey(k, a, b) {
     const out = Object.assign({}, L, R, { goals: Object.assign({}, L.goals, R.goals), days: Object.assign({}, R.days) });
     Object.keys(L.days).forEach(d => { const day = Object.assign({}, out.days[d]); Object.keys(L.days[d] || {}).forEach(pid => { const l = L.days[d][pid], r = day[pid]; if (!r || ((l && l.sec) || 0) > (r.sec || 0)) day[pid] = l; }); out.days[d] = day; });
     out.timer = R.timer || L.timer || null; out.age = R.age || L.age || null; out.colors = Object.assign({}, L.colors, R.colors);
+    if (L.goalLog || R.goalLog) { out.goalLog = mergeGoalLog(L.goalLog, R.goalLog); out.goals = Object.assign({}, out.goals, out.goalLog[out.goalLog.length - 1].v); }
     return JSON.stringify(out);
   }
   if (k === "stek-fin-v1") {

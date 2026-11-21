@@ -6307,9 +6307,26 @@ function catSpend(k, lim) {
   finFlat().forEach(t => { if (t.status !== "done" || t.kind !== "gasto" || monthKey(t.date) !== k) return; if (lim && +t.date.slice(8, 10) > lim) return; o[t.cat] = (o[t.cat] || 0) + t.amount; });
   return o;
 }
+/* Conta de uma vez por mês que no mês passado caiu depois de hoje (ex.: Kiara, paga em 29/10) e neste mês já foi paga (20/11):
+   no "mesmo período" ela aparecia como R$ 0,00 no mês passado e "novo" neste. Ela entra no mês passado com o valor que você pagou.
+   Só vale para quem recebeu uma única vez no mês passado; gastos frequentes (Uber, mercado) seguem a comparação dia a dia. */
+function catLateMonthly(k, kp, lim) {
+  const out = {}; if (!lim) return out;
+  const origin = t => { const rk = ruleKey(t.desc); return ruleHead(rk) || rk; };
+  const flat = finFlat().filter(t => t.status === "done" && t.kind === "gasto");
+  const paidNow = new Set(flat.filter(t => monthKey(t.date) === k && +t.date.slice(8, 10) <= lim).map(t => t.cat + "|" + origin(t)));
+  const prev = flat.filter(t => monthKey(t.date) === kp), cnt = {};
+  prev.forEach(t => { const o = t.cat + "|" + origin(t); cnt[o] = (cnt[o] || 0) + 1; });
+  prev.forEach(t => {
+    const o = t.cat + "|" + origin(t);
+    if (+t.date.slice(8, 10) > lim && cnt[o] === 1 && paidNow.has(o)) { const x = out[t.cat] = out[t.cat] || { v: 0, days: [] }; x.v += t.amount; x.days.push(t.date); }
+  });
+  return out;
+}
 function catCompareCard(k, a) {
   const kp = addMonths(k, -1), lim = k === monthKey(todayISO()) ? +todayISO().slice(8, 10) : null;
-  const cur = catSpend(k, lim), prv = catSpend(kp, lim);
+  const cur = catSpend(k, lim), prv = catSpend(kp, lim), late = catLateMonthly(k, kp, lim);
+  Object.keys(late).forEach(c => { prv[c] = (prv[c] || 0) + late[c].v; });
   if (!Object.keys(prv).length) return null;
   const r2 = v => Math.round(v * 100) / 100;
   const rows = [...new Set(Object.keys(cur).concat(Object.keys(prv)))].map(c => ({ c, cur: r2(cur[c] || 0), prv: r2(prv[c] || 0) })).map(x => Object.assign(x, { d: r2(x.cur - x.prv) })).filter(x => Math.abs(x.d) >= 0.01);
@@ -6318,7 +6335,8 @@ function catCompareCard(k, a) {
   const pm = MONTHS[+kp.slice(5, 7) - 1];
   const sec = el("section", "guide"); sec.id = "rel-cmp";
   sec.appendChild(el("h3", null, "Gastos que caíram e que subiram"));
-  sec.appendChild(el("p", "note muted", lim ? "Do dia 1 ao dia " + lim + " deste mês, comparado com o mesmo período de " + pm + "." : monthLabel(k).replace("/", " de ") + " comparado com " + pm + "."));
+  const lateCats = Object.keys(late);
+  sec.appendChild(el("p", "note muted", lim ? "Do dia 1 ao dia " + lim + " deste mês, comparado com o mesmo período de " + pm + "." + (lateCats.length ? " Contas de uma vez por mês que neste mês você já pagou e em " + pm + " caíram depois do dia " + lim + " entram com o valor de " + pm + " (" + lateCats.join(", ") + ")." : "") : monthLabel(k).replace("/", " de ") + " comparado com " + pm + "."));
   const grid = el("div", "cmp-grid");
   const col = (cls, title, list, tot, totTxt, pctTxt, empty) => {
     const c = el("div", "cmp-col " + cls); c.id = "cmp-" + cls;
@@ -6335,7 +6353,8 @@ function catCompareCard(k, a) {
       top.append(el("span", "hb-l", x.c), fv);
       const bar = el("div", "hb-bar"), f = el("span"); f.style.width = (Math.abs(x.d) / max * 100) + "%"; bar.appendChild(f);
       row.append(top, bar);
-      row.dataset.tip = tipJSON(x.c, [[brl(x.cur), lim ? "neste mês até o dia " + lim : "em " + MONTHS[+k.slice(5, 7) - 1]], [brl(x.prv), lim ? "em " + pm + " até o dia " + lim : "em " + pm], [(x.d > 0 ? "+" : "−") + brl(Math.abs(x.d)), x.d > 0 ? "a mais" : "a menos"]]);
+      const lt = late[x.c];
+      row.dataset.tip = tipJSON(x.c, [[brl(x.cur), lim ? "neste mês até o dia " + lim : "em " + MONTHS[+k.slice(5, 7) - 1]], [brl(x.prv), lim ? "em " + pm + " até o dia " + lim + (lt ? ", com a conta do mês paga em " + lt.days.map(d => fmtDate(d).slice(0, 5)).join(" e ") : "") : "em " + pm], [(x.d > 0 ? "+" : "−") + brl(Math.abs(x.d)), x.d > 0 ? "a mais" : "a menos"]]);
       box.appendChild(row);
     });
     c.appendChild(box);

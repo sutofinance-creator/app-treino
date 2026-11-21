@@ -5190,12 +5190,21 @@ function loanParts(t) {
   if (j > 0) out.push(Object.assign({}, t, { kind: "gasto", cat: "Empréstimo", item: "Juros do empréstimo", amount: j, part: 1 }));
   return out.length ? out : [Object.assign({}, t, { kind: "transferencia" })];
 }
+/* Nome de quem pagou ou recebeu, para sugerir pela mesma origem quando a descrição não é idêntica (ex.: "UBER* TRIP" e
+   "UBER DO BRASIL"). Pula as palavras que o banco põe em toda transferência ("Transferência enviada pelo Pix", "Compra",
+   "Pagamento"…): sem isso, qualquer Pix virava "Uber" e qualquer transferência recebida virava a última que você classificou. */
+const RULE_SKIP = new Set(["TRANSFERENCIA", "ENVIADA", "ENVIADO", "RECEBIDA", "RECEBIDO", "PELO", "PELA", "PIX", "TED", "DOC", "PAGAMENTO", "COMPRA", "DEBITO", "CREDITO", "BOLETO", "SAQUE", "DEPOSITO", "RESGATE", "APLICACAO", "ESTORNO", "REEMBOLSO", "TARIFA", "CARTAO", "DE", "DA", "DO", "EM", "NO", "NA", "VIA", "PARA"]);
+function ruleHead(k) {
+  const w = String(k || "").split(/\s+/).map(x => x.replace(/[^A-Z0-9]/gi, "").toUpperCase()).filter(Boolean);
+  let i = 0; while (i < w.length && RULE_SKIP.has(w[i])) i++;
+  return w[i] && w[i].length >= 4 ? w[i] : "";
+}
 function suggestFor(t) {
   const k = ruleKey(t.desc);
   let r = fin.rules[k];
   if (!r) {
-    const first = k.split(" ")[0];
-    if (first && first.length >= 4) { const hit = Object.keys(fin.rules).find(x => x.split(" ")[0] === first && fin.rules[x].dir === t.dir); if (hit) r = fin.rules[hit]; }
+    const head = ruleHead(k);
+    if (head) { const hit = Object.keys(fin.rules).find(x => fin.rules[x].dir === t.dir && ruleHead(x) === head); if (hit) r = fin.rules[hit]; }
   }
   if (r && r.dir === t.dir) return r;
   // pagamento da fatura: é transferência (as compras do cartão já entram uma a uma), para não contar o gasto duas vezes

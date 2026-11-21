@@ -776,6 +776,7 @@ ol.steps a { color: var(--accent); }
 @media (prefers-reduced-motion: no-preference) {
   .ct-fab.wake .ct-ring { animation: ct-breath 3.2s ease-in-out infinite; }
   .ct-fab.listen .ct-ring { animation: ct-pulse .9s ease-in-out infinite; }
+  .ct-fab.listen.active .ct-ring { animation: ct-breath 2.4s ease-in-out infinite; }
   .ct-fab.think .ct-ring { animation: ct-spin .9s linear infinite; }
   .ct-fab.speak .ct-ring { animation: ct-pulse .55s ease-in-out infinite; }
 }
@@ -9434,15 +9435,17 @@ function renderConta() {
 }
 
 /* ======================= Cortana: assistente de voz (só o dono do app) =======================
-   "Olá Cortana" + o pedido, ou o botão redondo no canto. O reconhecimento e a fala são do próprio navegador (pt-BR);
+   "Bom dia, Cortana" ativa (e ela passa o resumo do dia); ativa, ela ouve tudo até "Cortana, desativar". O botão redondo faz um pedido avulso. O reconhecimento e a fala são do próprio navegador (pt-BR);
    quem entende o pedido é o Claude, chamado pelo servidor (/ai, com a chave guardada na Cloudflare).
    As ferramentas rodam aqui no app: consultar dados, abrir formulários já preenchidos, classificar lançamentos,
    iniciar e parar cronômetros, concluir itens da Rotina e navegar. Nada é apagado e nenhuma meta é alterada. */
 const CT_KEY = "stek-cortana-v1";
 const CT_SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
-const CT_WAKE = /(?:^|\s)(?:ol[aá]|oi|ei|al[oô]|hey)?[\s,]*[ck][oóu]r?tana\b[\s,.:!?-]*(.*)$/i;
+// "Bom dia, Cortana" ativa a Cortana e ela passa o resumo do dia; ela fica ouvindo tudo até "Cortana, desativar"
+const CT_WAKE = /(?:^|\s)(?:bom dia|boa tarde|boa noite)[\s,]*[ck][oóu]r?tana\b[\s,.:!?-]*(.*)$/i;
+const CT_OFF = /[ck][oóu]r?tana[\s,.:!?-]*(?:pode\s+)?(?:desativ|deslig)|(?:desativ|deslig)\w*[\s,]+(?:a\s+)?[ck][oóu]r?tana/i;
 let ct = null;
-const ctS = { gesture: 0, blocked: false, mounted: false, open: false, compact: false, busy: false, msgs: [], last: 0, log: [], sr: null, srOn: false, mode: "", want: "", cmdAt: 0, speaking: false, heard: "" };
+const ctS = { active: false, gesture: 0, blocked: false, mounted: false, open: false, compact: false, busy: false, msgs: [], last: 0, log: [], sr: null, srOn: false, mode: "", want: "", cmdAt: 0, speaking: false, heard: "" };
 function ctCfg() {
   if (!ct) { try { ct = JSON.parse(localStorage.getItem(CT_KEY)) || {}; } catch (e) { ct = {}; } }
   if (ct.voz == null) ct.voz = true; if (ct.avisos == null) ct.avisos = true; if (ct.som == null) ct.som = true;
@@ -9482,14 +9485,16 @@ function ctStatusText() {
   if (ctS.busy) return "Pensando…";
   if (ctS.speaking) return "Falando…";
   if (ctS.mode === "cmd") return ctS.heard ? "Ouvindo: " + ctS.heard : "Pode falar…";
-  if (ctS.mode === "wake") return "Esperando “Olá Cortana”";
+  if (ctS.mode === "active") return ctS.heard ? "Ouvindo: " + ctS.heard : "Ativa: pode falar · “Cortana, desativar” para encerrar";
+  if (ctS.mode === "wake") return "Esperando “Bom dia, Cortana”";
+  if (ctS.active) return "Ativa · “Cortana, desativar” para encerrar";
   return CT_SR ? "Toque no microfone ou escreva" : "Escreva o pedido";
 }
 function ctState() {
   const f = document.getElementById("ct-fab");
   if (f) {
     const keep = ctS.speaking && f.classList.contains("words") ? " words" : "";
-    f.className = "ct-fab" + (ctS.busy ? " think" : ctS.speaking ? " speak" + keep : ctS.mode === "cmd" ? " listen" : ctS.mode === "wake" ? " wake" : "");
+    f.className = "ct-fab" + (ctS.busy ? " think" : ctS.speaking ? " speak" + keep : ctS.mode === "cmd" ? " listen" : ctS.mode === "active" ? " listen active" : ctS.mode === "wake" ? " wake" : "");
     f.setAttribute("aria-label", ctS.mode === "cmd" ? "Parar de ouvir" : "Falar com a Cortana");
   }
   const st = document.getElementById("ct-st"); if (st) st.textContent = ctStatusText();
@@ -9500,7 +9505,7 @@ function ctDrawLog() {
   const box = document.getElementById("ct-log"); if (!box) return;
   box.innerHTML = "";
   const items = ctS.compact ? ctS.log.filter(x => x.who !== "eu").slice(-1) : ctS.log.slice(-30);
-  if (!items.length) box.appendChild(el("p", "ct-msg info", "Diga “Olá Cortana” e o que deseja, ou toque em Falar. Exemplos: “quais as próximas tarefas?”, “inicia o estudo de Cálculo”, “cria uma missão para sexta”, “classifica os lançamentos pendentes”."));
+  if (!items.length) box.appendChild(el("p", "ct-msg info", "Diga “Bom dia, Cortana” para ativar: ela passa o resumo do dia e fica ouvindo até você dizer “Cortana, desativar”. Para um pedido avulso, toque em Falar. Exemplos: “quais as próximas tarefas?”, “inicia o estudo de Cálculo”, “cria uma missão para sexta”, “classifica os lançamentos pendentes”."));
   items.forEach(x => box.appendChild(el("p", "ct-msg " + x.who, (x.who === "eu" ? "Você: " : "") + x.text)));
   box.scrollTop = box.scrollHeight;
 }
@@ -9526,7 +9531,7 @@ function ctDraw() {
   if (!ctS.compact) {
     const dt = el("details", "ct-set"); dt.id = "ct-set"; dt.appendChild(el("summary", null, "Ajustes da Cortana"));
     const chk = (id, label, on, fn) => { const l = el("label", "ct-chk"), i = el("input"); i.type = "checkbox"; i.id = id; i.checked = !!on; i.addEventListener("change", () => fn(i.checked)); l.append(i, el("span", null, label)); dt.appendChild(l); return i; };
-    chk("ct-wake", "Ouvir “Olá Cortana” enquanto o app está aberto na tela", c.wake && !!CT_SR, v => { c.wake = v; ctSave(); if (v) { stSoundInit(); ctKick(); } else if (ctS.mode === "wake") { ctS.want = ""; ctStopRec(); } ctState(); });
+    chk("ct-wake", "Ouvir “Bom dia, Cortana” enquanto o app está aberto na tela", c.wake && !!CT_SR, v => { c.wake = v; ctSave(); if (v) { stSoundInit(); ctKick(); } else if (ctS.mode === "wake") { ctS.want = ""; ctStopRec(); } ctState(); });
     chk("ct-voz", "Responder falando", c.voz, v => { c.voz = v; ctSave(); if (!v) ctSpeakStop(); });
     chk("ct-avisos", "Falar os avisos da Rotina quando o app estiver aberto", c.avisos, v => { c.avisos = v; ctSave(); });
     chk("ct-som", "Som digital antes de cada resposta", c.som, v => { c.som = v; ctSave(); if (v) { stSoundInit(); ctBlip(); } });
@@ -9538,7 +9543,7 @@ function ctDraw() {
       s.addEventListener("change", () => { c.voice = s.value; ctSave(); ctSay("Assim fica a minha voz."); });
       f.append(l, s); dt.appendChild(f);
     }
-    dt.appendChild(el("p", "note muted", CT_SR ? "O microfone só funciona com o app aberto na tela. Com “Olá Cortana” ligado, o navegador fica ouvindo e só age quando ouve o nome; em alguns celulares ele faz um bipe ao voltar a ouvir." : "Este navegador não reconhece voz. No celular, use o Chrome. Dá para escrever o pedido mesmo assim."));
+    dt.appendChild(el("p", "note muted", CT_SR ? "O microfone só funciona com o app aberto na tela. Com “Bom dia, Cortana” ligado, o navegador fica ouvindo e só age quando ouve a frase; depois de ativada, ela ouve tudo até “Cortana, desativar”; em alguns celulares ele faz um bipe ao voltar a ouvir." : "Este navegador não reconhece voz. No celular, use o Chrome. Dá para escrever o pedido mesmo assim."));
     p.appendChild(dt);
   }
   ctDrawLog(); ctState();
@@ -9552,7 +9557,7 @@ function ctRec() {
   r.onresult = e => {
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const res = e.results[i], txt = (res[0] && res[0].transcript || "").trim();
-      if (!res.isFinal) { if (ctS.mode === "cmd") { ctS.heard = txt; ctState(); } continue; }
+      if (!res.isFinal) { if (ctS.mode === "cmd" || ctS.mode === "active") { ctS.heard = txt; ctState(); } continue; }
       ctOnFinal(txt);
     }
   };
@@ -9566,12 +9571,13 @@ function ctRec() {
   ctS.sr = r; return r;
 }
 function ctStopRec() { if (ctS.sr && ctS.srOn) { try { ctS.sr.abort(); } catch (e) {} } }
-// decide o que o microfone deve fazer agora: ouvir um pedido, esperar o "Olá Cortana" ou nada
+// decide o que o microfone deve fazer agora: ouvir um pedido, ouvir tudo (ativa), esperar o "Bom dia, Cortana" ou nada
 function ctKick() {
   if (!ctS.mounted || ctS.srOn || ctS.speaking) { ctState(); return; }
   if (ctS.blocked) { ctS.mode = ""; ctState(); return; }
   let w = ctS.want;
   if (w === "cmd" && Date.now() - ctS.cmdAt > 10000) w = ctS.want = "";
+  if (!w && ctS.active && !ctS.busy && document.visibilityState === "visible") w = "active";
   if (!w && ctCfg().wake && !ctS.busy && document.visibilityState === "visible") w = "wake";
   ctS.mode = w; ctState();
   if (!w) return;
@@ -9583,7 +9589,7 @@ function ctListen() {
   ctSpeakStop(); ctS.want = "cmd"; ctS.cmdAt = Date.now(); ctCmdTimer();
   if (ctS.srOn) ctStopRec(); else ctKick();
 }
-// sem pedido em 10 s, para de esperar (e volta a esperar o "Olá Cortana", se estiver ligado)
+// sem pedido em 10 s, para de esperar (e volta a esperar o "Bom dia, Cortana", se estiver ligado)
 let ctCmdT = null;
 function ctCmdTimer() {
   clearTimeout(ctCmdT);
@@ -9603,14 +9609,26 @@ function ctCurHash() {
 }
 function ctOnFinal(txt) {
   if (!txt) return;
-  if (ctS.mode === "cmd") { ctS.want = ""; ctStopRec(); ctAsk(txt); return; }
+  if ((ctS.mode === "cmd" || ctS.mode === "active") && CT_OFF.test(txt)) { ctS.want = ""; ctStopRec(); ctDeactivate(); return; }
+  if (ctS.mode === "cmd") { ctS.want = ""; ctStopRec(); const m = CT_WAKE.exec(txt); if (m) ctActivate((m[1] || "").trim()); else ctAsk(txt); return; }
+  if (ctS.mode === "active") {
+    if (ctS.busy || txt.split(/\s+/).length < 2) return; // palavra solta: ignora
+    const m = CT_WAKE.exec(txt); if (m) { ctStopRec(); ctActivate((m[1] || "").trim()); return; }
+    ctStopRec(); ctAsk(txt.replace(/^[\s,]*[ck][oóu]r?tana\b[\s,.:!?-]*/i, ""), true); return;
+  }
   if (ctS.mode !== "wake") return;
   const m = CT_WAKE.exec(txt); if (!m) return;
-  const rest = (m[1] || "").trim();
-  ctOpen(true);
-  if (rest.length >= 3) { ctS.want = ""; ctStopRec(); ctAsk(rest); return; }
-  // só o nome: o microfone já está aberto, então passa a ouvir o pedido sem reiniciar (não perde as primeiras palavras)
-  ctChime(); ctS.want = "cmd"; ctS.mode = "cmd"; ctS.cmdAt = Date.now(); ctS.heard = ""; ctState(); ctCmdTimer();
+  ctStopRec(); ctActivate((m[1] || "").trim());
+}
+// "Bom dia, Cortana": fica ativa (ouvindo tudo) e passa o resumo do dia, ou já faz o pedido que veio junto
+function ctActivate(rest) {
+  const was = ctS.active; ctS.active = true; ctS.want = ""; ctOpen(true); ctChime();
+  ctAsk(rest && rest.length >= 3 ? rest : was ? "Bom dia, Cortana. Me atualize de novo com as tarefas do dia." : "Bom dia, Cortana! Me atualize com as tarefas do dia.");
+}
+function ctDeactivate() {
+  const was = ctS.active; ctS.active = false; ctS.want = ""; ctS.heard = ""; ctOpen(true);
+  const t = was ? "Desativada. Quando precisar, é só dizer bom dia, Cortana." : "Já estou desativada. Para me ativar, diga bom dia, Cortana.";
+  ctLog("ct", t); ctSay(t);
 }
 function ctChime() {
   if (!stAudio) return;
@@ -9670,9 +9688,11 @@ function ctTrim(msgs) {
   for (let k = msgs.length - 1; k >= 0; k--) { if (msgs[k].role === "user" && typeof msgs[k].content === "string") { i = k; if (msgs.length - k >= 16) break; } }
   return msgs.slice(i);
 }
-async function ctAsk(text) {
+async function ctAsk(text, heard) {
   text = String(text || "").trim(); if (!text || ctS.busy) return;
-  ctOpen(true); ctLog("eu", text);
+  if (CT_OFF.test(text)) { ctDeactivate(); return; }
+  ctOpen(true); if (!heard) ctLog("eu", text);
+  const mark = ctS.msgs.length;
   if (Date.now() - ctS.last > 15 * 60000) ctS.msgs = [];
   ctS.last = Date.now();
   ctS.msgs.push({ role: "user", content: text });
@@ -9693,6 +9713,9 @@ async function ctAsk(text) {
       }
       ctS.msgs.push({ role: "user", content: res });
     }
+    // modo ativo: a Cortana ouve tudo; se a fala não era para ela, não responde nem guarda a troca
+    if (heard && /^\[?sil[eê]ncio\]?\.?$/i.test(reply.trim())) { ctS.msgs.length = mark; ctS.busy = false; ctState(); setTimeout(ctKick, 200); return; }
+    if (heard) ctLog("eu", text);
     if (!reply) reply = "Pronto.";
     const lm = ctS.msgs[ctS.msgs.length - 1]; if (lm && lm.role === "user") ctS.msgs.push({ role: "assistant", content: [{ type: "text", text: reply }] }); // a conversa sempre fecha com a Cortana
   } catch (e) {
@@ -9701,7 +9724,7 @@ async function ctAsk(text) {
   }
   ctS.busy = false; ctState();
   ctLog("ct", reply);
-  ctSay(reply, () => { if (/\?\s*$/.test(reply) && CT_SR) { ctS.want = "cmd"; ctS.cmdAt = Date.now(); ctCmdTimer(); } });
+  ctSay(reply, () => { if (!ctS.active && /\?\s*$/.test(reply) && CT_SR) { ctS.want = "cmd"; ctS.cmdAt = Date.now(); ctCmdTimer(); } });
 }
 function ctScreen() {
   const lab = (arr, id) => { const t = (arr || []).find(x => x.id === id); return t ? t.label : ""; };
@@ -9739,10 +9762,11 @@ function ctSystem() {
     "Na Economia você nunca classifica sozinha. Quando ele pedir para classificar, pegue os pendentes e as categorias que ele já usa, proponha com propor_classificacoes (seguindo o padrão dele) e diga as classificações: até cinco, conta por conta em frases curtas (\"Uber, 9,92: transporte, necessário\"); mais que isso, um resumo e que a lista está na tela. Peça o ok. Se ele corrigir alguma, proponha de novo só aquela. Só chame confirmar_classificacoes depois do ok dele.",
     "Nunca altere metas (horas de trabalho, horas de estudo, tarefas por dia) e não apague nada. Se ele pedir algo que as ferramentas não fazem, diga em uma frase e abra a tela onde ele faz isso.",
     "Nas ferramentas, datas no formato AAAA-MM-DD e horários HH:MM. Ao falar, diga o dia da semana e o dia do mês (\"sexta, dia 20\") e valores em reais (\"12 reais e 50 centavos\" ou \"R$ 12,50\").",
-    "Se ele só chamar ou cumprimentar, responda curto e pergunte o que ele precisa.",
+    "Quando ele disser \"Bom dia, Cortana\" (ativação), cumprimente em poucas palavras e passe o resumo do dia com resumo_do_dia: primeiro as penalidades pendentes, depois o próximo compromisso com horário e o que falta em cada módulo. No máximo cinco frases curtas.",
+    "Se ele só chamar, responda curto e pergunte o que ele precisa.",
     "",
     "Agora: " + CT_DOW[now.getDay()] + ", " + fmtDate(iso) + " (" + iso + "), " + minToHM(now.getHours() * 60 + now.getMinutes()) + ".",
-    "Tela aberta: " + (ctScreen() || "—") + (ctFormOpen() ? " · formulário aberto: " + ctFormOpen() : ""),
+    (ctS.active ? "Modo ativo: você está ouvindo tudo o que é dito perto do celular. Se a fala claramente não for um pedido para você (conversa com outra pessoa, TV, música, frase solta), responda exatamente [silêncio] e mais nada. Ele encerra dizendo \"Cortana, desativar\".\n" : "") + "Tela aberta: " + (ctScreen() || "—") + (ctFormOpen() ? " · formulário aberto: " + ctFormOpen() : ""),
     "Módulos ligados: " + (mods || "nenhum") + ".",
     "Cronômetros rodando: " + (run.length ? run.map(x => x.nome + " (desde " + x.desde + ")").join("; ") : "nenhum") + ".",
     "Cronômetros que dá para iniciar (id = nome):",

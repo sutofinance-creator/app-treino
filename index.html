@@ -7650,25 +7650,26 @@ function penItems(m, iso) {
   const H = x => fmtHM(x), base = { mod: m.id, name: XP_NAMES[m.id] }, out = [];
   const mk = (key, title, txt, have, need, extra) => out.push(Object.assign({}, base, { key, title, txt, done: have >= need, pct: need ? Math.min(1, have / need) : 1 }, extra || {}));
   if (m.id === "inteligencia") {
-    if (!m.hoursOk) { const need = goalSec(iso) + 3600, have = daySec(iso); mk("pen-intel-h", "+1h de estudo", "Estudo hoje: " + H(have) + " de " + H(need) + " (meta do dia + 1h).", have, need); }
+    if (!m.hoursOk) { const g = goalSec(iso), ex = Math.max(0, daySec(iso) - g); mk("pen-intel-h", "+1h de estudo", "Hora a mais: " + H(ex) + " de 1h00. " + (g ? "Conta o que passar da meta do dia (" + H(g) + ")." : "Hoje não tem meta de estudo: conta todo o estudo."), ex, 3600); }
     (m.subMiss || []).forEach(x => {
       const sb = intel.subjects.find(z => z.id === x.sid); if (!sb) return;
       const mn = subjMin(sb, iso), add = x.miss + 1, need = mn + add, c = getRec(iso, sb.id).count || 0;
-      mk("pen-sub-" + sb.id, sb.name + ": +" + add + " " + unitWord(sb, add), c + " de " + need + " " + unitWord(sb, need) + " hoje (" + (mn ? "mínimo de hoje " + mn + " + " : "") + x.miss + " que " + (x.miss === 1 ? "faltou" : "faltaram") + " ontem + 1).", c, need, { sid: sb.id, need });
+      const ex = Math.max(0, c - mn);
+      mk("pen-sub-" + sb.id, sb.name + ": +" + add + " " + unitWord(sb, add), "A mais: " + Math.min(ex, add) + " de " + add + " " + unitWord(sb, add) + " (" + x.miss + " que " + (x.miss === 1 ? "faltou" : "faltaram") + " ontem + 1)" + (mn ? ". Conta o que passar do mínimo de hoje (" + mn + ")." : "."), ex, add, { sid: sb.id, need, add, mn });
     });
   } else if (m.id === "estamina") {
-    const cp = cardioPlan(iso), tgt = (cp.optional ? 0 : cp.target) + 20, have = Math.floor(stKindSec(iso, "cardio") / 60);
-    mk("pen-cardio", "+20 min de cardio", "Cardio hoje: " + have + " de " + tgt + " min" + (cp.optional ? "." : " (meta do dia + 20)."), have, tgt, { tgt });
+    const cp = cardioPlan(iso), base = cp.optional ? 0 : cp.target, tgt = base + 20, have = Math.floor(stKindSec(iso, "cardio") / 60), ex = Math.max(0, have - base);
+    mk("pen-cardio", "+20 min de cardio", "Cardio a mais: " + Math.min(ex, 20) + " de 20 min" + (base ? ". Conta o que passar da meta do dia (" + base + " min)." : "."), ex, 20, { tgt, base });
   } else if (m.id === "forca") {
     const ok = penFlag(iso); mk("pen-forca", PEN_FLEX + " flexões", ok ? "Feito." : "Faça e marque como feito.", ok ? 1 : 0, 1, { manual: true });
   } else if (m.id === "financas") {
     const n = finPendOn(iso).length; mk("pen-eco", "Zerar os pendentes", n ? n + (n === 1 ? " lançamento pendente." : " lançamentos pendentes.") : "Nada pendente.", n ? 0 : 1, 1);
   } else if (m.id === "graca") {
-    const need = grPlanNeed(iso) + 1, did = grDayCount(iso);
-    mk("pen-graca", "+1 ritual", did + " de " + need + " hoje (os rituais do dia + 1; vale qualquer ritual).", did, need);
+    const base = grPlanNeed(iso), ex = Math.max(0, grDayCount(iso) - base);
+    mk("pen-graca", "+1 ritual", "Ritual a mais: " + Math.min(ex, 1) + " de 1. Conta o que passar " + (base ? "dos rituais do dia (" + base + ")" : "de zero") + "; vale qualquer ritual.", ex, 1, { base });
   } else if (m.id === "missoes") {
-    const need = msGoalSec(iso) + 3600, have = msDaySec(iso);
-    mk("pen-work", "+1h de trabalho", "Trabalho hoje: " + H(have) + " de " + H(need) + " (meta do dia + 1h).", have, need);
+    const g = msGoalSec(iso), ex = Math.max(0, msDaySec(iso) - g);
+    mk("pen-work", "+1h de trabalho", "Hora a mais: " + H(ex) + " de 1h00. " + (g ? "Conta o que passar da meta do dia (" + H(g) + ")." : "Hoje não tem meta de trabalho: conta todo o trabalho."), ex, 3600);
   }
   return out;
 }
@@ -7909,7 +7910,8 @@ function rtDemand(iso, plan, sim) {
   const dn = (o, txt) => { done.push(txt); doneIt.push(o); };
   const part = (mod, key, d0, t, unit) => { if (t > 0) parts.push({ mod, key, d: Math.max(0, Math.min(d0, t)), t, unit }); };
   // missão de penalidade de hoje: entra na agenda somando ao que o módulo já pede
-  const P = isT ? penToday() : [], pp = k => P.find(p => p.key === k && !p.done);
+  const P = isT ? penToday() : [], pp = k => P.find(p => p.key === k && !p.done), pDone = k => P.some(p => p.key === k && p.done);
+  const penDone = (key, mod, title) => dn({ key, mod, title, sub: "Penalidade cumprida" }, title);
   const grLeft = {};
   if (modOn("graca")) grTodayPlan(iso).forEach(r => {
     const need = Math.max(1, r.times || 1), did = isT ? Math.min(need, grRec(iso, r.id).count || 0) : 0, dur = Math.max(5, Math.round(r.limit || 15));
@@ -7930,8 +7932,8 @@ function rtDemand(iso, plan, sim) {
   const pg = pp("pen-graca");
   if (pg && modOn("graca")) {
     const r0 = grTodayPlan(iso)[0] || grData().rituals[0];
-    if (r0) add({ key: "pen-graca", mod: "graca", rid: r0.id, running: run.graca === r0.id && !(grLeft[r0.id] > 0), title: "Penalidade: " + r0.name + " (1 a mais)", sub: "Missão de penalidade da Graça: " + pg.txt, dur: Math.max(5, Math.round(r0.limit || 15)), win: [d.wake, d.sleep], rank: 1.5, pen: true, go: () => { enterGraca("gr-hoje"); rtFocus("gr-" + r0.id); } });
-  } else if (P.some(p => p.key === "pen-graca")) dn({ key: "pen-graca", mod: "graca", title: "Penalidade da Graça", sub: "Feita" }, "Penalidade da Graça");
+    if (r0) add({ key: "pen-graca", mod: "graca", rid: r0.id, running: run.graca === r0.id && !(grLeft[r0.id] > 0), title: "Penalidade: " + r0.name + " (1 a mais)", sub: pg.txt, dur: Math.max(5, Math.round(r0.limit || 15)), win: [d.wake, d.sleep], rank: 1.5, pen: true, go: () => { enterGraca("gr-hoje"); rtFocus("gr-" + r0.id); } });
+  } else if (pDone("pen-graca")) penDone("pen-graca", "graca", "Penalidade: +1 ritual");
   const wo = rtWorkout(iso), tw = rtTreinoWin(d);
   if (wo) {
     let dur = wo.dur, exDone = 0, exTot = wo.w ? wo.w.ex.length : 1;
@@ -7954,7 +7956,7 @@ function rtDemand(iso, plan, sim) {
   if (modOn("estamina")) {
     // na semana, os dias seguintes já contam com o cardio que a rotina marcou antes (um 4x4 por semana, meta de minutos)
     let cp = cardioPlan(iso); const ws = weekStart(iso);
-    const pc = pp("pen-cardio"); if (pc) cp = Object.assign({}, cp, { target: pc.tgt, optional: false, why: "Inclui +20 min da missão de penalidade." });
+    const pc = pp("pen-cardio");
     if (sim && !isT) {
       if (cp.pid === "x4" && sim.x4[ws]) cp = Object.assign({}, cp, { pid: "z2", target: practice("z2").target, why: "Cardio leve para somar na meta da semana; o 4x4 já está marcado em outro dia." });
       if (!cp.optional && weekEq(iso, true) + (sim.eq[ws] || 0) >= stam().goals.weekMin) cp = Object.assign({}, cp, { optional: true, why: cp.why + " A meta da semana já fecha com o que está marcado, então é opcional." });
@@ -7964,18 +7966,26 @@ function rtDemand(iso, plan, sim) {
     if (need > 0) add({ key: "cardio", mod: "estamina", pid: cp.pid, running: !!run.cardio, title: "Cardio: " + practice(cp.pid).name, sub: cp.optional ? "Opcional · " + cp.why : cp.why, dur: Math.max(10, need), optional: !!cp.optional, win: tw, afterForca: !!wo, rank: cp.optional ? 9 : 2, go: () => { enterStamina("est-hoje"); rtFocus("st-cardio"); } });
     else if (have) dn({ key: "cardio", mod: "estamina", title: "Cardio", sub: have + " min" }, "Cardio");
     if (isT && !cp.optional) part("estamina", "cardio", have, cp.target, "min");
+    if (pc) {
+      const base = cp.optional ? 0 : cp.target, left = 20 - Math.max(0, have - base);
+      if (left > 0) add({ key: "pen-cardio", mod: "estamina", pid: cp.pid, running: !!run.cardio && have >= base, title: "Penalidade: +20 min de cardio", sub: pc.txt, dur: Math.max(10, left), win: tw, afterForca: !!wo, rank: 2.5, pen: true, go: () => { enterStamina("est-hoje"); rtFocus("st-cardio"); } });
+    } else if (pDone("pen-cardio")) penDone("pen-cardio", "estamina", "Penalidade: +20 min de cardio");
     const fg = Math.round(stam().goals.focusMin), fh = isT ? Math.floor(stKindSec(iso, "foco") / 60) : 0;
     if (fg - fh > 0) add({ key: "foco", mod: "estamina", running: !!run.foco, title: "Foco: meditação ou respiração", sub: "Logo antes de estudar.", dur: fg - fh, beforeStudy: true, rank: 5, go: () => { enterStamina("est-hoje"); rtFocus("st-foco"); } });
     else if (fh) dn({ key: "foco", mod: "estamina", title: "Foco: meditação ou respiração", sub: fh + " min" }, "Foco");
     if (isT) part("estamina", "foco", fh, fg, "min");
   }
   if (modOn("missoes") && mis) {
-    const pw = pp("pen-work"), goal = Math.round(msGoalSec(iso) / 60) + (pw ? 60 : 0), have = isT ? Math.floor(msDaySec(iso) / 60) : 0, ms = (plan && plan.byDay[iso]) || [];
+    const pw = pp("pen-work"), goal = Math.round(msGoalSec(iso) / 60), have = isT ? Math.floor(msDaySec(iso) / 60) : 0, ms = (plan && plan.byDay[iso]) || [];
     const need = Math.max(goal - have, ms.reduce((s, x) => s + x.need, 0));
     const w = rt().work, ws = hmToMin(w.start) ?? 480, we = hmToMin(w.end) ?? 1080;
-    if (need > 0) add({ key: "trabalho", mod: "missoes", running: !!run.trabalho, title: pw ? "Trabalho (com +1h de penalidade)" : "Trabalho", dur: need, missions: ms, split: 120, minChunk: 30, gapAfter: 10, win: [ws, we > ws ? we : we + 1440], rank: 3, go: () => { enterMissoes("ms-hoje"); rtFocus("ms-work"); } });
+    if (need > 0) add({ key: "trabalho", mod: "missoes", running: !!run.trabalho, title: "Trabalho", dur: need, missions: ms, split: 120, minChunk: 30, gapAfter: 10, win: [ws, we > ws ? we : we + 1440], rank: 3, go: () => { enterMissoes("ms-hoje"); rtFocus("ms-work"); } });
     else if (goal && have) dn({ key: "trabalho", mod: "missoes", title: "Trabalho", sub: rtDur(have) + " de " + rtDur(goal) }, "Trabalho " + rtDur(have));
     if (isT) part("missoes", "trabalho", have, goal, "min");
+    if (pw) {
+      const left = 60 - Math.max(0, have - goal);
+      if (left > 0) add({ key: "pen-work", mod: "missoes", running: !!run.trabalho && have >= goal, title: "Penalidade: +1h de trabalho", sub: pw.txt, dur: left, split: 120, minChunk: 30, gapAfter: 10, win: [ws, we > ws ? we : we + 1440], rank: 3.2, pen: true, go: () => { enterMissoes("ms-hoje"); rtFocus("ms-work"); } });
+    } else if (pDone("pen-work")) penDone("pen-work", "missoes", "Penalidade: +1h de trabalho");
   }
   if (modOn("inteligencia") && intel) {
     const im = imCfg(), IR = IM_RITMO[im.ritmo];
@@ -7989,22 +7999,34 @@ function rtDemand(iso, plan, sim) {
         subjects: [{ id: sb.id, label: sb.name }], dur, rank: 3.5, review: true, running: !!run.estudo && run.rtKey === key, go: () => rtGoSubj(sb.id) };
       const before = items.length; add(it); if (items.length > before) revMin += dur;
     });
-    const ph = pp("pen-intel-h"), penSub = P.some(p => /^pen-sub-/.test(p.key) && !p.done);
-    const goal = Math.round(goalSec(iso) / 60) + (ph ? 60 : 0), have = isT ? Math.floor(daySec(iso) / 60) : 0, need = Math.max(goal - have - revMin, penSub ? 30 : 0);
+    const ph = pp("pen-intel-h");
+    const goal = Math.round(goalSec(iso) / 60), have = isT ? Math.floor(daySec(iso) / 60) : 0, need = Math.max(0, goal - have - revMin);
     const subs = intel.subjects.map(s => {
-      const ps = pp("pen-sub-" + s.id); if (ps) return { id: s.id, label: s.name + " (penalidade: chegar a " + ps.need + " " + unitWord(s, ps.need) + ")" };
       const p = planFor(s, iso); if (!p || p.doneAll) return null;
       if (isT) { const st = subjTask(s, iso); if (st && st.complete) return null; }
       return { id: s.id, label: s.name + (p.qty ? " (" + p.qty + " " + unitWord(s, p.qty) + ")" : "") };
     }).filter(Boolean);
-    if (need > 0) add({ key: "estudo", mod: "inteligencia", running: !!run.estudo && !/^rev-/.test(run.rtKey || ""), title: ph ? "Estudo (com +1h de penalidade)" : "Estudo", sub: subs.map(x => x.label).join(" · "), subjects: subs, dur: need, split: IR.work, minChunk: IR.min, gapAfter: IR.brk, longEvery: IR.every, longGap: IR.long, rank: 4, go: () => rtGoSubj(subs.length ? subs[0].id : null) });
+    if (need > 0) add({ key: "estudo", mod: "inteligencia", running: !!run.estudo && !/^(rev|pen)-/.test(run.rtKey || ""), title: "Estudo", sub: subs.map(x => x.label).join(" · "), subjects: subs, dur: need, split: IR.work, minChunk: IR.min, gapAfter: IR.brk, longEvery: IR.every, longGap: IR.long, rank: 4, go: () => rtGoSubj(subs.length ? subs[0].id : null) });
     else if (have) dn({ key: "estudo", mod: "inteligencia", title: "Estudo", sub: rtDur(have) + (goal ? " de " + rtDur(goal) : "") }, "Estudo " + rtDur(have));
     if (isT) part("inteligencia", "estudo", have, goal, "min");
+    P.filter(p => /^pen-sub-/.test(p.key)).forEach(ps => {
+      const sb = intel.subjects.find(z => z.id === ps.sid); if (!sb) return;
+      const t = "Penalidade: " + sb.name + " +" + ps.add + " " + unitWord(sb, ps.add);
+      if (ps.done) { penDone(ps.key, "inteligencia", t); return; }
+      add({ key: ps.key, mod: "inteligencia", running: !!run.estudo && run.rtKey === ps.key, title: t, sub: ps.txt, subjects: [{ id: sb.id, label: sb.name }], dur: 30, rank: 4.2, pen: true, go: () => rtGoSubj(sb.id) });
+    });
+    if (ph) {
+      const left = 60 - Math.max(0, have - goal), all = intel.subjects.filter(s => !(s.total && subjDoneUpTo(s) >= s.total)).map(s => ({ id: s.id, label: s.name }));
+      if (left > 0) add({ key: "pen-intel-h", mod: "inteligencia", running: !!run.estudo && (run.rtKey === "pen-intel-h" || (have >= goal && !/^(rev|pen-sub)-/.test(run.rtKey || ""))), title: "Penalidade: +1h de estudo", sub: ph.txt, subjects: subs.length ? subs : all, dur: left, split: IR.work, minChunk: IR.min, gapAfter: IR.brk, longEvery: IR.every, longGap: IR.long, rank: 4.5, pen: true, go: () => rtGoSubj((subs[0] || all[0] || {}).id || null) });
+    } else if (pDone("pen-intel-h")) penDone("pen-intel-h", "inteligencia", "Penalidade: +1h de estudo");
   }
   if (isT && modOn("financas") && fin) {
     const n = fin.tx.filter(t => t.status !== "done").length, cd = fin.tx.filter(t => t.status === "done" && t.doneAt === iso).length;
     part("financas", "eco", cd, n + cd, "lançamentos");
-    if (n) add({ key: "eco", mod: "financas", title: "Classificar " + n + (n === 1 ? " lançamento" : " lançamentos"), sub: pp("pen-eco") ? "Missão de penalidade: zerar todos os pendentes da Economia." : "Pendentes da Economia.", dur: Math.min(30, Math.max(5, Math.ceil(n * 1.5 / 5) * 5)), win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6, go: () => rtGoFin() });
+    if (n) add({ key: "eco", mod: "financas", title: "Classificar " + n + (n === 1 ? " lançamento" : " lançamentos"), sub: "Pendentes da Economia.", dur: Math.min(30, Math.max(5, Math.ceil(n * 1.5 / 5) * 5)), win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6, go: () => rtGoFin() });
+    const pe = pp("pen-eco");
+    if (pe && n) add({ key: "pen-eco", mod: "financas", title: "Penalidade: zerar os pendentes", sub: pe.txt + " Ela se cumpre sozinha quando não sobrar nenhum pendente.", dur: 5, win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6.5, pen: true, go: () => rtGoFin() });
+    else if (pDone("pen-eco") || (pe && !n)) penDone("pen-eco", "financas", "Penalidade: zerar os pendentes");
   }
   // pulado não conta; concluído com o botão conta como feito
   const prog = {};
@@ -8229,10 +8251,10 @@ function rtRefresh(fid) {
 function rtStart(it, b, sid) {
   rtStopOthers(it.mod); rtPick = null;
   if (it.mod === "inteligencia") { startTimer(sid); intel.timer.rt = it.key; saveIntel(); }
-  else if (it.key === "cardio") { stUI.cardio = it.pid; stStart(it.pid); }
+  else if (it.key === "cardio" || it.key === "pen-cardio") { stUI.cardio = it.pid; stStart(it.pid); }
   else if (it.key === "foco") { const pid = stUI.foco || "med"; stUI.foco = pid; stStart(pid); }
   else if (it.mod === "graca") grStart(it.rid);
-  else if (it.key === "trabalho") msWorkStart(); // sempre o trabalho geral; a missão específica se inicia nas Missões
+  else if (it.key === "trabalho" || it.key === "pen-work") msWorkStart(); // sempre o trabalho geral; a missão específica se inicia nas Missões
   rtRefresh("rt-stop-" + it.key);
 }
 // Concluir: Graça conta uma vez (como "Marcar feito"); nos outros, para o cronômetro (se estiver rodando) e tira a tarefa de hoje

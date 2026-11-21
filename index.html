@@ -763,6 +763,11 @@ ol.steps a { color: var(--accent); }
 .rt-sug-t { margin: 4px 0 0; font: 600 12px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .rt-row.fx.past { border-color: rgba(255, 196, 77, .35); opacity: .78; }
 .rt-row.fx.past .rt-sub { color: var(--warn); }
+.rt-free-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.rt-free-v { font: 700 30px var(--font-display); color: var(--good); text-shadow: 0 0 12px rgba(60, 240, 165, .35); }
+.rt-free-d { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
+.rt-free-d.up { color: var(--good); }
+.rt-free-d.down { color: var(--warn); }
 /* Cortana: botão redondo no canto e painel da conversa */
 .ct-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 41; width: 58px; height: 58px; border-radius: 50%; border: 1px solid var(--accent); cursor: pointer;
   background: radial-gradient(circle at 50% 45%, rgba(166, 107, 255, .28), rgba(10, 6, 20, .96) 70%); box-shadow: 0 0 0 1px rgba(166, 107, 255, .35), 0 0 22px rgba(166, 107, 255, .35), 0 6px 18px rgba(0, 0, 0, .55); padding: 0; }
@@ -8103,23 +8108,37 @@ function rtSchedule(iso, items, from, cfg) {
   blocks.sort((a, b) => a.s - b.s);
   return { blocks, left, day: d, free };
 }
-// Se algo não cabe, tenta remanejar refeições dentro da janela delas e esticar o dia (dentro dos limites que você deu).
-// Fica com a opção que deixa menos coisa de fora e mexe menos no seu dia.
+/* Monta o dia do jeito que termina as tarefas mais cedo e deixa mais tempo livre no fim.
+   Testa as refeições e o banho flexíveis em outros horários (só dentro da janela que você deu) e fica com a combinação que:
+   1) não deixa nada de fora; 2) não estica o dia à toa; 3) deixa mais tempo livre depois da última tarefa;
+   4) mexe pouco nos horários ideais. Só acorda mais cedo ou dorme mais tarde se não houver outro jeito de caber tudo. */
 function rtPlan(iso, items, from) {
-  const B = rtBase(iso), score = r => r.left.reduce((s, x) => s + x.min, 0) * 100 + (r.cfg.ws || 0) + (r.cfg.ss || 0) + Object.keys(r.cfg.flex || {}).reduce((s, id) => { const f = B.flex.find(x => x.id === id); return s + (f ? Math.abs(r.cfg.flex[id] - f.ideal) : 0); }, 0);
+  const B = rtBase(iso);
+  const dev = r => Object.keys(r.cfg.flex || {}).reduce((s, id) => { const f = B.flex.find(x => x.id === id); return s + (f ? Math.abs(r.cfg.flex[id] - f.ideal) : 0); }, 0);
+  const score = r => { const F = rtFreeInfo(r, from); return r.left.reduce((s, x) => s + x.min, 0) * 1000 + ((r.cfg.ws || 0) + (r.cfg.ss || 0)) * 20 + dev(r) * 0.5 - F.tail - F.total * 0.2; };
   const run = cfg => { const r = rtSchedule(iso, items, from, cfg); r.cfg = cfg; r.score = score(r); return r; };
+  const fl = B.flex.filter(f => !f.anchor).slice(0, 4);
+  let combos = [{}];
+  fl.forEach(f => { const nx = []; combos.forEach(cmb => f.pos.forEach(p => nx.push(Object.assign({}, cmb, { [f.id]: p })))); combos = nx; });
   let best = run({});
+  combos.forEach(fx => { if (!Object.keys(fx).length) return; const r = run({ flex: fx }); if (r.score < best.score) best = r; });
   if (best.left.length) {
     const wss = [0, 30, 60].filter(x => x <= B.maxWake && (from == null || B.wake - x > from - 5 || x === 0));
     const sss = [0, 30, 60].filter(x => x <= B.maxSleep);
-    const fl = B.flex.filter(f => !f.anchor);
-    let combos = [{}];
-    fl.forEach(f => { const nx = []; combos.forEach(cmb => f.pos.forEach(p => nx.push(Object.assign({}, cmb, { [f.id]: p })))); combos = nx; });
-    wss.forEach(ws => sss.forEach(ss => combos.forEach(fx => { const r = run({ ws, ss, flex: fx }); if (r.score < best.score) best = r; })));
+    wss.forEach(ws => sss.forEach(ss => { if (!ws && !ss) return; combos.forEach(fx => { const r = run({ ws, ss, flex: fx }); if (r.score < best.score) best = r; }); }));
   }
-  rtFillExtra(best, iso);
   rtInterleave(best);
   return best;
+}
+// Tempo livre a partir de agora: o que sobra depois da última tarefa (até a hora de dormir) e as folgas entre as tarefas.
+// Folga menor que 15 min é só a troca de uma tarefa para outra e não conta.
+function rtFreeInfo(r, from) {
+  const d = r.day, lo = Math.max(d.wake, from == null ? d.wake : from);
+  const iv = (r.free || []).map(([a, b]) => [Math.max(a, lo), Math.min(b, d.sleep)]).filter(([a, b]) => b - a >= 15);
+  const last = r.blocks.filter(x => !x.it.fromEnd).reduce((m, x) => Math.max(m, x.e), lo);
+  const tailIv = iv.map(([a, b]) => [Math.max(a, last), b]).filter(([a, b]) => b - a >= 15);
+  const total = iv.reduce((s, [a, b]) => s + b - a, 0), tail = tailIv.reduce((s, [a, b]) => s + b - a, 0);
+  return { total, tail, gaps: Math.max(0, total - tail), last, tailIv };
 }
 // Estudo intercalado: cada bloco de estudo recebe uma matéria, alternando (o bloco em andamento fica com a matéria do cronômetro)
 function rtInterleave(r) {
@@ -8473,12 +8492,41 @@ function rtTimerRow(o) {
   b.addEventListener("click", o.running ? o.pause : o.start);
   row.append(nm, tm, b); return row;
 }
+/* Card "Tempo livre": quanto sobra depois da última tarefa até a hora de dormir. A Rotina é refeita a cada minuto a partir
+   de agora, então o número cai quando as tarefas atrasam e sobe quando você adianta. O primeiro valor do dia fica guardado
+   para comparar. */
+function rtFreeCard(R, nowMin) {
+  const d = R.day; if (nowMin >= d.sleep) return null;
+  const iso = todayISO(), F = rtFreeInfo(R, R.from), r = ensureRotina();
+  r.livre = r.livre || {};
+  if (!r.livre[iso]) {
+    r.livre[iso] = { m: F.tail, at: minToHM(nowMin) };
+    Object.keys(r.livre).filter(k => k < addDaysISO(iso, -30)).forEach(k => delete r.livre[k]);
+    saveRotina();
+  }
+  const base = r.livre[iso], diff = F.tail - base.m, tasks = R.blocks.some(b => !b.it.fromEnd);
+  const sec = el("section", "guide rt-free"); sec.id = "rt-free";
+  const head = el("div", "rt-free-head");
+  head.append(el("h3", null, "Tempo livre"), el("span", "rt-free-v", F.tail ? rtDur(F.tail) : "0 min"));
+  sec.appendChild(head);
+  const ivs = F.tailIv.map(([a, b]) => "das " + minToHM(a) + " às " + minToHM(b));
+  const and = l => l.length > 1 ? l.slice(0, -1).join(", ") + " e " + l[l.length - 1] : l[0];
+  sec.appendChild(el("p", "note", !tasks ? "Tudo feito por hoje: o resto do dia é livre" + (ivs.length ? ", " + and(ivs) : "") + "."
+    : F.tail ? "Livre no fim do dia: você termina as tarefas às " + minToHM(F.last) + " e fica livre " + and(ivs) + "."
+    : "Sem tempo livre no fim do dia: as tarefas vão até a hora de dormir."));
+  if (F.gaps >= 15) sec.appendChild(el("p", "note muted", "Folgas entre as tarefas: " + rtDur(F.gaps) + "."));
+  const dl = el("p", "rt-free-d " + (diff >= 5 ? "up" : diff <= -5 ? "down" : "same")); dl.id = "rt-free-d";
+  dl.textContent = Math.abs(diff) < 5 ? "Igual ao plano das " + base.at + "." : (diff > 0 ? "+" : "−") + rtDur(Math.abs(diff)) + " desde o plano das " + base.at + (diff > 0 ? ": tarefas adiantadas." : ": tarefas atrasadas.");
+  sec.appendChild(dl);
+  return sec;
+}
 function rtTodayNodes(R, nowMin) {
   const out = [], d = R.day;
   const pgs = rtProgress(R.dem.prog || {}, R.dem.skipped); if (pgs) out.push(pgs);
   if (R.dem.pen && R.dem.pen.length) out.push(penBox(R.dem.pen, "pen-box"));
   const ch = rtChanges(R);
   if (ch.length) { const b = el("p", "banner rt-warn", "Para caber tudo hoje: " + ch.join(", ") + "."); b.id = "rt-changes"; out.push(b); }
+  const fc = rtFreeCard(R, nowMin); if (fc) out.push(fc);
   if (nowMin >= d.sleep) out.push(el("p", "banner", "Pelo seu horário de dormir, o dia de hoje já acabou. Veja amanhã na aba Semana da Rotina."));
   const tl = el("ol", "rt-list"); tl.id = "rt-list";
   const fxDone = rt().done[todayISO()] || [];

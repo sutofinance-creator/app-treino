@@ -8316,6 +8316,8 @@ function rtDemand(iso, plan, sim) {
     const n = fin.tx.filter(t => t.status !== "done").length, cd = fin.tx.filter(t => t.status === "done" && t.doneAt === iso).length;
     part("financas", "eco", cd, n + cd, "lançamentos");
     if (n) add({ key: "eco", mod: "financas", title: "Classificar " + n + (n === 1 ? " lançamento" : " lançamentos"), sub: "Pendentes da Economia.", dur: Math.min(30, Math.max(5, Math.ceil(n * 1.5 / 5) * 5)), win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6, go: () => rtGoFin() });
+    // tudo classificado: o card fica como concluído (com quantos foram classificados hoje)
+    else if (cd) dn({ key: "eco", mod: "financas", title: "Classificar lançamentos", sub: cd + (cd === 1 ? " lançamento classificado hoje" : " lançamentos classificados hoje") }, "Economia " + cd);
     const pe = pp("pen-eco");
     if (pe && n) add({ key: "pen-eco", mod: "financas", title: "Penalidade: zerar os pendentes", sub: pe.txt + " Ela se cumpre sozinha quando não sobrar nenhum pendente.", dur: 5, win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6.5, pen: true, go: () => rtGoFin() });
     else if (pDone("pen-eco") || (pe && !n)) penDone("pen-eco", "financas", "Penalidade: zerar os pendentes");

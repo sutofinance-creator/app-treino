@@ -3133,21 +3133,74 @@ function sndReady() { return !!stAudio && stAudio.state === "running"; }
 function sndHint() { return sndReady() ? "" : " Toque na tela para liberar o som."; }
 document.addEventListener("pointerdown", () => { if (!sndReady() && ((intel && intel.timer) || fxRun() || (stamina && stamina.timer) || (graca && graca.timer))) stSoundInit(); }, true);
 // som da troca: descendo = hora do intervalo; subindo = hora de voltar; "fim" = série completa
-function cycBeep(brk) {
-  const fim = brk === "fim";
-  try { if (stAudio && stAudio.state !== "running") stAudio.resume(); } catch (e) {}
-  try { if (navigator.vibrate) navigator.vibrate(fim ? [600, 150, 600, 150, 600] : brk ? [400, 150, 400] : [150, 80, 150, 80, 150]); } catch (e) {}
-  if (!stAudio) return;
-  try {
-    const seq = fim ? [523, 659, 784, 1047, 784, 1047] : brk ? [784, 659, 523, 784, 659, 523] : [523, 659, 784, 1047];
-    seq.forEach((f, i) => {
-      const o = stAudio.createOscillator(), g = stAudio.createGain(), t0 = stAudio.currentTime + i * 0.18 + (brk && !fim && i >= 3 ? 0.25 : 0) + (fim && i >= 4 ? 0.2 : 0);
-      o.type = "triangle"; o.frequency.value = f;
-      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.32, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.17);
-      o.connect(g); g.connect(stAudio.destination); o.start(t0); o.stop(t0 + 0.2);
-    });
-  } catch (e) {}
+// sons: "brk" = começa o intervalo (descendo), "back" = hora de voltar (subindo), "fim" = série completa, "test" = teste de memória
+const SND_PAT = {
+  brk: { f: [784, 659, 523, 784, 659, 523], gap: i => i >= 3 ? 0.25 : 0 },
+  back: { f: [523, 659, 784, 1047], gap: () => 0 },
+  fim: { f: [523, 659, 784, 1047, 784, 1047], gap: i => i >= 4 ? 0.2 : 0 },
+  test: { f: [660], gap: () => 0, dur: 0.3, type: "sine" }
+};
+function sndTone(kind, t) {
+  const P = SND_PAT[kind], out = []; if (!stAudio || !P) return out;
+  P.f.forEach((f, i) => {
+    const o = stAudio.createOscillator(), g = stAudio.createGain(), d = P.dur || 0.17, t0 = t + i * 0.18 + P.gap(i);
+    o.type = P.type || "triangle"; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.42, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+    o.connect(g); g.connect(stAudio.destination); o.start(t0); o.stop(t0 + d + 0.03); out.push({ o, t0 });
+  });
+  return out;
 }
+function cycBuzz(kind) { try { if (navigator.vibrate) navigator.vibrate(kind === "fim" ? [600, 150, 600, 150, 600] : kind === "brk" ? [400, 150, 400] : kind === "test" ? 300 : [150, 80, 150, 80, 150]); } catch (e) {} }
+// som na hora (true = intervalo, false = voltar, "fim")
+function cycBeep(brk) {
+  const kind = brk === "fim" ? "fim" : brk ? "brk" : "back";
+  cycBuzz(kind);
+  try { if (stAudio && stAudio.state !== "running") stAudio.resume(); } catch (e) {}
+  if (stAudio) try { sndTone(kind, stAudio.currentTime + 0.02); } catch (e) {}
+}
+/* Agenda de som: as trocas dos cronômetros com ciclo ficam marcadas direto no relógio do áudio. Assim o som toca na hora
+   mesmo com a janela escondida ou minimizada (no notebook o navegador atrasa o resto do app em segundo plano, e o aviso
+   chegava atrasado ou não chegava). A agenda é refeita quando o cronômetro muda, quando o áudio volta e a cada 10 min. */
+let sndQ = { sig: "", nodes: [], at: 0, map: null };
+function sndEvents(now) {
+  const ev = [], until = now + 4 * 3600000;
+  if (intel && intel.timer) {
+    const c = imCfg(), R = IM_RITMO[c.ritmo], st = intel.timer.startedAt;
+    cycleTimes(st, R, now - 1, until, 40).forEach(x => ev.push({ at: x.at, kind: x.brk ? "brk" : "back" }));
+    if (c.teste && R.test) cycleTimes(st, R, now - 1 + R.test * 60000, until + R.test * 60000, 40).forEach(x => { if (x.brk && x.at - R.test * 60000 > now) ev.push({ at: x.at - R.test * 60000, kind: "test" }); });
+  }
+  const f = fxRun(), fc = f && fxCycle(f);
+  if (fc && fc.seq) {
+    let t = f.startedAt;
+    fc.seq.forEach((x, i) => { if (i > 0 && t > now) ev.push({ at: t, kind: x.b ? "brk" : "back" }); t += x.s * 1000; });
+    if (t > now) ev.push({ at: t, kind: "fim" });
+  } else if (fc) cycleTimes(f.startedAt, fc, now - 1, until, 60).forEach(x => ev.push({ at: x.at, kind: x.fim ? "fim" : x.brk ? "brk" : "back" }));
+  return ev.filter(e => e.at > now && e.at <= until).sort((a, b) => a.at - b.at).slice(0, 60);
+}
+// cancela só os sons que ainda não começaram (um som que já está tocando termina inteiro)
+function sndCancel() {
+  const ct = stAudio ? stAudio.currentTime : 0;
+  sndQ.nodes.forEach(n => { if (n.ev > ct) try { n.o.stop(0); n.o.disconnect(); } catch (e) {} });
+  sndQ.nodes = []; sndQ.sig = ""; sndQ.map = null;
+}
+// o que define a agenda: qual cronômetro, quando começou e com qual ciclo
+function sndSig() {
+  const f = fxRun(), t = intel && intel.timer;
+  return (t ? t.sid + "@" + t.startedAt + JSON.stringify(imCfg()) : "") + "|" + (f ? f.fid + "@" + f.startedAt + JSON.stringify(fxCycle(f)) : "");
+}
+function sndSchedule(force) {
+  if (!sndReady()) { if (sndQ.nodes.length) sndCancel(); return; }
+  const now = Date.now(), sig = sndSig();
+  // relógio do áudio fora do relógio do sistema (notebook dormiu, áudio suspenso): refaz
+  const drift = sndQ.map ? Math.abs(stAudio.currentTime - (sndQ.map.a + (now - sndQ.map.t) / 1000)) : 0;
+  if (!force && sig === sndQ.sig && drift < 0.4 && now - sndQ.at < 10 * 60000) return;
+  sndCancel();
+  const base = stAudio.currentTime;
+  sndEvents(now).forEach(e => { const dt = (e.at - now) / 1000; if (dt > 0.05) sndTone(e.kind, base + dt).forEach(n => { n.ev = base + dt; sndQ.nodes.push(n); }); });
+  sndQ.sig = sig; sndQ.at = now; sndQ.map = { a: base, t: now };
+}
+setInterval(() => sndSchedule(false), 1000);
+document.addEventListener("visibilitychange", () => sndSchedule(true));
 function seqText(p) {
   if (p.done) return "Sequência completa.";
   const nx = !p.next ? "" : p.next.b ? " · depois: intervalo de " + fmtSecs(p.next.s) : " · depois: " + p.nextName + " (" + fmtSecs(p.next.s) + ")";
@@ -3186,7 +3239,7 @@ function updateLive() {
   const ph = imPhase();
   if (ph) {
     const tag = (ph.inBrk ? "b" : "w") + ph.k + (ph.test ? "t" : "");
-    if (imLast != null && imLast !== tag) { if (ph.test && !ph.inBrk && imLast === "w" + ph.k) stBeep(660, 300, 1); else cycBeep(ph.inBrk); }
+    if (imLast != null && imLast !== tag) cycBuzz(ph.test && !ph.inBrk && imLast === "w" + ph.k ? "test" : ph.inBrk ? "brk" : "back");
     imLast = tag;
     document.querySelectorAll('#im-live, [data-live="im-phase"]').forEach(n => { n.textContent = imLiveText() + sndHint(); });
   }
@@ -3378,7 +3431,12 @@ function guideState(t) {
   return { i: 0, name: "Atenção na respiração", lvl: "med", left: L - pos, next: "O sino toca no fim", pct: pos / L };
 }
 function fmtMS(sec) { sec = Math.max(0, Math.ceil(sec)); return String(Math.floor(sec / 60)).padStart(2, "0") + ":" + String(sec % 60).padStart(2, "0"); }
-function stSoundInit() { try { stAudio = stAudio || new (window.AudioContext || window.webkitAudioContext)(); if (stAudio.state === "suspended") stAudio.resume(); } catch (e) { stAudio = null; } }
+function stSoundInit() {
+  try {
+    if (!stAudio) { stAudio = new (window.AudioContext || window.webkitAudioContext)(); stAudio.onstatechange = () => { try { sndSchedule(true); } catch (e) {} }; }
+    if (stAudio.state === "suspended") stAudio.resume();
+  } catch (e) { stAudio = null; }
+}
 function stBeep(freq, ms, times) {
   try { if (navigator.vibrate) navigator.vibrate(times > 1 ? [180, 120, 180] : 300); } catch (e) {}
   if (!stAudio) return;
@@ -8479,13 +8537,16 @@ function updateFxLive() {
   const p = fxPhase(t, c), tag = p.done ? "d" : (p.inBrk ? "b" : "w") + p.k;
   document.querySelectorAll('[data-live="fx-time"]').forEach(n => { if (n.dataset.fid === t.fid) { n.textContent = fxTimerText(p); n.classList.add("cd"); n.classList.toggle("brk", p.inBrk); } });
   if (p.done) {
-    // série completa: som de fim (se acabou agora) e o cronômetro para sozinho na hora certa
-    if (Date.now() - p.at < 15000) cycBeep("fim");
-    fxLast = null; fxStop(false, p.at); setStatus((p.seq ? "Sequência completa: " + t.name : "Série completa: " + t.name + " (" + p.n + " de " + p.n + ")") + ". Toque em Concluir se terminou.", "ok");
-    if (state.view === "rotina") renderRotina(); else if (state.view === "home") renderHome();
+    // série completa: o cronômetro para na hora em que terminou e o compromisso fica concluído no dia
+    if (Date.now() - p.at < 15000) cycBuzz("fim");
+    fxLast = null; fxStop(true, p.at);
+    const f = (ensureRotina().fixed || []).find(x => x.id === t.fid);
+    if (f) fxConclude(f, true); else saveRotina();
+    setStatus((p.seq ? "Sequência completa: " + t.name : "Série completa: " + t.name + " (" + p.n + " de " + p.n + ")") + ". Concluído.", "ok");
+    if (state.view === "home") renderHome();
     return;
   }
-  if (fxLast != null && fxLast !== tag) cycBeep(p.inBrk);
+  if (fxLast != null && fxLast !== tag) cycBuzz(p.inBrk ? "brk" : "back");
   fxLast = tag;
   document.querySelectorAll('[data-live="fx-cyc"]').forEach(n => { if (n.dataset.fid === t.fid) { n.textContent = cycText(p) + sndHint(); n.classList.toggle("brk", p.inBrk); } });
 }
@@ -9077,7 +9138,7 @@ function renderRtHorarios(main) {
   cy.appendChild(modeBar);
   if ((fx.cm || "rep") === "rep") {
     cf("rt-fx-work", "Atividade", "work", "wu", "Ex.: 30"); cf("rt-fx-brk", "Intervalo", "brk", "bu", "Ex.: 30"); cf("rt-fx-reps", "Repetições", "reps", null, "Ex.: 15");
-    cy.append(g4, sum, el("p", "note muted", "O app toca um som na hora do intervalo, outro na hora de voltar e um de fim quando a última repetição termina (aí o cronômetro para sozinho). Repetições em branco: repete até você pausar. Com ciclos menores que 2 min, a tela fica acesa enquanto o cronômetro roda, para o som tocar na hora."));
+    cy.append(g4, sum, el("p", "note muted", "O app toca um som na hora do intervalo, outro na hora de voltar e um de fim quando a última repetição termina (aí o cronômetro para sozinho e o compromisso fica concluído). Repetições em branco: repete até você pausar. Com ciclos menores que 2 min, a tela fica acesa enquanto o cronômetro roda, para o som tocar na hora."));
   } else {
     // etapas em ordem: cada uma com tempo próprio; atividade pode ter nome
     const ol = el("ol", "rt-seq"); let ai = 0;
@@ -9097,7 +9158,7 @@ function renderRtHorarios(main) {
     const ab = el("div", "btns rt-seq-add");
     [["a", "+ Atividade", false], ["i", "+ Intervalo", true]].forEach(([k, t, b]) => { const bt = el("button", "btn ghost", t); bt.type = "button"; bt.id = "rt-seq-add-" + k;
       bt.addEventListener("click", () => { fx.seq.push({ b, n: "", v: "", u: "m" }); renderRotina(); const n = document.getElementById("rt-seq-v-" + (fx.seq.length - 1)); if (n) { n.scrollIntoView({ block: "center" }); n.focus(); } }); ab.appendChild(bt); });
-    cy.append(ol, ab, sum, el("p", "note muted", "O app toca um som quando começa cada intervalo, outro quando começa cada atividade e um de fim quando a última termina (aí o cronômetro para sozinho). Com alguma etapa menor que 2 min, a tela fica acesa enquanto o cronômetro roda, para o som tocar na hora."));
+    cy.append(ol, ab, sum, el("p", "note muted", "O app toca um som quando começa cada intervalo, outro quando começa cada atividade e um de fim quando a última termina (aí o cronômetro para sozinho e o compromisso fica concluído). Com alguma etapa menor que 2 min, a tela fica acesa enquanto o cronômetro roda, para o som tocar na hora."));
   }
   fb.appendChild(cy); drawSum();
   ["rt-fx-start", "rt-fx-end", "rt-fx-dur"].forEach(id => { const n = g3.querySelector("#" + id); if (n) n.addEventListener("input", drawSum); });
@@ -9207,7 +9268,7 @@ function cyclePushItems(now) {
   const add = (mod, name, t, c, tab) => cycleTimes(t.startedAt, c, now, until, 12).forEach((x, i) => out.push({
     tag: "ciclo-" + mod + "-" + t.startedAt + "-" + i, at: x.at,
     title: (x.fim ? "✓ Série completa: " : x.brk ? "⏸ Intervalo: " : "▶ Voltar: ") + name,
-    body: x.fim ? c.reps + " de " + c.reps + ". Toque para concluir." : x.brk ? "Intervalo de " + fmtSecs(x.len * 60) + ". Volte às " + hmOf(x.back) + "." : "Fim do intervalo, hora de voltar" + (c.reps ? " (" + (x.k + 1) + " de " + c.reps + ")" : "") + "." + (x.next && (!c.reps || x.k < c.reps - 1) ? " Próximo intervalo às " + hmOf(x.next) + "." : ""),
+    body: x.fim ? c.reps + " de " + c.reps + ". Marcado como concluído." : x.brk ? "Intervalo de " + fmtSecs(x.len * 60) + ". Volte às " + hmOf(x.back) + "." : "Fim do intervalo, hora de voltar" + (c.reps ? " (" + (x.k + 1) + " de " + c.reps + ")" : "") + "." + (x.next && (!c.reps || x.k < c.reps - 1) ? " Próximo intervalo às " + hmOf(x.next) + "." : ""),
     url: "./#abrir-" + tab }));
   if (intel && intel.timer) { const x = intel.subjects.find(v => v.id === intel.timer.sid); add("inteligencia", "Estudo · " + (x ? x.name : "matéria"), intel.timer, imR(), "estudo"); }
   const f = fxRun(), fc = f && fxCycle(f);
@@ -9223,7 +9284,7 @@ function cyclePushItems(now) {
         title: (x.b ? "⏸ Intervalo: " : "▶ " + seqName(x, ai) + ": ") + name,
         body: x.b ? "Intervalo de " + fmtSecs(x.s) + ". Volte às " + hmOf(t) + (nx && !nx.b ? " para " + seqName(nx, ai + 1) + "." : ".") : "Etapa " + ai + " de " + fc.seq.filter(y => !y.b).length + " · " + fmtSecs(x.s) + ", até " + hmOf(t) + "." });
     });
-    if (t > now && t <= until) out.push({ tag: "ciclo-rotina-" + f.startedAt + "-fim", at: t, url: "./#abrir-rot-hoje", title: "✓ Sequência completa: " + name, body: "Toque para concluir." });
+    if (t > now && t <= until) out.push({ tag: "ciclo-rotina-" + f.startedAt + "-fim", at: t, url: "./#abrir-rot-hoje", title: "✓ Sequência completa: " + name, body: "Marcado como concluído." });
   }
   return out;
 }

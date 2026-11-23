@@ -10010,7 +10010,7 @@ const CT_WAKE = /(?:^|\s)(?:bom dia|boa tarde|boa noite)[\s,]*[ck][oóu]r?tana\b
 const CT_NAME = /(^|[\s,.!?])[ck][oóu]r?tana\b[\s,.:!?-]*/i;
 const CT_OFF = /[ck][oóu]r?tana[\s,.:!?-]*(?:pode\s+)?(?:desativ|deslig)|(?:desativ|deslig)\w*[\s,]+(?:a\s+)?[ck][oóu]r?tana/i;
 let ct = null;
-const ctS = { gesture: 0, blocked: false, mounted: false, open: false, compact: false, busy: false, msgs: [], last: 0, log: [], sr: null, srOn: false, mode: "", want: "", cmdAt: 0, speaking: false, heard: "" };
+const ctS = { gesture: 0, blocked: false, mounted: false, open: false, compact: false, busy: false, msgs: [], last: 0, log: [], sr: null, srOn: false, mode: "", want: "", cmdAt: 0, speaking: false, heard: "", buf: "", interim: "", capt: false };
 function ctCfg() {
   if (!ct) { try { ct = JSON.parse(localStorage.getItem(CT_KEY)) || {}; } catch (e) { ct = {}; } }
   if (ct.voz == null) ct.voz = true; if (ct.avisos == null) ct.avisos = true; if (ct.som == null) ct.som = true;
@@ -10032,7 +10032,7 @@ function ctMount() {
   fab.addEventListener("click", () => {
     stSoundInit(); ctS.gesture = Date.now(); ctS.blocked = false; ctWakeBack();
     if (ctS.busy) { ctOpen(true); return; }
-    if (ctS.mode === "cmd") { ctS.want = ""; ctStopRec(); return; }
+    if (ctS.mode === "cmd") { ctStopOrSend(); return; }
     ctOpen(true); ctListen();
   });
   document.body.appendChild(fab); document.body.classList.add("ct-on");
@@ -10049,7 +10049,7 @@ function ctOpen(show) {
 function ctStatusText() {
   if (ctS.busy) return "Pensando…";
   if (ctS.speaking) return "Falando…";
-  if (ctS.mode === "cmd") return ctS.heard ? "Ouvindo: " + ctS.heard : "Pode falar…";
+  if (ctS.mode === "cmd" || ctS.capt) return ctS.heard ? "Ouvindo: " + ctS.heard : "Pode falar…";
   if (ctS.mode === "wake") return "Ouvindo: “Cortana, …” ou “Bom dia, Cortana”";
   if (ctCfg().voiceOff) return "Desativada por voz · toque no botão redondo para ligar";
   return CT_SR ? "Toque no microfone ou escreva" : "Escreva o pedido";
@@ -10058,7 +10058,7 @@ function ctState() {
   const f = document.getElementById("ct-fab");
   if (f) {
     const keep = ctS.speaking && f.classList.contains("words") ? " words" : "";
-    f.className = "ct-fab" + (ctS.busy ? " think" : ctS.speaking ? " speak" + keep : ctS.mode === "cmd" ? " listen" : ctS.mode === "wake" ? " wake" : "");
+    f.className = "ct-fab" + (ctS.busy ? " think" : ctS.speaking ? " speak" + keep : ctS.mode === "cmd" || ctS.capt ? " listen" : ctS.mode === "wake" ? " wake" : "");
     f.setAttribute("aria-label", ctS.mode === "cmd" ? "Parar de ouvir" : "Falar com a Cortana");
   }
   const st = document.getElementById("ct-st"); if (st) st.textContent = ctStatusText();
@@ -10088,7 +10088,7 @@ function ctDraw() {
   const form = el("form", "ct-form"); form.id = "ct-form";
   const inp = el("input"); inp.id = "ct-in"; inp.placeholder = "Escreva o pedido"; inp.autocomplete = "off"; inp.setAttribute("aria-label", "Pedido para a Cortana");
   const mic = el("button", "btn ghost ct-mic", "🎤 Falar"); mic.type = "button"; mic.id = "ct-mic"; mic.disabled = !CT_SR;
-  mic.addEventListener("click", () => { stSoundInit(); ctS.gesture = Date.now(); ctS.blocked = false; ctWakeBack(); if (ctS.mode === "cmd") { ctS.want = ""; ctStopRec(); } else ctListen(); });
+  mic.addEventListener("click", () => { stSoundInit(); ctS.gesture = Date.now(); ctS.blocked = false; ctWakeBack(); if (ctS.mode === "cmd") ctStopOrSend(); else ctListen(); });
   const send = el("button", "btn", "Enviar"); send.type = "submit"; send.id = "ct-send";
   form.addEventListener("submit", e => { e.preventDefault(); const t = inp.value.trim(); if (!t) return; inp.value = ""; ctAsk(t); });
   form.append(inp, mic, send); p.appendChild(form);
@@ -10118,12 +10118,16 @@ function ctRec() {
   if (!CT_SR) return null;
   if (ctS.sr) return ctS.sr;
   const r = new CT_SR(); r.lang = "pt-BR"; r.interimResults = true; r.continuous = true; r.maxAlternatives = 1;
+  // junta os pedaços da fala: o navegador fecha um trecho a cada respiração, mas o pedido só vai quando você para de falar
   r.onresult = e => {
+    let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const res = e.results[i], txt = (res[0] && res[0].transcript || "").trim();
-      if (!res.isFinal) { if (ctS.mode === "cmd") { ctS.heard = txt; ctState(); } continue; }
-      ctOnFinal(txt);
+      if (!txt) continue;
+      if (res.isFinal) ctS.buf = (ctS.buf + " " + txt).trim().slice(-500); else interim += " " + txt;
     }
+    ctS.interim = interim.trim();
+    ctSpeechTick();
   };
   r.onerror = e => {
     // sem o microfone: não mexe no ajuste salvo; só para de tentar até você tocar em Falar
@@ -10131,16 +10135,35 @@ function ctRec() {
     else if (e.error === "network") ctLog("info", "Sem internet para reconhecer a voz.");
     else if (e.error === "audio-capture") ctLog("info", "Não encontrei um microfone neste aparelho.");
   };
-  r.onend = () => { ctS.srOn = false; ctS.heard = ""; setTimeout(ctKick, 300); };
+  // o celular encerra a escuta depois de cada trecho: guarda o que ainda não tinha fechado e volta a ouvir logo, sem perder a frase
+  r.onend = () => { ctS.srOn = false; if (ctS.interim) { ctS.buf = (ctS.buf + " " + ctS.interim).trim(); ctS.interim = ""; } setTimeout(ctKick, 120); };
   ctS.sr = r; return r;
 }
-function ctStopRec() { if (ctS.sr && ctS.srOn) { try { ctS.sr.abort(); } catch (e) {} } }
+function ctStopRec() { clearTimeout(ctSilT); ctS.buf = ""; ctS.interim = ""; ctS.capt = false; ctS.heard = ""; if (ctS.sr && ctS.srOn) { try { ctS.sr.abort(); } catch (e) {} } }
+/* Fim do pedido = 1,8 s sem fala. Enquanto você fala, a janela do pedido não fecha (o prazo de 10 s conta a partir da última
+   palavra) e, ouvindo "Cortana" no meio da conversa, o botão já mostra que ela está ouvindo o resto. */
+const CT_SIL = 1800;
+let ctSilT = null;
+function ctHeardNow() { return ((ctS.buf || "") + " " + (ctS.interim || "")).replace(/\s+/g, " ").trim(); }
+function ctSpeechTick() {
+  const all = ctHeardNow(); if (!all) return;
+  if (ctS.mode === "cmd") { ctS.cmdAt = Date.now(); ctCmdTimer(); ctS.heard = all; }
+  else if (ctS.mode === "wake") { ctS.capt = CT_NAME.test(all) || CT_WAKE.test(all); ctS.heard = ctS.capt ? all : ""; }
+  ctState();
+  clearTimeout(ctSilT); ctSilT = setTimeout(ctUtterEnd, CT_SIL);
+}
+// "Parar" enquanto fala: manda o que já ouviu (sem esperar a pausa); sem nada ouvido, só para
+function ctStopOrSend() { if (ctHeardNow()) { clearTimeout(ctSilT); ctUtterEnd(); } else { ctS.want = ""; ctStopRec(); } }
+function ctUtterEnd() {
+  const txt = ctHeardNow(); ctS.buf = ""; ctS.interim = ""; ctS.capt = false; ctS.heard = "";
+  if (txt) ctOnFinal(txt); else ctState();
+}
 // decide o que o microfone deve fazer agora: ouvir um pedido, esperar o nome dela ou nada
 function ctKick() {
   if (!ctS.mounted || ctS.srOn || ctS.speaking) { ctState(); return; }
   if (ctS.blocked) { ctS.mode = ""; ctState(); return; }
   let w = ctS.want;
-  if (w === "cmd" && Date.now() - ctS.cmdAt > 10000) w = ctS.want = "";
+  if (w === "cmd" && Date.now() - ctS.cmdAt > 10000 && !ctHeardNow()) w = ctS.want = "";
   if (!w && ctCfg().wake && !ctS.busy && document.visibilityState === "visible") w = "wake";
   ctS.mode = w; ctState();
   if (!w) return;
@@ -10157,7 +10180,7 @@ let ctCmdT = null;
 function ctCmdTimer() {
   clearTimeout(ctCmdT);
   ctCmdT = setTimeout(() => {
-    if (ctS.mode !== "cmd" || ctS.busy || Date.now() - ctS.cmdAt < 9500) return;
+    if (ctS.mode !== "cmd" || ctS.busy || Date.now() - ctS.cmdAt < 9500 || ctHeardNow()) return;
     ctS.want = "";
     if (ctS.srOn && ctCfg().wake) { ctS.mode = "wake"; ctState(); } else ctStopRec();
   }, 10200);

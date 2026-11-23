@@ -8855,9 +8855,10 @@ function rtProgress(prog, skipped) {
       const why = (skipped || []).some(it => it.mod === id) ? "Pulado hoje"
         : id === "forca" ? (profileId && !strengthDay(todayISO()) ? "Descanso hoje" : "Nada para hoje")
         : id === "financas" ? "Nada pendente" : id === "missoes" ? "Sem meta hoje" : "Nada para hoje";
-      const row = el("div", "rt-pg none"); row.id = "rt-pg-" + id;
-      const bar = el("div", "rt-pg-bar"); bar.setAttribute("aria-hidden", "true");
-      row.append(rtIcon(id), el("span", "rt-pg-n", name), bar, el("span", "rt-pg-v", why));
+      // sem tarefa hoje conta como dia resolvido: barra cheia e verde. Pulado continua apagado.
+      const skip = why === "Pulado hoje", row = el("div", "rt-pg " + (skip ? "none" : "full free")); row.id = "rt-pg-" + id;
+      const bar = el("div", "rt-pg-bar"); bar.setAttribute("aria-hidden", "true"); if (!skip) { const fill = el("span"); fill.style.width = "100%"; bar.appendChild(fill); }
+      row.append(rtIcon(id), el("span", "rt-pg-n", name), bar, el("span", "rt-pg-v", (skip ? "" : "✓ ") + why));
       sec.appendChild(row); return;
     }
     const f = Math.min(1, p.d / p.t), full = f >= 0.999;

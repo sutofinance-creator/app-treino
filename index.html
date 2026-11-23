@@ -8377,7 +8377,8 @@ function rtDemand(iso, plan, sim) {
   // pulado não conta; concluído com o botão conta como feito
   const prog = {};
   parts.forEach(x => {
-    if (skip.includes(x.key)) return;
+    if (skip.includes(x.key) && !(x.d >= x.t)) return; // pulou mas fez assim mesmo: conta
+
     const p = prog[x.mod] = prog[x.mod] || { d: 0, t: 0, unit: x.unit };
     p.d += okd.includes(x.key) ? x.t : x.d; p.t += x.t; if (p.unit !== x.unit) p.unit = "min";
   });
@@ -8852,7 +8853,8 @@ function rtProgress(prog, skipped) {
   rows.forEach(([id, name]) => {
     const p = prog[id];
     if (!p || !(p.t > 0)) { // nada para hoje neste módulo
-      const why = (skipped || []).some(it => it.mod === id) ? "Pulado hoje"
+      // a penalidade tem o card dela: pular a penalidade não apaga o módulo
+      const why = (skipped || []).some(it => it.mod === id && !it.pen) ? "Pulado hoje"
         : id === "forca" ? (profileId && !strengthDay(todayISO()) ? "Descanso hoje" : "Nada para hoje")
         : id === "financas" ? "Nada pendente" : id === "missoes" ? "Sem meta hoje" : "Nada para hoje";
       // sem tarefa hoje conta como dia resolvido: barra cheia e verde. Pulado continua apagado.

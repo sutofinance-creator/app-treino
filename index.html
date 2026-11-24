@@ -788,6 +788,13 @@ input[aria-invalid="true"] { border-color: var(--bad) !important; }
 .rt-cyc-in input { flex: 1; min-width: 0; }
 .rt-cyc-u { padding: 0 12px; min-height: 0; flex: 0 0 auto; }
 .rt-cyc-sum { color: var(--accent); }
+.man-hd { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.man-val { display: grid; gap: 6px; margin: 10px 0 4px; }
+.man-val label { font: 600 12px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.man-val-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.man-val-row input { flex: 1 1 160px; min-width: 0; }
+.man-add, .man-link { margin-top: 10px; }
+.man-chart { margin-top: 8px; }
 .rt-seq { list-style: none; margin: 6px 0 8px; padding: 0; display: grid; gap: 8px; }
 .rt-seq-it { border: 1px solid var(--line); border-left: 3px solid var(--accent); background: var(--surface-2); padding: 8px 10px; display: grid; gap: 6px; }
 .rt-seq-it.brk { border-left-color: var(--good); }
@@ -6716,6 +6723,218 @@ function invEvoCard() {
     " Tracejada: tudo o que você transferiu para a corretora menos o que tirou de lá" + (o.base ? ", mais os aportes anteriores ao extrato" : "") + ". A distância entre as duas é o rendimento."));
   return card;
 }
+/* ---------- Contas de investimento à mão (ex.: Binance, CM Capital) ----------
+   Para corretoras fora do Open Finance. Aportes e retiradas vêm sozinhos do extrato do banco (Pix/TED cujo texto tem o nome
+   da corretora: saída do banco = aporte, entrada = retirada) e também podem ser lançados à mão. O saldo ("quanto eu tenho")
+   é informado à mão de tempos em tempos. Rendimento = saldo − (aportes − retiradas até a data do saldo).
+   Itens apagados ficam marcados (x / del) para a sincronização entre aparelhos não trazer de volta. */
+const MAN_SEED = [{ id: "binance", name: "Binance", match: ["binance"] }, { id: "cmcapital", name: "CM Capital", match: ["cm capital", "cmcapital"] }];
+function manAccts(seed) {
+  const iv = fin.invest;
+  if (!iv.man && seed) { iv.man = MAN_SEED.map(a => Object.assign({ moves: [], vals: [], skip: [], upd: Date.now() }, a)); saveFin(); }
+  (iv.man || []).forEach(a => { a.moves = a.moves || []; a.vals = a.vals || []; a.skip = a.skip || []; a.match = a.match || []; a.link = a.link || []; });
+  return (iv.man || []).filter(a => !a.del);
+}
+const manNorm = v => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ");
+// lançamentos do banco desta conta: os com o nome da corretora no texto e os vinculados à mão (ex.: Pix para o próprio nome)
+function manBankTx(a) {
+  const ws = a.match.map(manNorm).filter(Boolean);
+  return fin.tx.filter(t => t.date && t.amount > 0 && (t.dir === "in" || t.dir === "out") && (a.link.includes(t.id) || ws.some(w => manNorm(t.desc).includes(w))));
+}
+// candidatos para vincular: transferências recentes que nenhuma conta à mão já conta
+function manCandidates() {
+  const taken = new Set(); manAccts().forEach(a => manBankTx(a).forEach(t => { if (!a.skip.includes(t.id)) taken.add(t.id); }));
+  const from = addDaysISO(todayISO(), -120);
+  return fin.tx.filter(t => t.date >= from && t.amount > 0 && (t.dir === "in" || t.dir === "out") && !taken.has(t.id) && !["gasto", "receita"].includes(t.kind) && /pix|ted|transf|doc\b/i.test(t.desc || ""))
+    .sort((x, y) => x.date < y.date ? 1 : -1).slice(0, 40);
+}
+// aportes (k "in") e retiradas (k "out") da conta: extrato do banco + lançados à mão, do mais antigo ao mais novo
+function manMoves(a) {
+  const bank = manBankTx(a).filter(t => !a.skip.includes(t.id)).map(t => ({ id: "tx-" + t.id, tx: t.id, date: t.date, amount: t.amount, k: t.dir === "out" ? "in" : "out", src: "banco", linked: a.link.includes(t.id), desc: t.desc }));
+  const man = a.moves.filter(m => !m.x).map(m => Object.assign({ src: "manual" }, m));
+  return bank.concat(man).sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
+}
+function manVals(a) { return a.vals.filter(v => !v.x).sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : (x.at || 0) - (y.at || 0)); }
+function manNetOn(a, iso, mv) { return (mv || manMoves(a)).filter(m => m.date <= iso).reduce((t, m) => t + (m.k === "in" ? m.amount : -m.amount), 0); }
+function manStats(a) {
+  const mv = manMoves(a), vs = manVals(a), last = vs[vs.length - 1] || null;
+  const ap = mv.filter(m => m.k === "in").reduce((t, m) => t + m.amount, 0), rt = mv.filter(m => m.k === "out").reduce((t, m) => t + m.amount, 0);
+  const netAt = last ? manNetOn(a, last.date, mv) : null, gain = last ? last.value - netAt : null;
+  return { mv, vs, last, ap, rt, net: ap - rt, netAt, gain, pct: gain != null && netAt > 0 ? gain / netAt : null };
+}
+// "23112026" ou "23/11/2026" -> ISO; campo de data digitado (sem o calendário do celular)
+function dmToISO(v) { const d = String(v || "").replace(/\D/g, ""); if (d.length !== 8) return null; const iso = d.slice(4) + "-" + d.slice(2, 4) + "-" + d.slice(0, 2), t = new Date(iso + "T12:00:00"); return isNaN(t) || t.toISOString().slice(0, 10) !== iso ? null : iso; }
+function dmInput(i) {
+  i.inputMode = "numeric"; i.maxLength = 10; i.placeholder = "DD/MM/AAAA"; i.autocomplete = "off";
+  i.addEventListener("input", () => { const d = i.value.replace(/\D/g, "").slice(0, 8); i.value = d.length > 4 ? d.slice(0, 2) + "/" + d.slice(2, 4) + "/" + d.slice(4) : d.length > 2 ? d.slice(0, 2) + "/" + d.slice(2) : d; });
+  return i;
+}
+const isoToDM = iso => iso.slice(8, 10) + "/" + iso.slice(5, 7) + "/" + iso.slice(0, 4);
+const manUI = { add: null, link: null, edit: null, newAcct: false, all: {}, n: {} };
+function invManSection(main) {
+  const accts = manAccts(true);
+  const wrap = el("section", "guide man-wrap"); wrap.id = "inv-man";
+  wrap.appendChild(el("h3", null, "Outras contas de investimento"));
+  wrap.appendChild(el("p", "note muted", "Corretoras fora do Open Finance. Os Pix e TEDs do banco com o nome da corretora entram sozinhos como aporte (saída do banco) ou retirada (entrada). O saldo você informa de vez em quando, e o app calcula o rendimento."));
+  if (accts.length > 1) {
+    const S = accts.map(manStats), withVal = S.filter(x => x.last);
+    if (withVal.length) {
+      const tv = withVal.reduce((t, x) => t + x.last.value, 0), tn = withVal.reduce((t, x) => t + x.netAt, 0), g = tv - tn;
+      wrap.appendChild(el("p", "note", "Somando as contas com saldo informado: " + brl(tv) + " · aportado " + brl(tn) + " · rendimento " + (g >= 0 ? "+" : "−") + brl(Math.abs(g)) + (tn > 0 ? " (" + pctf(g / tn) + ")" : "") + "."));
+    }
+  }
+  main.appendChild(wrap);
+  accts.forEach(a => main.appendChild(manCard(a)));
+  // nova conta
+  const nb = el("div", "btns man-new");
+  if (!manUI.newAcct) { const b = el("button", "btn ghost", "+ Outra conta de investimento"); b.type = "button"; b.id = "man-new"; b.addEventListener("click", () => { manUI.newAcct = true; renderFin(); const n = document.getElementById("man-new-name"); if (n) n.focus(); }); nb.appendChild(b); main.appendChild(nb); }
+  else main.appendChild(manAcctForm(null));
+}
+function manAcctForm(a) {
+  const box = el("section", "guide man-form"); box.id = a ? "man-edit-" + a.id : "man-new-box";
+  box.appendChild(el("h3", null, a ? "Editar " + a.name : "Nova conta de investimento"));
+  const f = el("div", "inputs two");
+  const fld = (id, label, val, ph) => { const d = el("div", "field"), l = el("label", null, label), i = el("input"); l.htmlFor = id; i.id = id; i.value = val || ""; i.placeholder = ph || ""; d.append(l, i); f.appendChild(d); return i; };
+  const nI = fld(a ? "man-ed-name" : "man-new-name", "Nome", a ? a.name : "", "Ex.: Binance");
+  const mI = fld(a ? "man-ed-match" : "man-new-match", "Como aparece no extrato do banco", a ? a.match.join(", ") : "", "Ex.: binance");
+  box.append(f, el("p", "note muted", "Um pedaço do nome que aparece nos Pix e TEDs para essa corretora. Mais de um? Separe por vírgula. Em branco: só lançamentos à mão."));
+  const msg = el("p", "note"); msg.setAttribute("aria-live", "polite");
+  const b = el("div", "btns"), sv = el("button", "btn", a ? "Salvar" : "Criar conta"); sv.type = "button"; sv.id = a ? "man-ed-save" : "man-new-save";
+  sv.addEventListener("click", () => {
+    const name = nI.value.trim(); if (!name) { flashAuto(msg, "Dê um nome para a conta."); return; }
+    const match = mI.value.split(",").map(x => x.trim()).filter(Boolean);
+    if (a) { a.name = name; a.match = match; a.upd = Date.now(); manUI.edit = null; }
+    else { fin.invest.man = fin.invest.man || []; fin.invest.man.push({ id: uid(), name, match, moves: [], vals: [], skip: [], upd: Date.now() }); manUI.newAcct = false; }
+    saveFin(); renderFin();
+  });
+  const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = a ? "man-ed-cancel" : "man-new-cancel";
+  cc.addEventListener("click", () => { if (a) manUI.edit = null; else manUI.newAcct = false; renderFin(); });
+  b.append(sv, cc);
+  if (a) {
+    const rm = el("button", "btn danger", manUI.rmConfirm === a.id ? "Confirmar remoção" : "Remover conta"); rm.type = "button"; rm.id = "man-ed-remove";
+    rm.addEventListener("click", () => { if (manUI.rmConfirm !== a.id) { manUI.rmConfirm = a.id; renderFin(); return; } a.del = true; a.upd = Date.now(); manUI.edit = null; manUI.rmConfirm = null; saveFin(); renderFin(); });
+    b.appendChild(rm);
+  }
+  box.append(b, msg);
+  return box;
+}
+function manCard(a) {
+  if (manUI.edit === a.id) return manAcctForm(a);
+  const S = manStats(a), card = el("section", "guide man-card"); card.id = "man-" + a.id;
+  const hd = el("div", "man-hd"); hd.appendChild(el("h3", null, a.name));
+  const ed = el("button", "linkbtn", "Editar"); ed.type = "button"; ed.id = "man-edit-" + a.id; ed.addEventListener("click", () => { manUI.edit = a.id; manUI.rmConfirm = null; renderFin(); });
+  hd.appendChild(ed); card.appendChild(hd);
+  const tile = (label, num, sub, mod) => { const t = el("div", "tile" + (mod ? " " + mod : "")); t.append(el("span", "tile-label", label), el("span", "tile-num money", num)); if (sub) t.appendChild(el("span", "tile-sub", sub)); return t; };
+  const tiles = el("div", "tiles fin-tiles");
+  tiles.append(
+    tile("Aportado", brl(S.ap), S.mv.filter(m => m.k === "in").length + " aporte(s)"),
+    tile("Retirado", brl(S.rt), S.rt ? "líquido aportado " + brl(S.net) : "nenhuma retirada"),
+    tile("Saldo", S.last ? brl(S.last.value) : "—", S.last ? "informado em " + fmtDate(S.last.date) : "informe abaixo"),
+    tile("Rendimento", S.gain != null ? (S.gain >= 0 ? "+" : "−") + brl(Math.abs(S.gain)) : "—", S.pct != null ? pctf(S.pct) + " sobre o aportado" : S.last ? "" : "precisa do saldo", S.gain == null ? "" : S.gain >= 0 ? "good" : "bad"));
+  card.appendChild(tiles);
+  // saldo de hoje
+  const vr = el("div", "man-val"), vl = el("label", null, "Quanto você tem hoje na " + a.name + " (R$)"), vi = el("input"); vl.htmlFor = "man-val-" + a.id; vi.id = "man-val-" + a.id; vi.inputMode = "decimal"; vi.placeholder = "0,00"; vi.className = "search";
+  const vb = el("button", "btn", "Salvar saldo"); vb.type = "button"; vb.id = "man-val-save-" + a.id;
+  const vm = el("p", "note"); vm.setAttribute("aria-live", "polite");
+  vb.addEventListener("click", () => {
+    const v = parseMoney(vi.value); if (!(v >= 0) || vi.value.trim() === "") { flashAuto(vm, "Digite o valor que está na conta hoje, em reais."); return; }
+    const t = todayISO(); a.vals.forEach(x => { if (x.date === t && !x.x) { x.x = 1; x.at = Date.now(); } });
+    a.vals.push({ id: uid(), date: t, value: v, at: Date.now() }); saveFin(); renderFin();
+  });
+  const vrow = el("div", "man-val-row"); vrow.append(vi, vb); vr.append(vl, vrow, vm); card.appendChild(vr);
+  if (S.vs.length >= 1 && S.mv.length) card.appendChild(manChart(a, S));
+  // aportes e retiradas
+  const det = el("details", "inv-list"); det.id = "man-moves-" + a.id; if (manUI.all[a.id] != null) det.open = true;
+  det.appendChild(el("summary", null, "Aportes e retiradas (" + S.mv.length + ")"));
+  const ul = el("ul", "inv-rows"), list = S.mv.slice().reverse(), lim = manUI.all[a.id] ? list.length : 8;
+  list.slice(0, lim).forEach(m => {
+    const li = el("li");
+    li.append(el("span", null, fmtDate(m.date) + " · " + (m.k === "in" ? "Aporte" : "Retirada") + (m.src === "banco" ? " · extrato" + (m.linked ? " (vinculado)" : "") : m.note ? " · " + m.note : " · à mão")),
+      el("b", "money " + (m.k === "in" ? "pos" : "neg"), (m.k === "in" ? "+" : "−") + brl(m.amount)));
+    const bt = el("button", "linkbtn", m.src === "banco" ? "Não é desta conta" : "Remover"); bt.type = "button"; bt.id = "man-mv-" + a.id + "-" + m.id;
+    bt.addEventListener("click", () => {
+      if (m.src === "banco") { if (m.linked) a.link = a.link.filter(id => id !== m.tx); else a.skip.push(m.tx); a.upd = Date.now(); }
+      else { const x = a.moves.find(y => y.id === m.id); if (x) { x.x = 1; x.at = Date.now(); } }
+      manUI.all[a.id] = manUI.all[a.id] || false; saveFin(); renderFin();
+    });
+    li.appendChild(bt); ul.appendChild(li);
+  });
+  if (!list.length) ul.appendChild(el("li", "muted", a.match.length ? "Nenhum Pix ou TED com \u201c" + a.match.join("\u201d ou \u201c") + "\u201d no extrato. Se o nome for outro, ajuste em Editar, ou lance à mão." : "Nada lançado ainda."));
+  det.appendChild(ul);
+  if (list.length > lim) { const mb = el("button", "linkbtn", "Ver todos (" + list.length + ")"); mb.type = "button"; mb.id = "man-all-" + a.id; mb.addEventListener("click", () => { manUI.all[a.id] = true; renderFin(); }); det.appendChild(mb); }
+  if (a.skip.length) { const rb = el("button", "linkbtn", "Voltar a contar os " + a.skip.length + " ignorado(s)"); rb.type = "button"; rb.id = "man-unskip-" + a.id; rb.addEventListener("click", () => { a.skip = []; a.upd = Date.now(); saveFin(); renderFin(); }); det.appendChild(rb); }
+  card.appendChild(det);
+  // lançar à mão ou vincular um lançamento do extrato
+  if (manUI.add === a.id) card.appendChild(manMoveForm(a));
+  else if (manUI.link === a.id) card.appendChild(manLinkList(a));
+  else {
+    const ab = el("div", "btns");
+    const lk = el("button", "btn ghost", "Vincular do extrato"); lk.type = "button"; lk.id = "man-link-" + a.id; lk.addEventListener("click", () => { manUI.link = a.id; manUI.add = null; renderFin(); });
+    const b = el("button", "btn ghost", "+ Lançar à mão"); b.type = "button"; b.id = "man-add-" + a.id; b.addEventListener("click", () => { manUI.add = a.id; manUI.link = null; manUI.k = "in"; renderFin(); const n = document.getElementById("man-mv-val"); if (n) n.focus(); });
+    ab.append(lk, b); card.appendChild(ab);
+  }
+  card.appendChild(el("p", "note muted", "Vincular do extrato: para Pix ou TED que não têm o nome da corretora no texto (ex.: enviado para o seu próprio nome). À mão: para o que não passa pelo banco conectado."));
+  return card;
+}
+function manLinkList(a) {
+  const box = el("div", "man-link"); box.id = "man-link-box";
+  box.appendChild(el("p", "note", "Toque em \u201cÉ da " + a.name + "\u201d nos Pix e TEDs que foram para ela (saída = aporte) ou vieram dela (entrada = retirada). Mostra os últimos 4 meses."));
+  const ul = el("ul", "inv-rows"), cs = manCandidates();
+  cs.forEach(t => {
+    const li = el("li");
+    li.append(el("span", null, fmtDate(t.date) + " · " + String(t.desc || "").replace(/\|/g, " · ").slice(0, 70)), el("b", "money " + (t.dir === "out" ? "pos" : "neg"), (t.dir === "out" ? "aporte " : "retirada ") + brl(t.amount)));
+    const bt = el("button", "linkbtn", "É da " + a.name); bt.type = "button"; bt.id = "man-lk-" + t.id;
+    bt.addEventListener("click", () => { a.link.push(t.id); a.skip = a.skip.filter(id => id !== t.id); a.upd = Date.now(); saveFin(); renderFin(); const n = document.getElementById("man-link-box"); if (n) n.scrollIntoView({ block: "nearest" }); });
+    li.appendChild(bt); ul.appendChild(li);
+  });
+  if (!cs.length) ul.appendChild(el("li", "muted", "Nenhum Pix ou TED livre nos últimos 4 meses."));
+  box.appendChild(ul);
+  const b = el("div", "btns"), ok = el("button", "btn", "Pronto"); ok.type = "button"; ok.id = "man-link-done"; ok.addEventListener("click", () => { manUI.link = null; renderFin(); });
+  b.appendChild(ok); box.appendChild(b);
+  return box;
+}
+function manMoveForm(a) {
+  const box = el("div", "man-add");
+  box.appendChild(chipGroup("Tipo", [["in", "Aporte"], ["out", "Retirada"]], manUI.k || "in", v => { manUI.k = v; renderFin(); }, "man-k"));
+  const f = el("div", "inputs two");
+  const fld = (id, label, ph) => { const d = el("div", "field"), l = el("label", null, label), i = el("input"); l.htmlFor = id; i.id = id; i.placeholder = ph || ""; d.append(l, i); f.appendChild(d); return i; };
+  const vI = fld("man-mv-val", "Valor (R$)", "0,00"); vI.inputMode = "decimal";
+  const dI = dmInput(fld("man-mv-date", "Data", "")); dI.value = isoToDM(todayISO());
+  const nI = fld("man-mv-note", "Observação (opcional)", "Ex.: Pix do Nubank");
+  box.appendChild(f);
+  const msg = el("p", "note"); msg.setAttribute("aria-live", "polite");
+  const b = el("div", "btns"), sv = el("button", "btn", "Lançar"); sv.type = "button"; sv.id = "man-mv-save";
+  sv.addEventListener("click", () => {
+    const v = parseMoney(vI.value), iso = dmToISO(dI.value);
+    if (!(v > 0)) { flashAuto(msg, "Digite o valor."); return; }
+    if (!iso || iso > todayISO()) { flashAuto(msg, "Data inválida. Use DD/MM/AAAA."); return; }
+    a.moves.push({ id: uid(), date: iso, amount: Math.round(v * 100) / 100, k: manUI.k === "out" ? "out" : "in", note: nI.value.trim().slice(0, 60), at: Date.now() });
+    manUI.add = null; saveFin(); renderFin();
+  });
+  const cc = el("button", "btn ghost", "Cancelar"); cc.type = "button"; cc.id = "man-mv-cancel"; cc.addEventListener("click", () => { manUI.add = null; renderFin(); });
+  b.append(sv, cc); box.append(b, msg);
+  return box;
+}
+// gráfico: saldo informado (segue o último valor até o próximo) e, tracejado, o líquido aportado
+function manChart(a, S) {
+  const U = manUI.n; U[a.id] = U[a.id] || 90;
+  const wrap = el("div", "man-chart"); wrap.id = "man-chart-" + a.id;
+  const ch = el("div", "chips"); ch.setAttribute("aria-label", "Período do gráfico");
+  [[30, "30 dias"], [90, "90 dias"], [365, "1 ano"]].forEach(([k, t]) => { const b = el("button", "gchip", t); b.type = "button"; b.id = "man-n-" + a.id + "-" + k; b.setAttribute("aria-pressed", String(U[a.id] === k)); b.addEventListener("click", () => { U[a.id] = k; renderFin(); const c = document.getElementById("man-chart-" + a.id); if (c) c.scrollIntoView({ block: "nearest" }); }); ch.appendChild(b); });
+  wrap.appendChild(ch);
+  const dates = evoDates(U[a.id]), first = S.vs[0].date;
+  const V = dates.map(d => { if (d < first) return null; let v = null; S.vs.forEach(x => { if (x.date <= d) v = x.value; }); return v; });
+  const firstMv = S.mv.length ? S.mv[0].date : null;
+  const A = dates.map(d => firstMv && d >= firstMv ? manNetOn(a, d, S.mv) : null);
+  const sg = v => (v >= 0 ? "+" : "−") + brl(Math.abs(v));
+  wrap.appendChild(lineChart({ dates, money: true, fmt: fmtMoneyShort, tipFmt: brl, ref: null, idp: "man-" + a.id + "-", label: "Saldo e total aportado na " + a.name,
+    series: [
+      { id: "saldo", name: "Saldo", color: "#b07cff", vals: V, tipRows: i => V[i] != null && A[i] != null ? [["transparent", sg(V[i] - A[i]), "rendimento"]] : [] },
+      { id: "aportado", name: "Total aportado", color: "#9d8fbd", dash: true, vals: A }
+    ] }));
+  wrap.appendChild(el("p", "hex-cap", "Linha cheia: o saldo que você informou (vale até a próxima atualização). Tracejada: aportes menos retiradas. A distância entre as duas é o rendimento."));
+  return wrap;
+}
 const INV_SUB = { STOCK: "Ação", REAL_ESTATE_FUND: "FII", BDR: "BDR", ETF: "ETF", CDB: "CDB", LCI: "LCI", LCA: "LCA", TREASURY: "Tesouro", CRI: "CRI", CRA: "CRA", DEBENTURES: "Debênture" };
 const INV_TYPE = { EQUITY: "Renda variável", ETF: "ETF", FIXED_INCOME: "Renda fixa", MUTUAL_FUND: "Fundo", SECURITY: "Previdência", COE: "COE" };
 const invUI = { pick: false, msg: "" };
@@ -6804,6 +7023,7 @@ function renderInvest(main) {
   head2(main, "Investimentos", "Conta da corretora, evolução do patrimônio e o hábito de investir a sobra.");
   main.appendChild(invOfCard());
   if (invOf().itemId) main.appendChild(invEvoCard());
+  invManSection(main);
   const s = sobraInfo();
   if (s) {
     const h = el("section", "guide habit");
@@ -9827,6 +10047,18 @@ function mergeKey(k, a, b) {
       const late = same && (ot.at || "") > (nw.at || "") ? ot : nw;
       out.invest.of = Object.assign({}, late, { itemId: nw.itemId, name: nw.name, upd: nw.upd, base: nw.base, snaps, moves: Object.values(mv).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0),
         seen: [...new Set((lo.seen || []).concat(ro.seen || []))], movesFrom: same && ot.movesFrom && (!nw.movesFrom || ot.movesFrom < nw.movesFrom) ? ot.movesFrom : nw.movesFrom });
+    }
+    // contas à mão: nome e "como aparece no extrato" do lado mais recente; lançamentos e saldos juntam os dois lados
+    if (li.man || ri.man) {
+      const by = {};
+      (li.man || []).concat(ri.man || []).forEach(a => {
+        const c = by[a.id]; if (!c) { by[a.id] = JSON.parse(JSON.stringify(a)); return; }
+        const nw = (a.upd || 0) > (c.upd || 0) ? a : c, ot = nw === a ? c : a;
+        const mv = {}; (ot.moves || []).concat(nw.moves || []).forEach(m => { const x = mv[m.id]; if (!x || (m.at || 0) >= (x.at || 0)) mv[m.id] = m; });
+        const vs = {}; (ot.vals || []).concat(nw.vals || []).forEach(v => { const x = vs[v.id]; if (!x || (v.at || 0) >= (x.at || 0)) vs[v.id] = v; });
+        by[a.id] = Object.assign({}, nw, { moves: Object.values(mv), vals: Object.values(vs), skip: nw.skip || [], link: nw.link || [], del: !!(a.del || c.del) });
+      });
+      out.invest.man = Object.values(by);
     }
     out.habit = Object.assign({}, L.habit, R.habit);
     out.of = (R.of && R.of.url) ? R.of : (L.of || R.of || {});

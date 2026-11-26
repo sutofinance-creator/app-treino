@@ -6771,10 +6771,11 @@ function manAccts(seed) {
   return (iv.man || []).filter(a => !a.del);
 }
 const manNorm = v => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ");
-// lançamentos do banco desta conta: os com o nome da corretora no texto e os vinculados à mão (ex.: Pix para o próprio nome)
+// lançamentos do banco desta conta: os com o nome da corretora no texto ou na categoria (ex.: Pix para o próprio nome
+// classificado com a categoria "Binance") e os vinculados à mão
 function manBankTx(a) {
   const ws = a.match.map(manNorm).filter(Boolean);
-  return fin.tx.filter(t => t.date && t.amount > 0 && (t.dir === "in" || t.dir === "out") && (a.link.includes(t.id) || ws.some(w => manNorm(t.desc + " " + (t.memo || "")).includes(w))));
+  return fin.tx.filter(t => t.date && t.amount > 0 && (t.dir === "in" || t.dir === "out") && (a.link.includes(t.id) || ws.some(w => manNorm([t.desc, t.memo, t.cat, t.sub].filter(Boolean).join(" ")).includes(w))));
 }
 // candidatos para vincular: transferências recentes que nenhuma conta à mão já conta
 function manCandidates() {

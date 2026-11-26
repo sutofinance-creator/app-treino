@@ -7078,9 +7078,11 @@ function manChart(a, S) {
   const sg = v => (v >= 0 ? "+" : "−") + brl(Math.abs(v));
   wrap.appendChild(lineChart({ dates, money: true, fmt: fmtMoneyShort, tipFmt: brl, ref: null, idp: "man-" + a.id + "-", label: "Saldo e total aportado na " + a.name,
     series: [
-      { id: "saldo", name: "Saldo", color: "#b07cff", vals: V, tipRows: i => V[i] != null && A[i] != null ? [["transparent", sg(V[i] - A[i]), "rendimento"]] : [] },
+      { id: "saldo", name: "Saldo", color: "#b07cff", top: true, vals: V, tipRows: i => V[i] != null && A[i] != null ? [["transparent", sg(V[i] - A[i]), "rendimento"]] : [] },
       { id: "aportado", name: "Total aportado", color: "#9d8fbd", dash: true, vals: A }
     ] }));
+  const nDays = new Set(S.vs.map(v => v.date)).size;
+  if (nDays < 2) wrap.appendChild(el("p", "note man-warn", "Por enquanto o saldo é um ponto só (o de " + fmtDate(S.vs[0].date).slice(0, 5) + "). A linha do saldo se forma a partir do segundo dia salvo: salve todo dia, a tarefa da Rotina lembra."));
   wrap.appendChild(el("p", "hex-cap", "Linha cheia: o saldo que você informou (vale até a próxima atualização). Tracejada: aportes menos retiradas. A distância entre as duas é o rendimento."));
   return wrap;
 }
@@ -7880,7 +7882,7 @@ function lineChart(cfg) {
   if (cfg.ref != null) svg += '<line class="lc-ref" x1="' + L + '" x2="' + (W - Rp) + '" y1="' + f(Y(cfg.ref)) + '" y2="' + f(Y(cfg.ref)) + '"/>';
   const every = Math.max(1, Math.round(n / (W < 480 ? 4 : 6)));
   cfg.dates.forEach((d, i) => { if ((n - 1 - i) % every === 0) svg += '<text class="lc-xl" x="' + f(X(i)) + '" y="' + (H - 6) + '" text-anchor="middle">' + fmtDate(d).slice(0, 5) + "</text>"; });
-  cfg.series.forEach(sr => {
+  cfg.series.slice().sort((a, b) => (a.top ? 1 : 0) - (b.top ? 1 : 0)).forEach(sr => {
     const dim = cfg.focus && cfg.focus !== sr.id ? " dim" : "", colAt = i => sr.segColors ? sr.segColors[i] : sr.color;
     if (sr.segColors) { // uma linha só, com a cor de cada trecho dada pelo dia em que ele chega
       sr.vals.forEach((v, i) => { if (i && v != null && sr.vals[i - 1] != null) svg += '<path class="lc-line' + dim + '" d="M' + f(X(i - 1)) + " " + f(Y(sr.vals[i - 1])) + "L" + f(X(i)) + " " + f(Y(v)) + '" stroke="' + colAt(i) + '"/>'; });
@@ -7890,7 +7892,8 @@ function lineChart(cfg) {
       svg += '<path class="lc-line' + dim + (sr.dash ? " dash" : "") + '" d="' + dpath + '" stroke="' + sr.color + '"/>';
     }
     let li = -1; sr.vals.forEach((v, i) => { if (v != null) li = i; });
-    if (li >= 0) svg += '<circle class="lc-end' + dim + '" cx="' + f(X(li)) + '" cy="' + f(Y(sr.vals[li])) + '" r="4" fill="' + colAt(li) + '"/>';
+    sr.vals.forEach((v, i) => { if (v != null && i !== li && sr.vals[i - 1] == null && sr.vals[i + 1] == null) svg += '<circle class="lc-end' + dim + '" cx="' + f(X(i)) + '" cy="' + f(Y(v)) + '" r="3.5" fill="' + colAt(i) + '"/>'; });
+    if (li >= 0) svg += '<circle class="lc-end' + dim + '" cx="' + f(X(li)) + '" cy="' + f(Y(sr.vals[li])) + '" r="' + (sr.top ? 5.5 : 4) + '" fill="' + colAt(li) + '"' + (sr.top ? ' stroke="var(--bg)" stroke-width="2"' : "") + '/>';
   });
   svg += '<line class="lc-cross" x1="0" x2="0" y1="' + T + '" y2="' + (H - B) + '" visibility="hidden"/><g class="lc-dots"></g>';
   svg += '<rect class="lc-hit" x="' + L + '" y="0" width="' + (W - L - Rp) + '" height="' + (H - B) + '"/></svg>';

@@ -818,6 +818,37 @@ input[aria-invalid="true"] { border-color: var(--bad) !important; }
 .rt-seq-it .rt-cyc-in input { max-width: 140px; }
 .rt-seq-add { margin-bottom: 8px; }
 .rt-cyc-sum.warn { color: var(--warn); }
+/* Missões › Calendário */
+.ms-cal-leg { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.ms-cal-leg span { display: inline-flex; align-items: center; gap: 5px; }
+.ms-cal i.dot, .ms-cal-day i.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+.dot.prazo { background: var(--accent); } .dot.plano { background: #9d8fbd; } .dot.cobrar { background: var(--warn); }
+.dot.repete { background: transparent; box-shadow: inset 0 0 0 1.5px var(--accent); } .dot.feita { background: var(--good); } .dot.fechada { background: var(--muted); }
+.dot.atrasada { background: var(--bad); } .dot.passou { background: transparent; box-shadow: inset 0 0 0 1.5px var(--bad); }
+.ms-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.ms-cal-wd { text-align: center; font: 600 11px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding-bottom: 2px; }
+.ms-cal-d { position: relative; min-height: 62px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 6px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.ms-cal-d.out { background: transparent; border-color: transparent; cursor: default; }
+.ms-cal-d.past { background: rgba(255, 255, 255, .015); }
+.ms-cal-d.past .n { color: var(--muted); }
+.ms-cal-d.today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.ms-cal-d.sel { background: rgba(166, 107, 255, .16); border-color: var(--accent); }
+.ms-cal-d.late { border-bottom: 2px solid var(--bad); }
+.ms-cal-d:hover { border-color: var(--accent); }
+.ms-cal-d .n { font: 700 14px var(--font-display); font-variant-numeric: tabular-nums; }
+.ms-cal-d .dots { display: flex; gap: 3px; flex-wrap: wrap; }
+.ms-cal-d .c { position: absolute; top: 5px; right: 6px; font-size: 11px; font-weight: 700; color: var(--accent); }
+.ms-cal-d .h { margin-top: auto; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ms-cal-list { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.ms-cal-go { width: 100%; display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 8px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--accent); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.ms-cal-it.atrasada .ms-cal-go, .ms-cal-it.passou .ms-cal-go { border-left-color: var(--bad); }
+.ms-cal-it.feita .ms-cal-go { border-left-color: var(--good); }
+.ms-cal-it.cobrar .ms-cal-go { border-left-color: var(--warn); }
+.ms-cal-go:hover { border-color: var(--accent); }
+.ms-cal-go .lb { font: 600 11px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.ms-cal-go .tt { font-weight: 600; }
+.ms-cal-go .sub { grid-column: 3; font-size: 12px; color: var(--bad); }
+@media (max-width: 560px) { .ms-cal-d { min-height: 54px; padding: 4px; } .ms-cal-d .n { font-size: 13px; } .ms-cal-go { grid-template-columns: auto 1fr; } .ms-cal-go .lb { grid-column: 2; } .ms-cal-go .tt, .ms-cal-go .sub { grid-column: 1 / -1; } }
 /* Cortana: botão redondo no canto e painel da conversa */
 .ct-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 41; width: 58px; height: 58px; border-radius: 50%; border: 1px solid var(--accent); cursor: pointer;
   background: radial-gradient(circle at 50% 45%, rgba(166, 107, 255, .28), rgba(10, 6, 20, .96) 70%); box-shadow: 0 0 0 1px rgba(166, 107, 255, .35), 0 0 22px rgba(166, 107, 255, .35), 0 6px 18px rgba(0, 0, 0, .55); padding: 0; }
@@ -4117,7 +4148,7 @@ function grNewSection(g) {
 
 /* ======================= Módulo Missões ======================= */
 const MS_KEY = "stek-missoes-v1";
-const MS_TABS = [{ id: "ms-hoje", label: "Hoje" }, { id: "ms-lista", label: "Missões" }, { id: "ms-relatorio", label: "Relatório" }, { id: "ms-base", label: "Base de conhecimento" }];
+const MS_TABS = [{ id: "ms-hoje", label: "Hoje" }, { id: "ms-lista", label: "Missões" }, { id: "ms-cal", label: "Calendário" }, { id: "ms-relatorio", label: "Relatório" }, { id: "ms-base", label: "Base de conhecimento" }];
 const MS_PRI = [["alta", "Alta"], ["media", "Média"], ["baixa", "Baixa"]];
 const MS_PRI_RANK = { alta: 0, media: 1, baixa: 2 };
 const MS_GERAL = "_geral";
@@ -4643,9 +4674,77 @@ function enterMissoes(tab, focus) {
 function renderMissoes() {
   const main = document.getElementById("main"); main.innerHTML = "";
   if (state.mtab === "ms-lista") renderMsLista(main);
+  else if (state.mtab === "ms-cal") renderMsCal(main);
   else if (state.mtab === "ms-relatorio") renderMsRelatorio(main);
   else if (state.mtab === "ms-base") renderKb(main);
   else renderMsHoje(main);
+}
+/* ---------- Calendário: 30 dias (19 para trás, hoje e 10 à frente) ----------
+   Passado: o que foi entregue, prazos que ficaram para trás e horas de trabalho. Hoje e à frente: prazos, dias planejados,
+   dia de cobrar quem está devendo resposta e as próximas repetições das missões que se repetem. */
+const MS_CAL_BACK = 19, MS_CAL_AHEAD = 10;
+function msCalItems(iso) {
+  const today = todayISO(), out = [], g = msData();
+  g.tasks.forEach(t => {
+    const open = t.status === "aberta";
+    if (!open) { if (t.closed === iso) out.push({ t, k: t.status === "feita" ? "feita" : "fechada", lb: t.status === "feita" ? "Entregue" : "Encerrada" }); return; }
+    if (t.wait && t.wait.until === iso) out.push({ t, k: "cobrar", lb: "Cobrar" + (t.wait.who ? " " + t.wait.who : "") });
+    if (t.due === iso) out.push({ t, k: iso < today ? "atrasada" : "prazo", lb: iso < today ? "Prazo vencido" : "Prazo" });
+    else if ((t.plan || []).includes(iso)) out.push({ t, k: iso < today ? "passou" : "plano", lb: iso < today ? "Era para esse dia" : "Planejada" });
+    else if (iso > today && t.rec && t.rec.type && t.due && iso > t.due && msRecMatch(t.rec, iso)) out.push({ t, k: "repete", lb: "Repete" });
+  });
+  const ord = { atrasada: 0, prazo: 1, cobrar: 2, plano: 3, repete: 4, passou: 5, feita: 6, fechada: 7 };
+  return out.sort((a, b) => ord[a.k] - ord[b.k] || msSort(a.t, b.t));
+}
+function renderMsCal(main) {
+  const today = todayISO(), from = addDaysISO(today, -MS_CAL_BACK), to = addDaysISO(today, MS_CAL_AHEAD);
+  if (!msUI.calDay || msUI.calDay < from || msUI.calDay > to) msUI.calDay = today;
+  head2(main, "Calendário", "Os últimos " + MS_CAL_BACK + " dias, hoje e os próximos " + MS_CAL_AHEAD + ". Toque num dia para ver as missões dele.");
+  const sec = el("section", "guide ms-cal"); sec.id = "ms-cal";
+  // legenda
+  const lg = el("div", "ms-cal-leg");
+  [["prazo", "Prazo"], ["plano", "Planejada"], ["cobrar", "Cobrar"], ["repete", "Repete"], ["feita", "Entregue"], ["atrasada", "Atrasada"]].forEach(([k, t]) => { const x = el("span"); x.append(el("i", "dot " + k), t); lg.appendChild(x); });
+  sec.appendChild(lg);
+  // grade: semanas de segunda a domingo; dias fora da janela ficam vazios
+  const grid = el("div", "ms-cal-grid"); grid.setAttribute("role", "grid"); grid.setAttribute("aria-label", "Calendário de missões");
+  ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"].forEach(w => grid.appendChild(el("span", "ms-cal-wd", w)));
+  const dow = iso => (rtDow(iso) + 6) % 7; // segunda = 0
+  let d = addDaysISO(from, -dow(from)); const end = addDaysISO(to, 6 - dow(to));
+  for (; d <= end; d = addDaysISO(d, 1)) {
+    const iso = d;
+    if (iso < from || iso > to) { grid.appendChild(el("span", "ms-cal-d out")); continue; }
+    const items = msCalItems(iso), sec2 = msDaySec(iso), kinds = [...new Set(items.map(x => x.k))];
+    const b = el("button", "ms-cal-d" + (iso === today ? " today" : "") + (iso < today ? " past" : "") + (iso === msUI.calDay ? " sel" : "") + (kinds.includes("atrasada") ? " late" : ""));
+    b.type = "button"; b.id = "ms-cal-" + iso; b.setAttribute("aria-pressed", String(iso === msUI.calDay));
+    const [, mm, dd] = iso.split("-");
+    b.appendChild(el("span", "n", dd === "01" || iso === from ? Number(dd) + "/" + Number(mm) : String(Number(dd))));
+    const dots = el("span", "dots"); kinds.slice(0, 4).forEach(k => dots.appendChild(el("i", "dot " + k))); b.appendChild(dots);
+    if (items.length) b.appendChild(el("span", "c", String(items.length)));
+    if (iso <= today && sec2 >= 60) b.appendChild(el("span", "h", fmtHM(sec2)));
+    b.setAttribute("aria-label", fmtDate(iso) + (iso === today ? ", hoje" : "") + ": " + (items.length ? items.length + (items.length === 1 ? " missão" : " missões") : "nada agendado") + (sec2 >= 60 ? ", " + fmtHM(sec2) + " de trabalho" : ""));
+    b.addEventListener("click", () => { msUI.calDay = iso; renderMissoes(); const n = document.getElementById("ms-cal-day"); if (n && window.innerWidth < 700) n.scrollIntoView({ block: "nearest", behavior: "smooth" }); });
+    grid.appendChild(b);
+  }
+  sec.appendChild(grid); main.appendChild(sec);
+  // detalhe do dia escolhido
+  const iso = msUI.calDay, items = msCalItems(iso), [y, m, dd] = iso.split("-").map(Number), hs = msDaySec(iso);
+  const box = el("section", "guide ms-cal-day"); box.id = "ms-cal-day";
+  box.appendChild(el("h3", null, (iso === today ? "Hoje, " : "") + capFirst(WEEKDAYS[new Date(y, m - 1, dd).getDay()]) + ", " + dd + " de " + MONTHS[m - 1]));
+  if (iso <= today) box.appendChild(el("p", "note muted", hs >= 60 ? fmtHM(hs) + " de trabalho registrado." : "Nenhum tempo de trabalho registrado."));
+  const ul = el("ul", "ms-cal-list");
+  items.forEach(x => {
+    const li = el("li", "ms-cal-it " + x.k), bt = el("button", "ms-cal-go"); bt.type = "button"; bt.id = "ms-cal-it-" + x.t.id + "-" + x.k;
+    bt.append(el("i", "dot " + x.k), el("span", "lb", x.lb), el("span", "tt", x.t.title + (x.t.proj ? " · " + x.t.proj : "")));
+    if (x.k === "atrasada" || x.k === "passou") bt.appendChild(el("span", "sub", "Ainda aberta"));
+    bt.addEventListener("click", () => { msUI.q = ""; msUI.proj = ""; msUI.open = x.t.id; enterMissoes("ms-lista"); rtFocus("ms-row-" + x.t.id); });
+    li.appendChild(bt); ul.appendChild(li);
+  });
+  if (!items.length) ul.appendChild(el("li", "muted", iso > today ? "Nada agendado para esse dia." : "Nenhuma missão nesse dia."));
+  box.appendChild(ul);
+  const ab = el("div", "btns"), od = el("button", "btn ghost", iso > today ? "Planejar esse dia" : iso === today ? "Abrir Missões de hoje" : "Ver o dia"); od.type = "button"; od.id = "ms-cal-open";
+  od.addEventListener("click", () => { state.mdate = iso; state.mtab = "ms-hoje"; renderMissoes(); window.scrollTo(0, 0); });
+  ab.appendChild(od); box.appendChild(ab);
+  main.appendChild(box);
 }
 function msChip(text, cls) { return el("span", "st " + (cls || ""), text); }
 function msPriChip(t) { const p = MS_PRI.find(x => x[0] === t.pri); return p ? msChip(p[1], "pri-" + p[0]) : null; }

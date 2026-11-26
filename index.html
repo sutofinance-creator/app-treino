@@ -896,7 +896,24 @@ function useProfile(id) {
 let TABS = [];
 function buildTabs() { TABS = PLAN.map(w => ({ id: w.id, label: w.short })).concat([{ id: "progresso", label: "Progresso" }, { id: "guia", label: "Guia" }]); }
 
-function todayISO() { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); }
+function calISO(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+/* Dia "lógico": em noites em que você escolheu dormir depois da meia-noite ("Hoje vou dormir às 03:00"), o dia só vira
+   nessa hora. Até lá, metas, Rotina, cronômetros e XP continuam no dia anterior. Nos outros dias, vira à meia-noite. */
+function nightExt(iso) {
+  // antes da Rotina carregar (ou se ainda não existir na memória), lê direto do aparelho
+  let r = null; try { r = rotina; } catch (e) {}
+  if (!r) { try { r = JSON.parse(localStorage.getItem("stek-rotina-v1")) || {}; } catch (e) { r = {}; } }
+  const hm = (r.nights && r.nights[iso]) || (r.sleepDay && r.sleepDay.d === iso ? r.sleepDay.hm : null);
+  const m = /^(\d{1,2}):(\d{2})/.exec(hm || ""); if (!m) return 0;
+  const min = Number(m[1]) * 60 + Number(m[2]);
+  return min < 720 ? min : 0; // antes do meio-dia = madrugada do dia seguinte
+}
+function todayISO() {
+  const n = new Date(), cal = calISO(n), prev = calISO(new Date(n.getFullYear(), n.getMonth(), n.getDate() - 1));
+  return n.getHours() * 60 + n.getMinutes() < nightExt(prev) ? prev : cal;
+}
+// data (meio-dia) do dia lógico de hoje
+function todayDate() { const [y, m, d] = todayISO().split("-").map(Number); return new Date(y, m - 1, d, 12); }
 function fmtDate(iso) { const [y, m, d] = iso.split("-"); return d + "/" + m + "/" + y.slice(2); }
 function parseNum(v) { if (v == null) return null; const s = String(v).trim().replace(",", "."); if (s === "") return null; const n = Number(s); return isFinite(n) && n >= 0 ? n : null; }
 function fmtNum(n) { return n == null ? "" : String(n).replace(".", ","); }
@@ -1211,7 +1228,7 @@ function planDays(y, m) { const key = y + "-" + String(m + 1).padStart(2, "0"); 
 function setPlanDays(key, arr) { settings.days = settings.days || {}; settings.days[key] = Array.from(new Set(arr)).sort(); delete settings.goals[key]; saveSettings(); }
 function isPlannedDay(iso) { const [y, m] = iso.split("-").map(Number); return planDays(y, m - 1).includes(iso); }
 function monthStats() {
-  const now = new Date(); const y = now.getFullYear(), m = now.getMonth();
+  const now = todayDate(); const y = now.getFullYear(), m = now.getMonth();
   const key = y + "-" + String(m + 1).padStart(2, "0");
   const last = new Date(y, m + 1, 0).getDate();
   const today = ymd(now);
@@ -1284,7 +1301,7 @@ function renderProgress(main) {
   const plus = el("button", "step", "+"); plus.type = "button"; plus.id = "goal-plus"; plus.setAttribute("aria-label", "Aumentar meta");
   // + marca o próximo dia livre a partir de hoje; − desmarca o último dia marcado que ainda não aconteceu
   plus.addEventListener("click", () => {
-    for (let d = new Date().getDate(); d <= s.last; d++) { const iso = ymd(new Date(s.y, s.m, d)); if (!s.plan.includes(iso) && !hasEntries(iso)) { setPlanDays(s.key, s.plan.concat(iso)); renderMain(); return; } }
+    for (let d = todayDate().getDate(); d <= s.last; d++) { const iso = ymd(new Date(s.y, s.m, d)); if (!s.plan.includes(iso) && !hasEntries(iso)) { setPlanDays(s.key, s.plan.concat(iso)); renderMain(); return; } }
   });
   minus.addEventListener("click", () => {
     const fut = s.plan.filter(x => x >= s.today && !hasEntries(x)).sort();
@@ -1292,7 +1309,7 @@ function renderProgress(main) {
     if (pick) { setPlanDays(s.key, s.plan.filter(x => x !== pick)); renderMain(); }
   });
   minus.disabled = !s.plan.some(x => !hasEntries(x));
-  plus.disabled = !Array.from({ length: s.last - new Date().getDate() + 1 }, (_, i) => ymd(new Date(s.y, s.m, new Date().getDate() + i))).some(x => !s.plan.includes(x) && !hasEntries(x));
+  plus.disabled = !Array.from({ length: s.last - todayDate().getDate() + 1 }, (_, i) => ymd(new Date(s.y, s.m, todayDate().getDate() + i))).some(x => !s.plan.includes(x) && !hasEntries(x));
   stepper.append(minus, val, plus); tGoal.appendChild(stepper);
   tGoal.appendChild(el("span", "tile-sub", "treinos"));
 
@@ -2564,7 +2581,13 @@ function goalSec(iso) { const g = intelGoalsAt(iso); return Math.round((isWeeken
 function setIntelGoals(patch) { if (!intel) return; intel.goals = goalLogPush(intel, { week: intel.goals.week, weekend: intel.goals.weekend }, patch); saveIntel(); }
 function getRec(day, sid) { return (intel.days[day] && intel.days[day][sid]) || { sec: 0, count: 0, theory: false }; }
 function dayRec(day, sid) { intel.days[day] = intel.days[day] || {}; return intel.days[day][sid] = intel.days[day][sid] || { sec: 0, count: 0, theory: false }; }
-function dayBounds(iso) { const [y, m, d] = iso.split("-").map(Number); const s = new Date(y, m - 1, d).getTime(); return [s, new Date(y, m - 1, d + 1).getTime()]; }
+// início e fim do dia lógico (meia-noite, ou a hora de dormir escolhida quando passa da meia-noite)
+function dayBounds(iso) {
+  const [y, m, d] = iso.split("-").map(Number), prev = calISO(new Date(y, m - 1, d - 1));
+  return [new Date(y, m - 1, d).getTime() + nightExt(prev) * 60000, new Date(y, m - 1, d + 1).getTime() + nightExt(iso) * 60000];
+}
+// dia lógico de um instante
+function dayOfTs(ms) { const d = new Date(ms), iso = calISO(d); return ms < dayBounds(iso)[0] ? calISO(new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1)) : iso; }
 function runningSec(iso, sid) {
   const t = intel && intel.timer; if (!t || (sid && t.sid !== sid)) return 0;
   const [a, b] = dayBounds(iso); const s = Math.max(a, t.startedAt), e = Math.min(b, Date.now());
@@ -2621,7 +2644,7 @@ function planRange(sub) {
   return [g.start, g.type === "prazo" ? g.end : (goalFinish(sub, todayISO()) || "9999-12-31")];
 }
 function nextExam(sub, iso) { return (sub.exams || []).filter(d => d >= iso).sort()[0] || null; }
-function daysBetween(a, b) { return Math.round((dayBounds(b)[0] - dayBounds(a)[0]) / 86400000); }
+function daysBetween(a, b) { const t = iso => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d).getTime(); }; return Math.round((t(b) - t(a)) / 86400000); }
 function fmtHMS(sec) { const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60; return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0"); }
 function fmtHM(sec) { const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60); return h ? h + "h" + String(m).padStart(2, "0") : m + " min"; }
 function fmtGoal(sec) { const h = sec / 3600; return (Number.isInteger(h) ? h : h.toFixed(1).replace(".", ",")) + "h"; }
@@ -2629,9 +2652,9 @@ function fmtGoal(sec) { const h = sec / 3600; return (Number.isInteger(h) ? h : 
 function addTime(startMs, endMs, sid) {
   let s = startMs;
   while (s < endMs) {
-    const d = new Date(s); const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+    const iso = dayOfTs(s), next = dayBounds(iso)[1];
     const e = Math.min(endMs, next);
-    dayRec(ymd(d), sid).sec += Math.round((e - s) / 1000);
+    dayRec(iso, sid).sec += Math.round((e - s) / 1000);
     s = e;
   }
 }
@@ -2875,7 +2898,7 @@ function renderIntelProgress(main) {
   head.append(el("h2", null, "Progresso"), el("p", null, "Tempo de estudo, sequência de metas batidas e avanço em cada matéria."));
   main.appendChild(head);
   // últimos 14 dias
-  const days = []; const base = new Date();
+  const days = []; const base = todayDate();
   for (let i = 13; i >= 0; i--) { const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() - i); days.push(ymd(d)); }
   const rows = days.map(iso => ({ iso, sec: daySec(iso), goal: goalSec(iso) }));
   let streak = 0;
@@ -3421,8 +3444,8 @@ function cardioPlan(iso, sel) {
 function stAddTime(a, b, pid, over) {
   let x = a;
   while (x < b) {
-    const dt = new Date(x); const next = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + 1).getTime(); const e = Math.min(b, next);
-    const iso = ymd(dt); stamina.days[iso] = stamina.days[iso] || {};
+    const iso = dayOfTs(x), next = dayBounds(iso)[1], e = Math.min(b, next);
+    stamina.days[iso] = stamina.days[iso] || {};
     const r = stamina.days[iso][pid] = stamina.days[iso][pid] || { sec: 0 };
     const sec = Math.round((e - x) / 1000); r.sec += sec; if (over) r.over = (r.over || 0) + sec; x = e;
   }
@@ -4122,7 +4145,7 @@ function msSince() {
   const g = msData(); let first = null;
   g.tasks.forEach(t => { if (t.created && (!first || t.created < first)) first = t.created; });
   Object.keys(g.days).forEach(d => { if (Object.values(g.days[d] || {}).some(v => v > 0) && (!first || d < first)) first = d; });
-  if (g.timer) { const d = ymd(new Date(g.timer.startedAt)); if (!first || d < first) first = d; }
+  if (g.timer) { const d = dayOfTs(g.timer.startedAt); if (!first || d < first) first = d; }
   return first || todayISO();
 }
 function msGoalSec(iso) { return msWorkDay(iso) && iso >= msSince() ? Math.round(msGoalAt(iso).hours * 3600) : 0; }
@@ -4141,8 +4164,8 @@ function msTaskSec(tid) {
 function msAddTime(a, b, tid) {
   let x = a;
   while (x < b) {
-    const dt = new Date(x); const next = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + 1).getTime(); const e = Math.min(b, next);
-    const iso = ymd(dt); mis.days[iso] = mis.days[iso] || {}; mis.days[iso][tid] = (mis.days[iso][tid] || 0) + Math.round((e - x) / 1000); x = e;
+    const iso = dayOfTs(x), next = dayBounds(iso)[1], e = Math.min(b, next);
+    mis.days[iso] = mis.days[iso] || {}; mis.days[iso][tid] = (mis.days[iso][tid] || 0) + Math.round((e - x) / 1000); x = e;
   }
 }
 /* Cronômetros: só um roda por vez.
@@ -7177,7 +7200,7 @@ function forcaTasks() {
   // mês com dias escolhidos no calendário: dia desmarcado e sem nada anotado não tem treino pendente
   if (!sd && settings.days && settings.days[today.slice(0, 7)] && !dayWorkoutDone(today)) return { free: true, freeText: "Hoje não está marcado como dia de treino no calendário. Nada pendente.", tasks: [] };
   const w = dayWorkout(today, sd);
-  if (!w) return { free: true, freeText: prof().dayTab[new Date().getDay()] ? "Você já fez todos os treinos da semana. Nada pendente hoje." : "Hoje é dia livre no seu plano. Nada pendente.", tasks: [] };
+  if (!w) return { free: true, freeText: prof().dayTab[todayDate().getDay()] ? "Você já fez todos os treinos da semana. Nada pendente hoje." : "Hoje é dia livre no seu plano. Nada pendente.", tasks: [] };
   const rec = (state.logs[todayISO()] && state.logs[todayISO()].e) || {};
   const done = w.ex.filter(x => exerciseDone(rec[x.id])).length, total = w.ex.length, complete = done === total;
   return { tasks: [{ id: "task-" + w.id, title: w.name, optional: !!w.optional, complete, pct: done / total,
@@ -7222,7 +7245,7 @@ function renderHome() {
   }
   if (state.htab === "rotina") { main.appendChild(rtHomeSection()); return; }
   if (state.htab === "metas") { renderMetas(main); return; }
-  const now = new Date();
+  const now = todayDate();
   const head = el("div", "wk-head");
   head.append(el("h2", null, "Início"), el("p", null, WEEKDAYS[now.getDay()].replace(/^./, c => c.toUpperCase()) + ", " + now.getDate() + " de " + MONTHS[now.getMonth()] + ". Toque num módulo para entrar ou na seta para ver as pendências."));
   main.appendChild(head);
@@ -8366,7 +8389,7 @@ function hmToMin(s) { const m = /^(\d{1,2}):(\d{2})/.exec(s || ""); return m && 
 function minToHM(n) { n = Math.round(n); const h = Math.floor(n / 60) % 24, m = ((n % 60) + 60) % 60; return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"); }
 function rtDow(iso) { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d).getDay(); }
 function rtDur(min) { min = Math.round(min); const h = Math.floor(min / 60), m = min % 60; return h ? h + "h" + (m ? String(m).padStart(2, "0") : "") : m + " min"; }
-function rtNow() { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); }
+function rtNow() { const [y, m, d] = todayISO().split("-").map(Number); return Math.floor((Date.now() - new Date(y, m - 1, d).getTime()) / 60000); }
 function rtCut(free, a, b) { const out = []; free.forEach(([x, y]) => { if (b <= x || a >= y) { out.push([x, y]); return; } if (a > x) out.push([x, a]); if (b < y) out.push([b, y]); }); return out; }
 function rtFreeMin(free) { return free.reduce((s, [a, b]) => s + b - a, 0); }
 function rtWeekDays() { const t = todayISO(); return Array.from({ length: 7 }, (_, i) => addDaysISO(t, i)); }
@@ -8836,7 +8859,7 @@ function fxLearned(fid) {
   return fxLearnCache.m[fid] = fxLearnedCalc(fid);
 }
 function fxLearnedCalc(fid) {
-  const by = {}; actSessions().forEach(x => { if (x.k !== "fx:" + fid) return; const d = ymd(new Date(x.a)); by[d] = (by[d] || 0) + (x.b - x.a); });
+  const by = {}; actSessions().forEach(x => { if (x.k !== "fx:" + fid) return; const d = dayOfTs(x.a); by[d] = (by[d] || 0) + (x.b - x.a); });
   const v = Object.keys(by).sort().slice(-10).map(d => by[d] / 60000); if (v.length < 5) return null;
   v.sort((a, b) => a - b); const md = v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2;
   return { min: Math.max(5, Math.round(md / 5) * 5), n: v.length };
@@ -8981,7 +9004,7 @@ function median(v) { if (!v.length) return null; const a = v.slice().sort((x, y)
 function minOfDay(ms) { const d = new Date(ms); return d.getHours() * 60 + d.getMinutes(); }
 function rtPatterns() {
   const S = actSessions().slice().sort((x, y) => x.a - y.a), name = {}, days = {};
-  S.forEach(x => { name[x.k] = x.n; const d = ymd(new Date(x.a)); (days[d] = days[d] || []).push(x); });
+  S.forEach(x => { name[x.k] = x.n; const d = dayOfTs(x.a); (days[d] = days[d] || []).push(x); });
   const dk = Object.keys(days).sort(), P = { days: dk.length, sessions: S.length, since: dk[0] || null, name, first: [], chain: [], acts: [], pairs: [] };
   if (!dk.length) return P;
   // primeira atividade de cada dia
@@ -9049,7 +9072,7 @@ function renderRtPadroes(main) {
   if (fx.length) {
     const s5 = sec("pd-fx", "Compromissos: planejado × real"), ul = el("ul", "inv-rows");
     fx.forEach(f => {
-      const by = {}; actSessions().forEach(x => { if (x.k === "fx:" + f.id) { const d = ymd(new Date(x.a)); by[d] = (by[d] || 0) + (x.b - x.a) / 60000; } });
+      const by = {}; actSessions().forEach(x => { if (x.k === "fx:" + f.id) { const d = dayOfTs(x.a); by[d] = (by[d] || 0) + (x.b - x.a) / 60000; } });
       const v = Object.values(by), lf = fxLearned(f.id), li = el("li");
       li.append(el("span", null, f.name || "Compromisso"), el("span", "muted", "planejado " + rtDur(Math.round(Number(f.dur) || 30))),
         el("b", null, v.length ? "real " + rtDur(Math.round(median(v))) + (lf ? " · a Rotina já usa" : " · " + v.length + " de 5 dias para a Rotina usar") : "sem registro ainda"));
@@ -9071,7 +9094,7 @@ function rtDefaultsBanner(main) {
 }
 
 function renderRtHoje(main) {
-  const now = new Date(), nowMin = rtNow(), R = rtToday();
+  const now = todayDate(), nowMin = rtNow(), R = rtToday();
   head2(main, "Rotina de hoje", capFirst(WEEKDAYS[now.getDay()]) + ", " + now.getDate() + " de " + MONTHS[now.getMonth()] + ". Montada às " + minToHM(nowMin) + " com o que falta nos módulos. Toque numa tarefa para ir direto a ela.");
   rtDefaultsBanner(main);
   rtTodayNodes(R, nowMin).forEach(n => main.appendChild(n));
@@ -9134,14 +9157,17 @@ function rtSleepCtl(R) {
   const b = el("button", "btn", "Refazer o dia"); b.type = "button"; b.id = "rt-sleep-set";
   const apply = () => {
     const m = hmToMin(i.value); if (m == null) { flashAuto(msg, "Digite o horário, ex.: 0200 para 2 da manhã."); return; }
-    const r = ensureRotina(); r.sleepDay = { d: iso, hm: minToHM(m) }; if (r.livre) delete r.livre[iso]; saveRotina(); rtRefresh("rt-sleep-in");
+    const r = ensureRotina(); r.sleepDay = { d: iso, hm: minToHM(m) }; r.nights = r.nights || {};
+    if (m < 720) r.nights[iso] = minToHM(m); else delete r.nights[iso];
+    Object.keys(r.nights).filter(k => k < addDaysISO(iso, -150)).forEach(k => delete r.nights[k]);
+    if (r.livre) delete r.livre[iso]; saveRotina(); rtRefresh("rt-sleep-in");
   };
   b.addEventListener("click", apply); i.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); i.blur(); apply(); } });
   const row = el("div", "rt-sleep-row"); row.append(i, b);
   box.append(l, row);
   if (ov != null) {
     const back = el("button", "linkbtn", "Voltar ao horário normal (" + norm + ")"); back.type = "button"; back.id = "rt-sleep-reset";
-    back.addEventListener("click", () => { const r = ensureRotina(); delete r.sleepDay; if (r.livre) delete r.livre[iso]; saveRotina(); rtRefresh("rt-sleep-in"); });
+    back.addEventListener("click", () => { const r = ensureRotina(); delete r.sleepDay; if (r.nights) delete r.nights[iso]; if (r.livre) delete r.livre[iso]; saveRotina(); rtRefresh("rt-sleep-in"); });
     const pn = el("p", "note muted", "Só hoje. Amanhã volta ao normal. "); pn.appendChild(back); box.appendChild(pn);
   } else box.appendChild(el("p", "note muted", "Só hoje. A Rotina refaz as tarefas e o tempo livre com esse horário."));
   box.appendChild(msg);
@@ -9553,7 +9579,7 @@ function rtHomeSection() {
   const h = el("button", "btn ghost", "Horários"); h.type = "button"; h.id = "rt-open-hor"; h.addEventListener("click", () => enterRotina("rot-horarios"));
   bb.append(w, h);
   if (pushSupported() && loggedIn() && !pushOn()) { const a = el("button", "btn ghost", "Ativar avisos"); a.type = "button"; a.id = "rt-open-avisos"; a.title = "Avisos antes de cada tarefa, mesmo com o app fechado"; a.addEventListener("click", () => { enterRotina("rot-horarios"); rtFocus("rt-avisos"); }); bb.appendChild(a); }
-  const now = new Date();
+  const now = todayDate();
   head.append(el("h2", null, "Rotina de hoje"), bb, el("p", null, capFirst(WEEKDAYS[now.getDay()]) + ", " + now.getDate() + " de " + MONTHS[now.getMonth()] + ". Montada às " + minToHM(nowMin) + " com o que falta nos módulos. Toque numa tarefa para ir direto a ela."));
   sec.appendChild(head);
   rtDefaultsBanner(sec);
@@ -10848,7 +10874,7 @@ function ctConsulta(a) {
     const S = actSessions().filter(x => x.a >= lo && x.a <= hi && has(x.n)).sort((x, y) => x.a - y.a), tot = {};
     S.forEach(x => { tot[x.n] = (tot[x.n] || 0) + (x.b - x.a); });
     return { periodo: R.de + " a " + R.ate, total_por_atividade: Object.keys(tot).sort((x, y) => tot[y] - tot[x]).slice(0, 20).map(n => n + ": " + fmtHM(Math.round(tot[n] / 1000))),
-      sessoes: S.slice(-60).map(x => ({ dia: ymd(new Date(x.a)), das: ctHM(x.a), ate: ctHM(x.b), atividade: x.n })) };
+      sessoes: S.slice(-60).map(x => ({ dia: dayOfTs(x.a), das: ctHM(x.a), ate: ctHM(x.b), atividade: x.n })) };
   }
   return { erro: "Módulo desconhecido." };
 }

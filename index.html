@@ -788,6 +788,14 @@ input[aria-invalid="true"] { border-color: var(--bad) !important; }
 .rt-cyc-in input { flex: 1; min-width: 0; }
 .rt-cyc-u { padding: 0 12px; min-height: 0; flex: 0 0 auto; }
 .rt-cyc-sum { color: var(--accent); }
+.rt-row.over { border-color: var(--bad); border-left-color: var(--bad); background: rgba(255, 77, 109, .07); }
+.rt-row.over .rt-time b { color: var(--bad); }
+.rt-over-msg { color: var(--bad) !important; }
+.rt-sleep { display: grid; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.rt-sleep label { font: 600 12px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.rt-sleep-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.rt-sleep-row input { flex: 0 1 140px; min-width: 0; font: 600 17px var(--font-body); font-variant-numeric: tabular-nums; color: var(--ink); background: var(--surface); border: 1px solid var(--line); padding: 8px 12px; }
+.rt-sleep-row input:focus { border-color: var(--accent); box-shadow: 0 0 12px rgba(166, 107, 255, .4); outline: none; }
 .man-hd { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .man-val { display: grid; gap: 6px; margin: 10px 0 4px; }
 .man-val label { font: 600 12px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
@@ -8335,8 +8343,10 @@ function rt() {
   const r = rotina || {};
   return { wake: Object.assign({}, ROT_DEF.wake, r.wake), sleep: Object.assign({}, ROT_DEF.sleep, r.sleep), work: Object.assign({}, ROT_DEF.work, r.work),
     treino: r.treino || ROT_DEF.treino, fixed: Array.isArray(r.fixed) ? r.fixed : [], skip: r.skip || {}, done: r.done || {}, set: !!(r.wake || r.sleep),
-    extWake: r.extWake ?? 30, extSleep: r.extSleep ?? 60 };
+    extWake: r.extWake ?? 30, extSleep: r.extSleep ?? 60, sleepDay: r.sleepDay && r.sleepDay.d ? r.sleepDay : null };
 }
+// "Hoje vou dormir às…": vale só para o dia escolhido; null = horário normal
+function rtSleepOv(iso) { const s = rt().sleepDay; return s && s.d === iso ? hmToMin(s.hm) : null; }
 /* Campo de horário digitado (HH:MM) no lugar do relógio do celular, cujo botão "Definir" pode ficar fora da tela.
    Digite 0615 ou 615 e ele vira 06:15. */
 function hmInput(i) {
@@ -8364,7 +8374,8 @@ function rtWeekDays() { const t = todayISO(); return Array.from({ length: 7 }, (
 // Limites de bom senso: o dia nunca começa antes das 5h nem termina depois da 1h.
 function rtBase(iso) {
   const c = rt(), dow = rtDow(iso), we = [0, 6].includes(dow) ? "we" : "wk";
-  const wake = hmToMin(c.wake[we]) ?? 420; let sleep = hmToMin(c.sleep[we]) ?? 1380; if (sleep <= wake) sleep += 1440;
+  const ov = rtSleepOv(iso);
+  const wake = hmToMin(c.wake[we]) ?? 420; let sleep = ov != null ? ov : hmToMin(c.sleep[we]) ?? 1380; if (sleep <= wake) sleep += 1440;
   const mine = c.fixed.filter(f => (f.days || []).includes(dow));
   const fixed = mine.filter(f => !f.kind || f.kind === "fixo").map(f => {
     const a = hmToMin(f.start), b0 = hmToMin(f.end); if (a == null || b0 == null) return null;
@@ -8383,7 +8394,8 @@ function rtBase(iso) {
     const near = valid.length ? valid.reduce((b, a) => Math.abs(a - ideal) < Math.abs(b - ideal) ? a : b) : ideal;
     return { id: f.id, name: f.name, dur, ideal, shift: sh, learned, pos: [...new Set([near, valid.length ? valid[0] : ideal, valid.length ? valid[valid.length - 1] : ideal])] };
   }).filter(Boolean);
-  return { wake, sleep, fixed, flex, maxWake: Math.max(0, Math.min(c.extWake, wake - 300)), maxSleep: Math.max(0, Math.min(c.extSleep, 1500 - sleep)) };
+  // com a hora de dormir escolhida para hoje, a Rotina não estica além dela: o que não couber fica em vermelho
+  return { wake, sleep, fixed, flex, sleepOv: ov != null, maxWake: Math.max(0, Math.min(c.extWake, wake - 300)), maxSleep: ov != null ? 0 : Math.max(0, Math.min(c.extSleep, 1500 - sleep)) };
 }
 // fila do acordar e do dormir sem cair em cima dos fixos: { id: { a, by } } (by = fixo que empurrou para depois/antes)
 function rtAnchorPos(fixed, flex, wake, sleep) {
@@ -9113,6 +9125,28 @@ function rtTimerRow(o) {
 /* Card "Tempo livre": quanto sobra depois da última tarefa até a hora de dormir. A Rotina é refeita a cada minuto a partir
    de agora, então o número cai quando as tarefas atrasam e sobe quando você adianta. O primeiro valor do dia fica guardado
    para comparar. */
+// "Hoje vou dormir às": muda só o dia de hoje; a Rotina refaz o plano e o tempo livre com esse horário
+function rtSleepCtl(R) {
+  const d = R.day, iso = todayISO(), ov = rtSleepOv(iso), c = rt(), we = [0, 6].includes(rtDow(iso)) ? "we" : "wk", norm = c.sleep[we];
+  const box = el("div", "rt-sleep"); box.id = "rt-sleep";
+  const l = el("label", null, "Hoje vou dormir às"), i = el("input"); l.htmlFor = "rt-sleep-in"; i.id = "rt-sleep-in"; hmInput(i); i.value = ov != null ? minToHM(ov) : minToHM(d.sleep);
+  const msg = el("p", "note"); msg.setAttribute("aria-live", "polite");
+  const b = el("button", "btn", "Refazer o dia"); b.type = "button"; b.id = "rt-sleep-set";
+  const apply = () => {
+    const m = hmToMin(i.value); if (m == null) { flashAuto(msg, "Digite o horário, ex.: 0200 para 2 da manhã."); return; }
+    const r = ensureRotina(); r.sleepDay = { d: iso, hm: minToHM(m) }; if (r.livre) delete r.livre[iso]; saveRotina(); rtRefresh("rt-sleep-in");
+  };
+  b.addEventListener("click", apply); i.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); i.blur(); apply(); } });
+  const row = el("div", "rt-sleep-row"); row.append(i, b);
+  box.append(l, row);
+  if (ov != null) {
+    const back = el("button", "linkbtn", "Voltar ao horário normal (" + norm + ")"); back.type = "button"; back.id = "rt-sleep-reset";
+    back.addEventListener("click", () => { const r = ensureRotina(); delete r.sleepDay; if (r.livre) delete r.livre[iso]; saveRotina(); rtRefresh("rt-sleep-in"); });
+    const pn = el("p", "note muted", "Só hoje. Amanhã volta ao normal. "); pn.appendChild(back); box.appendChild(pn);
+  } else box.appendChild(el("p", "note muted", "Só hoje. A Rotina refaz as tarefas e o tempo livre com esse horário."));
+  box.appendChild(msg);
+  return box;
+}
 function rtFreeCard(R, nowMin) {
   const d = R.day; if (nowMin >= d.sleep) return null;
   const iso = todayISO(), F = rtFreeInfo(R, R.from), r = ensureRotina();
@@ -9136,6 +9170,7 @@ function rtFreeCard(R, nowMin) {
   const dl = el("p", "rt-free-d " + (diff >= 5 ? "up" : diff <= -5 ? "down" : "same")); dl.id = "rt-free-d";
   dl.textContent = Math.abs(diff) < 5 ? "Igual ao plano das " + base.at + "." : (diff > 0 ? "+" : "−") + rtDur(Math.abs(diff)) + " desde o plano das " + base.at + (diff > 0 ? ": tarefas adiantadas." : ": tarefas atrasadas.");
   sec.appendChild(dl);
+  sec.appendChild(rtSleepCtl(R));
   return sec;
 }
 function rtTodayNodes(R, nowMin) {
@@ -9145,11 +9180,14 @@ function rtTodayNodes(R, nowMin) {
   const ch = rtChanges(R);
   if (ch.length) { const b = el("p", "banner rt-warn", "Para caber tudo hoje: " + ch.join(", ") + "."); b.id = "rt-changes"; out.push(b); }
   const fc = rtFreeCard(R, nowMin); if (fc) out.push(fc);
-  if (nowMin >= d.sleep) out.push(el("p", "banner", "Pelo seu horário de dormir, o dia de hoje já acabou. Veja amanhã na aba Semana da Rotina."));
+  if (nowMin >= d.sleep) { out.push(el("p", "banner", "Pelo seu horário de dormir, o dia de hoje já acabou. Veja amanhã na aba Semana da Rotina. Vai ficar acordado mais um pouco? Mude a hora de dormir de hoje:")); const sc = el("section", "guide"); sc.appendChild(rtSleepCtl(R)); out.push(sc); }
   const tl = el("ol", "rt-list"); tl.id = "rt-list";
   const fxDone = rt().done[todayISO()] || [];
   // compromissos ficam na lista até serem concluídos; os que já passaram do horário aparecem marcados como "passou"
-  const rows = R.blocks.map(b => ({ s: b.s, e: b.e, b })).concat(d.fixed.filter(f => !fxDone.includes("fx-" + f.id)).map(f => ({ s: f.a, e: f.b, f, past: f.b <= nowMin && !(fxRun() && fxRun().fid === f.id) }))).sort((x, y) => x.s - y.s);
+  const rows = R.blocks.map(b => ({ s: b.s, e: b.e, b })).concat(d.fixed.filter(f => !fxDone.includes("fx-" + f.id)).map(f => ({ s: f.a, e: f.b, f, past: f.b <= nowMin && !(fxRun() && fxRun().fid === f.id) }))).sort((x, y) => x.s - y.s)
+    .concat((R.left || []).map((x, i) => ({ s: d.sleep, e: d.sleep + x.min, over: true, b: { s: d.sleep, e: d.sleep + x.min, it: x.it, part: "over" + (i || ""), over: x.min } })));
+  let sleepMark = false;
+  const markSleep = () => { if (sleepMark) return; sleepMark = true; if (d.sleep > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.sleep) + " · Dormir" + (R.cfg.ss ? " (" + rtDur(R.cfg.ss) + " depois, para caber tudo)" : rtSleepOv(todayISO()) != null ? " (hoje)" : ""))); };
   if (d.wake > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.wake) + " · Acordar" + (R.cfg.ws ? " (" + rtDur(R.cfg.ws) + " antes, para caber tudo)" : "")));
   // o que já foi feito hoje continua na lista, em verde (concluído com o botão pode ser desfeito)
   const okd = rt().done[todayISO()] || [];
@@ -9167,13 +9205,15 @@ function rtTodayNodes(R, nowMin) {
   });
   const studyRun = !!(intel && intel.timer) && !R.blocks.some(b => b.it.key === "estudo" || (b.it.review && b.it.running));
   rows.forEach(r => {
-    const running = !!r.b && !r.b.part && (r.b.it.running || (r.b.it.extra && studyRun));
-    const isNow = running || (nowMin >= r.s && nowMin < r.e);
-    const li = el("li", "rt-row" + (r.f ? " fixed" : " mod-" + r.b.it.mod) + (running ? " run" : isNow ? " now" : ""));
+    if (r.over) markSleep();
+    const running = !r.over && !!r.b && !r.b.part && (r.b.it.running || (r.b.it.extra && studyRun));
+    const isNow = !r.over && (running || (nowMin >= r.s && nowMin < r.e));
+    const li = el("li", "rt-row" + (r.f ? " fixed" : " mod-" + r.b.it.mod) + (r.over ? " over" : running ? " run" : isNow ? " now" : ""));
     // rodando: começa agora e vai até agora + o tempo que falta
     const s0 = running ? nowMin : r.s, e0 = running ? nowMin + r.e - r.s : r.e;
-    const time = el("span", "rt-time"); time.append(el("b", null, running ? "Agora" : minToHM(s0)), el("span", "rt-end", "até " + minToHM(e0)));
-    time.setAttribute("aria-label", (running ? "agora" : "das " + minToHM(s0)) + " até " + minToHM(e0));
+    const time = el("span", "rt-time");
+    if (r.over) { time.append(el("b", null, "Não cabe"), el("span", "rt-end", rtDur(r.e - r.s))); time.setAttribute("aria-label", "não cabe até a hora de dormir, " + rtDur(r.e - r.s)); }
+    else { time.append(el("b", null, running ? "Agora" : minToHM(s0)), el("span", "rt-end", "até " + minToHM(e0))); time.setAttribute("aria-label", (running ? "agora" : "das " + minToHM(s0)) + " até " + minToHM(e0)); }
     if (r.f) {
       const f = r.f, frun = !!(fxRun() && fxRun().fid === f.id), fsec = fxSecToday(f.id);
       let fs = f.flex === "flex" ? (f.a !== f.ideal ? "Remanejado: o ideal era " + minToHM(f.ideal) : "Horário flexível") : f.flex === "wake" ? "Ao acordar" : f.flex === "sleep" ? "Antes de dormir" : "Compromisso fixo";
@@ -9207,7 +9247,8 @@ function rtTodayNodes(R, nowMin) {
     const it = r.b.it, suf = it.key + (r.b.part ? "-" + r.b.part : ""); li.id = "rt-" + suf;
     const btn = el("button", "rt-main"); btn.type = "button"; btn.id = "rt-go-" + suf;
     btn.append(time, rtIcon(it.mod));
-    const tx = el("span", "rt-txt"); tx.appendChild(el("span", "rt-title", it.title + ((it.split && it.dur > r.e - r.s) || it.extra ? " · " + rtDur(r.e - r.s) : "")));
+    const tx = el("span", "rt-txt"); tx.appendChild(el("span", "rt-title", it.title + (r.over ? (it.dur > r.e - r.s ? " · faltam " + rtDur(r.e - r.s) : "") : (it.split && it.dur > r.e - r.s) || it.extra ? " · " + rtDur(r.e - r.s) : "")));
+    if (r.over) tx.appendChild(el("span", "rt-sub rt-over-msg", "Não cabe até a hora de dormir (" + minToHM(d.sleep) + "). Mude a hora de dormir de hoje, pule ou deixe para amanhã."));
     // trabalho e estudo: cada missão / matéria vira um atalho próprio
     let links = null, timers = null, go = it.go;
     if (r.b.missions) {
@@ -9234,7 +9275,7 @@ function rtTodayNodes(R, nowMin) {
     } else if (it.sub) tx.appendChild(el("span", "rt-sub", it.sub));
     if (isNow && !running) tx.appendChild(el("span", "st pend rt-now", "Agora"));
     btn.appendChild(tx); btn.addEventListener("click", go); li.appendChild(btn);
-    if (!r.b.part) {
+    if (!r.b.part || (r.over && !R.blocks.some(b => b.it === it && !b.part))) {
       // Concluir no canto de cima e Pular hoje no de baixo, longe um do outro para não tocar errado
       const ok = el("button", "linkbtn rt-conc", "Concluir"); ok.type = "button"; ok.id = "rt-conc-" + it.key; ok.addEventListener("click", () => rtConclude(it, true));
       const sk = el("button", "linkbtn rt-skip", "Pular hoje"); sk.type = "button"; sk.id = "rt-skip-" + it.key; sk.addEventListener("click", () => rtSkip(it.key, true));
@@ -9269,14 +9310,9 @@ function rtTodayNodes(R, nowMin) {
     if (rtCanStart(it) && !(timers && it.mod === "inteligencia")) { const a = rtActRow(it, r.b, suf, running); if (a) li.appendChild(a); }
     tl.appendChild(li);
   });
-  if (d.sleep > nowMin) tl.appendChild(el("li", "rt-mark", minToHM(d.sleep) + " · Dormir" + (R.cfg.ss ? " (" + rtDur(R.cfg.ss) + " depois, para caber tudo)" : "")));
+  markSleep();
   if (!R.blocks.length && !R.left.length) out.push(el("p", "guide note", "Nada pendente hoje nos seus módulos. Bom trabalho."));
   if (R.blocks.length || R.left.length || doneCards.length) out.push(tl);
-  if (R.left.length) {
-    const s = el("section", "guide rt-left"); s.id = "rt-left";
-    s.append(el("h3", null, "Não coube hoje"), el("p", "note muted", "Não há tempo livre suficiente até a hora de dormir. Libere um horário, pule algo de menor prioridade ou deixe para amanhã."));
-    const ul = el("ul", "hist"); R.left.forEach(x => { const li = el("li"); li.append(el("span", null, x.it.title), el("span", null, rtDur(x.min))); ul.appendChild(li); }); s.appendChild(ul); out.push(s);
-  }
   const extra = el("div", "rt-foot");
   const skExtra = (rt().skip[todayISO()] || []).includes("extra") ? [{ key: "extra", title: "Estudo extra" }] : [];
   if (R.dem.skipped.length || skExtra.length) {

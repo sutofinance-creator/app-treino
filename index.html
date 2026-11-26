@@ -749,6 +749,9 @@ ol.steps a { color: var(--accent); }
 .rt-pg.full .rt-ico, .rt-pg.full .rt-pg-v { color: var(--good); }
 .rt-pg.none .rt-ico, .rt-pg.none .rt-pg-n { opacity: .55; }
 .rt-pg.none .rt-pg-bar { opacity: .5; }
+.rt-pg.go { cursor: pointer; margin: 0 -8px; padding: 3px 8px; border-radius: 2px; }
+.rt-pg.go:hover, .rt-pg.go:focus-visible { background: rgba(166, 107, 255, .1); outline: none; }
+.rt-pg.go:focus-visible { box-shadow: 0 0 0 1px var(--accent); }
 .rt-pg-v { font-size: 13px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 110px; text-align: right; }
 @media (max-width: 480px) { .rt-pg { grid-template-columns: 22px 1fr auto; } .rt-pg-bar { grid-column: 1 / -1; grid-row: 2; } .rt-pg-v { min-width: 0; } }
 /* cronômetro de cada missão / matéria dentro do card */
@@ -8242,7 +8245,7 @@ function penBox(P, idp) {
   const h = el("div", "pen-head"); h.append(el("h3", null, "Missão de penalidade"), el("span", "st " + (ok ? "ok" : "bad"), ok ? "Cumprida" : "Pendente"));
   s.appendChild(h);
   const mods = [...new Set(P.map(p => p.name))];
-  s.appendChild(el("p", "note", ok ? "Cumprida. Batendo o mínimo em todos os módulos, o XP de hoje vem em dobro." : "Ontem ficou abaixo do mínimo em " + listPt(mods) + ". Cumpra até a meia-noite: sem a penalidade, hoje não rende XP; com ela e o mínimo em todos os módulos, o XP de hoje dobra."));
+  s.appendChild(el("p", "note", ok ? "Cumprida. Batendo o mínimo em todos os módulos, o XP de hoje vem em dobro." : "Ontem ficou abaixo do mínimo em " + listPt(mods) + ". Cumpra até " + (nightExt(todayISO()) ? "as " + minToHM(nightExt(todayISO())) : "a meia-noite") + ": sem a penalidade, hoje não rende XP; com ela e o mínimo em todos os módulos, o XP de hoje dobra."));
   if (ok && idp === "pen-box") return s; // na rotina, cumprida vira só o aviso
   const ul = el("ul", "hex-rows");
   P.forEach(p => {
@@ -9101,10 +9104,26 @@ function renderRtHoje(main) {
 }
 const RT_MODS = [["inteligencia", "Inteligência"], ["estamina", "Estamina"], ["forca", "Força"], ["graca", "Graça"], ["missoes", "Missões"], ["financas", "Economia"]];
 // quanto de cada módulo já foi feito hoje (o que foi pulado não conta); mostra sempre todos os atributos ligados
-function rtProgress(prog, skipped) {
+// para onde leva o toque em cada módulo do quadro: a primeira tarefa pendente dele na Rotina (na ordem do dia), ou o módulo
+function rtPendingGo(R, mod) {
+  const fromBlock = b => b.missions && b.missions.length ? () => rtGoMission(b.missions[0].t.id) : b.subj ? () => rtGoSubj(b.subj.id) : null;
+  const fromItem = it => it.go || (it.subjects && it.subjects.length ? () => rtGoSubj(it.subjects[0].id) : null);
+  const b = (R.blocks || []).filter(x => x.it.mod === mod && !x.it.pen).sort((x, y) => x.s - y.s)[0];
+  if (b) return fromBlock(b) || fromItem(b.it) || (() => rtGoMod(mod));
+  const l = (R.left || []).find(x => x.it.mod === mod && !x.it.pen);
+  if (l) return fromItem(l.it) || (() => rtGoMod(mod));
+  return () => rtGoMod(mod);
+}
+function rtProgress(prog, skipped, R) {
   const rows = RT_MODS.filter(([id]) => modOn(id));
   if (!rows.length) return null;
-  const sec = el("section", "guide rt-prog"); sec.id = "rt-prog"; sec.setAttribute("aria-label", "Quanto já foi feito hoje em cada módulo");
+  const sec = el("section", "guide rt-prog"); sec.id = "rt-prog"; sec.setAttribute("aria-label", "Quanto já foi feito hoje em cada módulo. Toque num módulo para ir ao que falta nele.");
+  // cada linha leva ao que está pendente no módulo
+  const clickable = (row, id, name, label) => {
+    const go = R ? rtPendingGo(R, id) : () => rtGoMod(id);
+    row.classList.add("go"); row.tabIndex = 0; row.setAttribute("role", "button"); row.setAttribute("aria-label", name + ": " + label + ". Abrir o que falta.");
+    row.addEventListener("click", go); row.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+  };
   rows.forEach(([id, name]) => {
     const p = prog[id];
     if (!p || !(p.t > 0)) { // nada para hoje neste módulo
@@ -9116,7 +9135,7 @@ function rtProgress(prog, skipped) {
       const skip = why === "Pulado hoje", row = el("div", "rt-pg " + (skip ? "none" : "full free")); row.id = "rt-pg-" + id;
       const bar = el("div", "rt-pg-bar"); bar.setAttribute("aria-hidden", "true"); if (!skip) { const fill = el("span"); fill.style.width = "100%"; bar.appendChild(fill); }
       row.append(rtIcon(id), el("span", "rt-pg-n", name), bar, el("span", "rt-pg-v", (skip ? "" : "✓ ") + why));
-      sec.appendChild(row); return;
+      clickable(row, id, name, why); sec.appendChild(row); return;
     }
     const f = Math.min(1, p.d / p.t), full = f >= 0.999;
     const sing = { vezes: "vez", "exercícios": "exercício", "lançamentos": "lançamento" };
@@ -9125,7 +9144,7 @@ function rtProgress(prog, skipped) {
     const bar = el("div", "rt-pg-bar"); const fill = el("span"); fill.style.width = (f * 100) + "%"; bar.appendChild(fill);
     bar.setAttribute("role", "progressbar"); bar.setAttribute("aria-label", name); bar.setAttribute("aria-valuemin", "0"); bar.setAttribute("aria-valuemax", "100"); bar.setAttribute("aria-valuenow", String(Math.round(f * 100)));
     row.append(rtIcon(id), el("span", "rt-pg-n", name), bar, el("span", "rt-pg-v", (full ? "✓ " : "") + val));
-    sec.appendChild(row);
+    clickable(row, id, name, val); sec.appendChild(row);
   });
   return sec;
 }
@@ -9201,7 +9220,7 @@ function rtFreeCard(R, nowMin) {
 }
 function rtTodayNodes(R, nowMin) {
   const out = [], d = R.day;
-  const pgs = rtProgress(R.dem.prog || {}, R.dem.skipped); if (pgs) out.push(pgs);
+  const pgs = rtProgress(R.dem.prog || {}, R.dem.skipped, R); if (pgs) out.push(pgs);
   if (R.dem.pen && R.dem.pen.length) out.push(penBox(R.dem.pen, "pen-box"));
   const ch = rtChanges(R);
   if (ch.length) { const b = el("p", "banner rt-warn", "Para caber tudo hoje: " + ch.join(", ") + "."); b.id = "rt-changes"; out.push(b); }

@@ -7873,7 +7873,8 @@ function lineChart(cfg) {
   const mx = Math.max.apply(null, all.concat([0]));
   let top, step;
   if (cfg.hours) { step = mx <= 1 ? 0.25 : mx <= 2 ? 0.5 : mx <= 4 ? 1 : mx <= 8 ? 2 : 4; top = Math.max(step * 2, Math.ceil(mx / step) * step); } // horas: escala de cada gráfico
-  else if (cfg.money) { const raw = Math.max(mx, 100) / 4, p10 = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p10; step = (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p10; top = Math.max(step * 2, Math.ceil(mx / step) * step); }
+  // dinheiro: escala pelo valor (R$ 20 fica no meio de 0–30, e não colado no zero de uma escala de 0–100)
+  else if (cfg.money) { const raw = Math.max(mx, 4) / 4, p10 = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p10; step = (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p10; top = Math.max(step * 2, Math.ceil(mx * 1.05 / step) * step); }
   else { const cap = cfg.cap || 3; top = Math.min(cap, Math.max(cfg.minTop || 1.5, Math.ceil(mx * 2) / 2)); step = top <= 1.5 ? 0.25 : top <= 3 ? 0.5 : 1; }
   const X = i => L + (n <= 1 ? 0 : i * (W - L - Rp) / (n - 1)), Y = v => T + (1 - Math.min(v, top) / top) * (H - T - B);
   const f = v => v.toFixed(1), fmt = cfg.fmt || (v => Math.round(v * 100) + "%");

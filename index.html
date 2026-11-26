@@ -806,6 +806,7 @@ input[aria-invalid="true"] { border-color: var(--bad) !important; }
 .man-val-row input { flex: 1 1 160px; min-width: 0; }
 .man-add, .man-link { margin-top: 10px; }
 .man-warn { color: var(--warn); }
+.rt-lock-note { grid-area: conc; justify-self: end; align-self: start; font-size: 12px; color: var(--muted); }
 .man-chart { margin-top: 8px; }
 .rt-seq { list-style: none; margin: 6px 0 8px; padding: 0; display: grid; gap: 8px; }
 .rt-seq-it { border: 1px solid var(--line); border-left: 3px solid var(--accent); background: var(--surface-2); padding: 8px 10px; display: grid; gap: 6px; }
@@ -6024,6 +6025,8 @@ function finTasks() {
     const tot = pend.filter(t => t.dir === "out").reduce((s, t) => s + t.amount, 0);
     tasks.push({ id: "task-classificar", title: "Classificar lançamentos", label: pend.length + (pend.length === 1 ? " pendente" : " pendentes"), sub: brl(tot) + " em saídas esperando classificação.", pct: 0, complete: false, go: () => enterFin("fin-pendentes") });
   }
+  const ms = manMissOn(todayISO());
+  if (ms.length) tasks.push({ id: "task-saldo", title: "Salvar o saldo de hoje", label: ms.length + (ms.length === 1 ? " conta" : " contas"), sub: ms.map(a => a.name).join(" e ") + ": quanto tem agora em cada uma.", pct: 0, complete: false, go: () => manGo(ms[0].id) });
   const s = sobraInfo();
   if (s && s.sobra > 0) tasks.push({ id: "task-investir", title: "Investir a sobra de " + monthLabel(s.prev).split("/")[0], label: s.complete ? "Concluído" : brl(s.invested) + " / " + brl(s.sobra), sub: s.flag === "skip" ? "Você decidiu pular este mês." : "Sobrou " + brl(s.sobra) + " no mês passado. Transforme a sobra em aporte.", pct: Math.min(1, s.invested / s.sobra), complete: s.complete, go: () => enterFin("fin-invest") });
   return { tasks, free: !tasks.length, freeText: fin.tx.length ? "Nenhum lançamento para classificar." : "Importe um extrato para começar a acompanhar seu dinheiro." };
@@ -6791,6 +6794,12 @@ function manMoves(a) {
   return bank.concat(man).sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
 }
 function manVals(a) { return a.vals.filter(v => !v.x).sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : (x.at || 0) - (y.at || 0)); }
+const MAN_SALDO_FROM = "2026-11-26";
+// contas à mão sem saldo salvo no dia (a regra vale a partir de MAN_SALDO_FROM)
+function manMissOn(iso) {
+  if (iso < MAN_SALDO_FROM || !fin || !fin.invest || !fin.invest.man) return [];
+  return manAccts().filter(a => !a.vals.some(v => !v.x && v.date === iso));
+}
 function manValOn(a, iso) { let v = null; manVals(a).forEach(x => { if (x.date <= iso) v = x.value; }); return v; }
 function manSavedToday(a) { const t = todayISO(); return a.vals.some(v => !v.x && v.date === t); }
 // vai até o campo de saldo da conta (em Economia › Investimentos)
@@ -8167,8 +8176,12 @@ function xpMod(id, iso) {
   if (id === "financas") {
     const lim = addDaysISO(iso, -7);
     const pend = finPendOn(iso);
-    const old = pend.filter(t => t.date < lim).length;
-    return { min: !old, p: pend.length ? 0 : 1, txt: pend.length ? pend.length + " pendente(s)" + (old ? ", " + old + " com mais de 7 dias" : "") : "Nada pendente" };
+    const old = pend.filter(t => t.date < lim).length, miss = manMissOn(iso);
+    // o dia da Economia só fecha com o saldo salvo nas contas à mão (Binance, CM Capital…)
+    const parts = [];
+    if (pend.length) parts.push(pend.length + " pendente(s)" + (old ? ", " + old + " com mais de 7 dias" : ""));
+    if (miss.length) parts.push("saldo de " + miss.map(a => a.name).join(" e ") + " não salvo");
+    return { min: !old && !miss.length, p: pend.length || miss.length ? 0 : 1, txt: parts.length ? parts.join(" · ") : "Nada pendente" };
   }
   if (id === "graca") {
     const plan = grTodayPlan(iso).filter(r => !r.created || r.created <= iso);
@@ -8215,7 +8228,11 @@ function penItems(m, iso) {
   } else if (m.id === "forca") {
     const ok = penFlag(iso); mk("pen-forca", PEN_FLEX + " flexões", ok ? "Feito." : "Faça e marque como feito.", ok ? 1 : 0, 1, { manual: true });
   } else if (m.id === "financas") {
-    const n = finPendOn(iso).length; mk("pen-eco", "Zerar os pendentes", n ? n + (n === 1 ? " lançamento pendente." : " lançamentos pendentes.") : "Nada pendente.", n ? 0 : 1, 1);
+    const n = finPendOn(iso).length, ms = manMissOn(iso), txt = [];
+    if (n) txt.push(n + (n === 1 ? " lançamento pendente." : " lançamentos pendentes."));
+    if (ms.length) txt.push("Falta salvar o saldo de " + ms.map(a => a.name).join(" e ") + ".");
+    const hasMan = iso >= MAN_SALDO_FROM && fin.invest && fin.invest.man && manAccts().length;
+    mk("pen-eco", hasMan ? "Zerar os pendentes e salvar os saldos" : "Zerar os pendentes", txt.length ? txt.join(" ") : "Nada pendente.", n || ms.length ? 0 : 1, 1);
   } else if (m.id === "graca") {
     const base = grPlanNeed(iso), ex = Math.max(0, grDayCount(iso) - base);
     mk("pen-graca", "+1 ritual", "Ritual a mais: " + Math.min(ex, 1) + " de 1. Conta o que passar " + (base ? "dos rituais do dia (" + base + ")" : "de zero") + "; vale qualquer ritual.", ex, 1, { base });
@@ -8521,7 +8538,8 @@ function rtDemand(iso, plan, sim) {
   // doneIt: o que já foi feito hoje (vira card verde); parts: quanto de cada módulo já foi feito (barras do topo)
   const doneIt = [], parts = [];
   const dn = (o, txt) => { done.push(txt); doneIt.push(o); };
-  const part = (mod, key, d0, t, unit) => { if (t > 0) parts.push({ mod, key, d: Math.max(0, Math.min(d0, t)), t, unit }); };
+  // strict: só conta o que foi feito de verdade (não vale Concluir nem Pular)
+  const part = (mod, key, d0, t, unit, strict) => { if (t > 0) parts.push({ mod, key, d: Math.max(0, Math.min(d0, t)), t, unit, strict: !!strict }); };
   // missão de penalidade de hoje: entra na agenda somando ao que o módulo já pede
   const P = isT ? penToday() : [], pp = k => P.find(p => p.key === k && !p.done), pDone = k => P.some(p => p.key === k && p.done);
   const penDone = (key, mod, title) => dn({ key, mod, title, sub: "Penalidade cumprida" }, title);
@@ -8643,21 +8661,23 @@ function rtDemand(iso, plan, sim) {
     const macc = fin.invest && fin.invest.man ? manAccts() : [];
     if (macc.length) {
       const miss = macc.filter(a => !manSavedToday(a)), ok = macc.length - miss.length, nm = l => l.map(a => a.name).join(" e ");
-      part("financas", "eco-saldo", ok, macc.length, "contas");
-      if (miss.length) add({ key: "eco-saldo", mod: "financas", title: "Salvar o saldo de hoje: " + nm(miss), sub: "Quanto tem em cada uma agora (Economia › Investimentos).", dur: 5, win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6.2, go: () => manGo(miss[0].id) });
+      part("financas", "eco-saldo", ok, macc.length, "contas", true);
+      if (miss.length) add({ key: "eco-saldo", mod: "financas", lock: true, title: "Salvar o saldo de hoje: " + nm(miss), sub: "Quanto tem em cada uma agora (Economia › Investimentos).", dur: 5, win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6.2, go: () => manGo(miss[0].id) });
       else dn({ key: "eco-saldo", mod: "financas", title: "Salvar o saldo de hoje", sub: "Saldo salvo: " + nm(macc) + "." }, "Saldos");
     }
     const pe = pp("pen-eco");
-    if (pe && n) add({ key: "pen-eco", mod: "financas", title: "Penalidade: zerar os pendentes", sub: pe.txt + " Ela se cumpre sozinha quando não sobrar nenhum pendente.", dur: 5, win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6.5, pen: true, go: () => rtGoFin() });
-    else if (pDone("pen-eco") || (pe && !n)) penDone("pen-eco", "financas", "Penalidade: zerar os pendentes");
+    const msT = manMissOn(iso);
+    const hasMan = iso >= MAN_SALDO_FROM && fin.invest && fin.invest.man && manAccts().length;
+    if (pe && (n || msT.length)) add({ key: "pen-eco", mod: "financas", title: "Penalidade: zerar os pendentes" + (hasMan ? " e salvar os saldos" : ""), sub: pe.txt + " Ela se cumpre sozinha quando não sobrar nenhum pendente" + (hasMan ? " e os saldos de hoje estiverem salvos." : "."), dur: 5, win: [d.sleep - 150, d.sleep], fromEnd: true, rank: 6.5, pen: true, go: () => rtGoFin() });
+    else if (pDone("pen-eco") || (pe && !n && !msT.length)) penDone("pen-eco", "financas", "Penalidade: zerar os pendentes");
   }
   // pulado não conta; concluído com o botão conta como feito
   const prog = {};
   parts.forEach(x => {
-    if (skip.includes(x.key) && !(x.d >= x.t)) return; // pulou mas fez assim mesmo: conta
+    if (skip.includes(x.key) && !(x.d >= x.t) && !x.strict) return; // pulou mas fez assim mesmo: conta
 
     const p = prog[x.mod] = prog[x.mod] || { d: 0, t: 0, unit: x.unit };
-    p.d += okd.includes(x.key) ? x.t : x.d; p.t += x.t; if (p.unit !== x.unit) p.unit = p.unit === "min" || x.unit === "min" ? "min" : "itens";
+    p.d += okd.includes(x.key) && !x.strict ? x.t : x.d; p.t += x.t; if (p.unit !== x.unit) p.unit = p.unit === "min" || x.unit === "min" ? "min" : "itens";
   });
   return { items, done, doneIt, skipped, concl, day: d, pen: P, prog };
 }
@@ -9339,7 +9359,8 @@ function rtTodayNodes(R, nowMin) {
     } else if (it.sub) tx.appendChild(el("span", "rt-sub", it.sub));
     if (isNow && !running) tx.appendChild(el("span", "st pend rt-now", "Agora"));
     btn.appendChild(tx); btn.addEventListener("click", go); li.appendChild(btn);
-    if (!r.b.part || (r.over && !R.blocks.some(b => b.it === it && !b.part))) {
+    if (it.lock) li.appendChild(el("span", "rt-lock-note", "Só conclui salvando o saldo."));
+    else if (!r.b.part || (r.over && !R.blocks.some(b => b.it === it && !b.part))) {
       // Concluir no canto de cima e Pular hoje no de baixo, longe um do outro para não tocar errado
       const ok = el("button", "linkbtn rt-conc", "Concluir"); ok.type = "button"; ok.id = "rt-conc-" + it.key; ok.addEventListener("click", () => rtConclude(it, true));
       const sk = el("button", "linkbtn rt-skip", "Pular hoje"); sk.type = "button"; sk.id = "rt-skip-" + it.key; sk.addEventListener("click", () => rtSkip(it.key, true));
